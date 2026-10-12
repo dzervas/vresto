@@ -66,6 +66,45 @@ def resolve_evidence(cache, identifier):
     return source, start, end
 
 
+def expand_evidence(cache, identifiers):
+    """Resolve all references before returning anything; malformed IDs fail the request.
+
+    Unlike Exa's URL-based follow-up contents workflow, these IDs point to retained
+    canonical versions, not a promise of fresh/live contents or archive parity.
+    Live Exa access was unavailable; this is an ergonomics/source-shape comparison
+    only. Adjacent complete sections add context; the shared gate drops context
+    before quotes, never slicing a warning or silently replacing historical text.
+    """
+    sources = []
+    for identifier in identifiers:
+        try:
+            canonical, start, end = resolve_evidence(cache, identifier)
+        except ValueError as error:
+            if str(error) != 'evidence_unavailable':
+                raise
+            sources.append({'evidence_id': identifier, 'error': {
+                'code': 'evidence_unavailable', 'message': 'Referenced canonical version is not retained.'}})
+            continue
+        text = canonical['content']
+        passages = list(sections(text))
+        section = next((title for a, b, title in passages if a == start and b == end), None)
+        reference = {'url': canonical['resolved_url'], 'section': section,
+                     'start': start, 'end': end, 'evidence_id': identifier}
+        before = [p for p in passages if p[1] <= start]
+        after = [p for p in passages if p[0] >= end]
+        neighbors = before[-1:] + after[:1]
+        source = {k: v for k, v in canonical.items() if k != 'content'}
+        source.update(cache_state='retained_version', content_mode='evidence_expansion',
+            highlights=[dict(reference, text=text[start:end])],
+            context=[{'url': canonical['resolved_url'], 'section': title, 'start': a,
+                      'end': b, 'text': text[a:b]} for a, b, title in neighbors])
+        sources.append(source)
+    return {'sources': sources, 'content_mode': 'evidence_expansion', 'expansion': {
+        'version_policy': 'exact_retained_version_no_acquisition',
+        'context_policy': 'preceding_and_following_complete_sections',
+        'budget_policy': 'omit_context_sections_then_whole_sources_preserve_quote_and_reference'}}
+
+
 def sections(text):
     # Keep entire heading sections, code fences and tables, including paragraphs
     # before/after matches. Oversized sections are omitted atomically by the

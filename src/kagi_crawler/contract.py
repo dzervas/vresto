@@ -17,7 +17,11 @@ class BudgetInput(BaseModel):
 
 class FetchInput(BudgetInput):
     model_config = ConfigDict(extra="forbid", strict=True)
-    urls: list[str] = Field(min_length=1, max_length=10)
+    urls: list[str] | None = Field(default=None, min_length=1, max_length=10)
+    evidence_ids: list[str] | None = Field(default=None, min_length=1, max_length=10,
+        description="Expand exact retained passage versions, never fetch current pages. "
+                    "Exclusive with URLs, query, content_mode and freshness controls; "
+                    "only response_budget_bytes applies. Context sections may be omitted atomically.")
     content_mode: Literal["full_text", "highlights"] | None = Field(default=None,
         description="Defaults to highlights when query is supplied, otherwise full_text.")
     query: str | None = Field(default=None, min_length=1, max_length=4096)
@@ -26,6 +30,11 @@ class FetchInput(BudgetInput):
 
     @model_validator(mode='after')
     def validate_relevance(self):
+        if (self.urls is None) == (self.evidence_ids is None):
+            raise ValueError('choose URLs or evidence IDs')
+        if self.evidence_ids is not None and self.model_fields_set & {
+                'urls', 'query', 'content_mode', 'freshness', 'max_age_seconds'}:
+            raise ValueError('expansion excludes URL/relevance/freshness controls')
         if self.query is not None and not self.query.strip():
             raise ValueError('empty query')
         if self.content_mode == 'highlights' and self.query is None:

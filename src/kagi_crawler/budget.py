@@ -80,9 +80,21 @@ def apply_budget(data, limit):
             if field not in truncated:
                 truncated.append(field)
 
+    # Expansion context is optional, but always a complete canonical section.
+    # Omit it before the original quote; never truncate offsets or references.
+    while wire_bytes(output) > limit:
+        candidates = [s for s in sources if s.get('context')]
+        if not candidates:
+            break
+        coverage['partial_coverage'] = True
+        for source in candidates:
+            source['context'].pop()
+            source['omitted_context_section_count'] = source.get('omitted_context_section_count', 0) + 1
+
     # Highlights are atomic: .6 owns relevance/qualification-preserving ordering.
     while wire_bytes(output) > limit:
-        candidates = [s for s in sources if isinstance(s.get('highlights'), list) and s['highlights']]
+        candidates = [s for s in sources if s.get('content_mode') != 'evidence_expansion'
+                      and isinstance(s.get('highlights'), list) and s['highlights']]
         if not candidates:
             break
         coverage['partial_coverage'] = True
