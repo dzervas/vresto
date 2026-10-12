@@ -3,14 +3,13 @@ import argparse
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 import hmac
-import json
 import os
 import shutil
 from urllib.parse import unquote
 
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-from mcp.types import CallToolResult, TextContent, Tool, ToolAnnotations
+from mcp.types import Tool, ToolAnnotations
 from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
@@ -18,6 +17,8 @@ from starlette.routing import Route
 import uvicorn
 
 from .contract import SearchInput, FetchInput
+from .budget import (apply_budget, result as budget_result, DEFAULT_RESPONSE_BYTES,
+                     MIN_RESPONSE_BYTES, MAX_RESPONSE_BYTES)
 from .acquisition import Acquisition
 from .transport import AcquisitionOptions
 from .discovery import Discovery, DiscoveryError
@@ -41,30 +42,37 @@ class Settings:
     timeout: float = 30
     max_output_bytes: int = 1_048_576
     acquisition_options: AcquisitionOptions | None = None
+    response_budget_bytes: int = DEFAULT_RESPONSE_BYTES
 
 
 def tool_result(data, *, error=False):
-    return CallToolResult(content=[TextContent(type="text", text=json.dumps(data))],
-                          structuredContent=data, isError=error)
+    return budget_result(data, error=error)
 
 
 def create_app(settings: Settings):
     if not settings.access_token or not settings.session_token:
         raise ValueError("Service access and upstream session credentials are required")
+    if type(settings.response_budget_bytes) is not int or not MIN_RESPONSE_BYTES <= settings.response_budget_bytes <= MAX_RESPONSE_BYTES:
+        raise ValueError("Service response budget is outside the hard limits")
     discovery = Discovery(settings)
     acquisition = Acquisition(settings.acquisition_options)
     mcp = Server("kagi-crawler")
 
+    def input_schema(model):
+        schema = model.model_json_schema()
+        schema['properties']['response_budget_bytes']['default'] = settings.response_budget_bytes
+        return schema
+
     @mcp.list_tools()
     async def tools():
-        return [Tool(name="search", inputSchema=SearchInput.model_json_schema(),
+        return [Tool(name="search", inputSchema=input_schema(SearchInput),
                      description="Discover sources using Kagi subscriber search (default limit 10; maximum 20). "
                      "Only discovery content is implemented. Provider snippets are not page evidence. "
                      "Count is a local limit, not a guarantee; dates filter provider update dates, "
                      "not verified publication dates. Subscriber automation is unofficial.",
                      annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False,
                                                  openWorldHint=True, idempotentHint=False)),
-                Tool(name="fetch", inputSchema=FetchInput.model_json_schema(),
+                Tool(name="fetch", inputSchema=input_schema(FetchInput),
                      description="Fetch 1–10 public HTTP(S) HTML pages as full technical Markdown, "
                      "including rendered JavaScript. Per-source failures; no PDF, cache, highlights "
                      "or traversal yet. Stateless GET/HEAD only; cookie-dependent pages, POST APIs "
@@ -92,6 +100,8 @@ def create_app(settings: Settings):
         except (ValidationError, ValueError):
             return tool_result({"error": {"code": "invalid_input", "message":
                 "Invalid tool input or unsupported control; see tool input schema."}}, error=True)
+        if 'response_budget_bytes' not in request.model_fields_set:
+            request.response_budget_bytes = settings.response_budget_bytes
         if name == "fetch":
             data = await acquisition.fetch_many(request.urls)
             # Never echo configured credentials, even if an untrusted upstream
@@ -100,9 +110,11 @@ def create_app(settings: Settings):
                 if any(secret in value for value in source.values() if isinstance(value, str)
                        for secret in (settings.access_token, settings.session_token)):
                     data['sources'][index] = {'error': {'code': 'fetch_failed'}}
-            return tool_result(data)
+            data = apply_budget(data, request.response_budget_bytes)
+            return tool_result(data, error='error' in data)
         try:
-            return tool_result(await discovery.search(request))
+            data = apply_budget(await discovery.search(request), request.response_budget_bytes)
+            return tool_result(data, error='error' in data)
         except DiscoveryError as error:
             messages = {
                 "upstream_authentication": "Kagi subscriber session missing, rejected or expired.",
@@ -156,7 +168,9 @@ def main():
     # Provision both variables separately, then uv run kagi-crawler.
     # Never source a shell file, read CLI auth config, or use API fallback.
     settings = Settings(access_token=os.environ.get("KAGI_CRAWLER_ACCESS_TOKEN", ""),
-                        session_token=os.environ.get("KAGI_SESSION_TOKEN", ""))
+                        session_token=os.environ.get("KAGI_SESSION_TOKEN", ""),
+                        response_budget_bytes=int(os.environ.get("KAGI_CRAWLER_RESPONSE_BUDGET_BYTES",
+                                                                 str(DEFAULT_RESPONSE_BYTES))))
     # Bound graceful HTTP shutdown, including idle SDK SSE sessions; lifespan
     # then cancels MCP work and reaps remaining CLI process groups.
     uvicorn.run(create_app(settings), host="127.0.0.1", port=8000, access_log=False,

@@ -4,14 +4,24 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .budget import DEFAULT_RESPONSE_BYTES, MIN_RESPONSE_BYTES, MAX_RESPONSE_BYTES
 
-class FetchInput(BaseModel):
+
+class BudgetInput(BaseModel):
+    response_budget_bytes: int = Field(default=DEFAULT_RESPONSE_BYTES,
+        ge=MIN_RESPONSE_BYTES, le=MAX_RESPONSE_BYTES,
+        description="Shared UTF-8 byte limit for the serialized MCP tool result, including "
+                    "text and structuredContent copies and metadata; not a token count. "
+                    "Transport JSON-RPC envelope excluded. Truncation/omissions are explicit.")
+
+
+class FetchInput(BudgetInput):
     model_config = ConfigDict(extra="forbid", strict=True)
     urls: list[str] = Field(min_length=1, max_length=10)
     content_mode: Literal["full_text"] = "full_text"
 
 
-class SearchInput(BaseModel):
+class SearchInput(BudgetInput):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     query: str = Field(min_length=1, max_length=4096)
@@ -20,6 +30,8 @@ class SearchInput(BaseModel):
     # text output labels Title/URL/Published/Author/Highlights. Here snake_case inputs
     # and structured source records deliberately distinguish provider_snippet from
     # acquired evidence. No Exa category/type, generated highlights, or date claims.
+    # This source-shape comparison is not a live Exa response/budget comparison:
+    # no authorized Exa gateway was available; quality/parity remains unverified.
     # Temporary discovery-only default: later evidence tickets add highlights/fetch.
     num_results: int = Field(default=10, ge=1, le=20)
     content_mode: Literal["discovery"] = "discovery"

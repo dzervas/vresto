@@ -15,7 +15,8 @@ from kagi_crawler.server import Settings, create_app
 
 
 @asynccontextmanager
-async def running(tmp_path, *, timeout=2, max_bytes=65536, source=None, stop=None, acquisition_options=None):
+async def running(tmp_path, *, timeout=2, max_bytes=65536, source=None, stop=None, acquisition_options=None,
+                  response_budget_bytes=65536):
     # Executable fixture is the external CLI boundary, not a mock of our modules.
     fixture = tmp_path / "cli.py"
     fixture.write_text(source or '''import json, sys
@@ -26,7 +27,8 @@ else:
 ''')
     app = create_app(Settings(access_token="client-secret", session_token="subscriber-secret",
                               command=(sys.executable, str(fixture)), timeout=timeout,
-                              max_output_bytes=max_bytes, acquisition_options=acquisition_options))
+                              max_output_bytes=max_bytes, acquisition_options=acquisition_options,
+                              response_budget_bytes=response_budget_bytes))
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     url = f"http://127.0.0.1:{sock.getsockname()[1]}/mcp"
@@ -54,14 +56,14 @@ else:
 
 
 @asynccontextmanager
-async def client(url, token="client-secret", calls=None):
+async def client(url, token="client-secret", calls=None, timeout=5):
     async def observe(request):
         if calls is not None and request.method == "POST":
             data = json.loads(request.content)
             if data.get("method") == "tools/call":
                 calls.append(data["id"])
     async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"},
-                                 event_hooks={"request": [observe]}) as http:
+                                 event_hooks={"request": [observe]}, timeout=timeout) as http:
         async with streamable_http_client(url, http_client=http) as (r, w, _):
             async with ClientSession(r, w) as session:
                 await session.initialize()
