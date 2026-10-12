@@ -19,6 +19,9 @@ class FetchInput(BudgetInput):
     model_config = ConfigDict(extra="forbid", strict=True)
     urls: list[str] = Field(min_length=1, max_length=10)
     content_mode: Literal["full_text"] = "full_text"
+    query: str | None = Field(default=None, max_length=4096)
+    freshness: Literal['ordinary', 'refresh', 'fresh_only', 'cache_only'] = 'ordinary'
+    max_age_seconds: float = Field(default=3600, ge=0, le=2_592_000)
 
 
 class SearchInput(BudgetInput):
