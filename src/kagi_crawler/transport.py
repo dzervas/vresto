@@ -34,6 +34,11 @@ class AcquisitionOptions:
     job_bytes: int = 8 * 1024 * 1024
     max_requests: int = 64
     max_redirects: int = 5
+    # PDF parsing is serialized under the existing acquisition permit, with
+    # killable Linux worker containment independent of HTTP inflation bounds.
+    pdf_pages: int = 100
+    pdf_timeout: float = 10
+    pdf_memory_bytes: int = 1536 * 1024 * 1024
     blocked_networks: tuple[str, ...] = ()
     # Only Python fixture harnesses can supply exact (host, port, IP) exceptions;
     # not MCP inputs, environment configuration or a production internal-URL flag.

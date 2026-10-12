@@ -12,6 +12,7 @@ import anyio
 
 from .transport import AcquisitionOptions, DestinationPolicy, FetchError, Transport
 from .browser import Browser
+from .pdf import parse_pdf
 
 
 class Acquisition:
@@ -170,6 +171,12 @@ class Acquisition:
                 raise
             fetched = datetime.now(timezone.utc).isoformat()
             mime = initial.headers.get('content-type', '').split(';')[0].lower()
+            if mime == 'application/pdf' or initial.body.startswith(b'%PDF-'):
+                title, content, pdf = await parse_pdf(initial.body, self.options)
+                return {'requested_url': requested, 'resolved_url': initial.url,
+                    'title': title, 'document_type': 'pdf', 'fetched_at': fetched,
+                    'cache_state': 'miss', 'content_version': hashlib.sha256(content.encode()).hexdigest(),
+                    'content_mode': 'full_text', 'content': content, 'pdf': pdf}
             if mime not in ('text/html', 'application/xhtml+xml'):
                 raise FetchError('unsupported_format')
             # Known challenge signatures are conservative, not universal detection.

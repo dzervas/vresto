@@ -66,6 +66,22 @@ def resolve_evidence(cache, identifier):
     return source, start, end
 
 
+def document_passages(source):
+    # PDF text may itself contain Markdown-looking headings. Only trusted
+    # processor page offsets define PDF passages, never untrusted text markers.
+    if source.get('document_type') == 'pdf':
+        return ((p['start'], p['end'], f"PDF page {p['page']}")
+            for p in source['pdf']['references'] if p['status'] == 'text')
+    return sections(source['content'])
+
+
+def page_references(source, start, end):
+    if source.get('document_type') != 'pdf':
+        return {}
+    return {'pages': [p['page'] for p in source['pdf']['references']
+        if p['start'] < end and p['end'] > start]}
+
+
 def expand_evidence(cache, identifiers):
     """Resolve all references before returning anything; malformed IDs fail the request.
 
@@ -86,10 +102,11 @@ def expand_evidence(cache, identifiers):
                 'code': 'evidence_unavailable', 'message': 'Referenced canonical version is not retained.'}})
             continue
         text = canonical['content']
-        passages = list(sections(text))
+        passages = list(document_passages(canonical))
         section = next((title for a, b, title in passages if a == start and b == end), None)
         reference = {'url': canonical['resolved_url'], 'section': section,
-                     'start': start, 'end': end, 'evidence_id': identifier}
+                     'start': start, 'end': end, 'evidence_id': identifier,
+                     **page_references(canonical, start, end)}
         before = [p for p in passages if p[1] <= start]
         after = [p for p in passages if p[0] >= end]
         neighbors = before[-1:] + after[:1]
@@ -97,7 +114,8 @@ def expand_evidence(cache, identifiers):
         source.update(cache_state='retained_version', content_mode='evidence_expansion',
             highlights=[dict(reference, text=text[start:end])],
             context=[{'url': canonical['resolved_url'], 'section': title, 'start': a,
-                      'end': b, 'text': text[a:b]} for a, b, title in neighbors])
+                      'end': b, 'text': text[a:b],
+                      **page_references(canonical, a, b)} for a, b, title in neighbors])
         sources.append(source)
     return {'sources': sources, 'content_mode': 'evidence_expansion', 'expansion': {
         'version_policy': 'exact_retained_version_no_acquisition',
@@ -158,7 +176,7 @@ def select_highlights(data, query):
             continue
         text = source['content']
         seen = set()
-        for start, end, section in sections(text):
+        for start, end, section in document_passages(source):
             quote = text[start:end]
             # Exact repeats within one source only. Across sources even identical
             # text retains useful attribution/diversity; near-duplicate strings
@@ -199,7 +217,7 @@ def select_highlights(data, query):
             identifier = evidence_id(source, start, end)
             identity = (source['content_version'], start, end)
             reference = {'url': source['resolved_url'], 'section': section, 'start': start, 'end': end,
-                         'evidence_id': identifier}
+                         'evidence_id': identifier, **page_references(source, start, end)}
             # Collapse only identical *whole document versions*, not near-matching
             # quotes from differently qualified documents. Keep each duplicate's
             # attribution and independently resolvable ID for successor expansion.

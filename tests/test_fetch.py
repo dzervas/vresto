@@ -115,7 +115,7 @@ async def test_mixed_dns_answers_and_rebinding_are_rejected_before_connect(tmp_p
 
 
 @pytest.mark.parametrize('kind,code', [('gzip', 'resource_limit'), ('chunked', 'resource_limit'),
-    ('rate', 'rate_limited'), ('challenge', 'blocked'), ('pdf', 'unsupported_format'),
+    ('rate', 'rate_limited'), ('challenge', 'blocked'), ('pdf', 'pdf_parse_failed'),
     ('missing', 'fetch_failed'), ('slow', 'fetch_timeout')])
 async def test_transport_failures_are_distinct_and_bounded(tmp_path, kind, code):
     import gzip
