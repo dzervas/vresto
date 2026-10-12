@@ -1,4 +1,4 @@
-"""Only implemented discovery controls are part of the public contract."""
+"""Validated discovery, acquisition and query-focused content controls."""
 from datetime import date
 from typing import Literal
 
@@ -18,10 +18,19 @@ class BudgetInput(BaseModel):
 class FetchInput(BudgetInput):
     model_config = ConfigDict(extra="forbid", strict=True)
     urls: list[str] = Field(min_length=1, max_length=10)
-    content_mode: Literal["full_text"] = "full_text"
-    query: str | None = Field(default=None, max_length=4096)
+    content_mode: Literal["full_text", "highlights"] | None = Field(default=None,
+        description="Defaults to highlights when query is supplied, otherwise full_text.")
+    query: str | None = Field(default=None, min_length=1, max_length=4096)
     freshness: Literal['ordinary', 'refresh', 'fresh_only', 'cache_only'] = 'ordinary'
     max_age_seconds: float = Field(default=3600, ge=0, le=2_592_000)
+
+    @model_validator(mode='after')
+    def validate_relevance(self):
+        if self.query is not None and not self.query.strip():
+            raise ValueError('empty query')
+        if self.content_mode == 'highlights' and self.query is None:
+            raise ValueError('highlights require query')
+        return self
 
 
 class SearchInput(BudgetInput):
@@ -35,9 +44,10 @@ class SearchInput(BudgetInput):
     # acquired evidence. No Exa category/type, generated highlights, or date claims.
     # This source-shape comparison is not a live Exa response/budget comparison:
     # no authorized Exa gateway was available; quality/parity remains unverified.
-    # Temporary discovery-only default: later evidence tickets add highlights/fetch.
     num_results: int = Field(default=10, ge=1, le=20)
-    content_mode: Literal["discovery"] = "discovery"
+    content_mode: Literal["discovery", "highlights", "full_text"] = "highlights"
+    freshness: Literal['ordinary', 'refresh', 'fresh_only', 'cache_only'] = 'ordinary'
+    max_age_seconds: float = Field(default=3600, ge=0, le=2_592_000)
     region: str | None = Field(default=None, pattern=r"^(?:[a-z]{2}|no_region)$")
     lens: int | None = Field(default=None, ge=0, le=4294967295)
     time: Literal["day", "week", "month", "year"] | None = None

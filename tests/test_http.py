@@ -76,13 +76,13 @@ def body(result):
     return json.loads(result.content[0].text)
 
 
-async def test_search_defaults_preserve_provider_order_and_label_snippets(tmp_path):
+async def test_discovery_preserves_provider_order_and_labels_snippets(tmp_path):
     async with running(tmp_path) as (url, _), client(url) as session:
         tools = (await session.list_tools()).tools
         assert [t.name for t in tools] == ["search", "fetch"]
-        assert tools[0].inputSchema["properties"]["content_mode"]["const"] == "discovery"
+        assert tools[0].inputSchema["properties"]["content_mode"]["default"] == "highlights"
         assert tools[0].inputSchema["additionalProperties"] is False
-        result = await session.call_tool("search", {"query": "Python docs"})
+        result = await session.call_tool("search", {"query": "Python docs", "content_mode": "discovery"})
         assert not result.isError
         data = body(result)
         assert len(data["results"]) == 10
@@ -114,7 +114,7 @@ else:
 @pytest.mark.parametrize("arguments", [
     {"query": ""}, {"query": "x", "num_results": 0}, {"query": "x", "num_results": 21},
     {"query": "x", "num_results": True}, {"query": "x", "num_results": "2"},
-    {"query": "x", "content_mode": "highlights"}, {"query": "x", "category": "news"},
+    {"query": "x", "content_mode": "unknown"}, {"query": "x", "category": "news"},
     {"query": "x", "time": "decade"}, {"query": "x", "lens": -1},
     {"query": "x", "from_date": "2026-02-30"},
     {"query": "x", "from_date": "2026-02-01", "to_date": "2026-01-01"},
@@ -155,7 +155,7 @@ async def test_discovery_failures_are_clear_and_never_echo_credentials(tmp_path,
 async def test_missing_ranks_and_empty_results_are_not_invented(tmp_path):
     payload = '{"data": [{"t": 0, "rank": null, "url": "https://example.org", "title": "Docs", "snippet": "", "published": "yesterday"}]}'
     async with running(tmp_path, source=cli_response(payload)) as (url, _), client(url) as session:
-        data = body(await session.call_tool("search", {"query": "x"}))
+        data = body(await session.call_tool("search", {"query": "x", "content_mode": "discovery"}))
         assert data["results"][0]["provider_rank"] is None
         assert "published" not in data["results"][0]
         assert "provider_rank_unavailable" in data["warnings"]
@@ -272,7 +272,7 @@ else:
     print(json.dumps({"data": [{"t": 0, "rank": 1, "url": "https://example.org", "title": "Isolated", "snippet": ""}]}))
 '''
     async with running(tmp_path, source=source) as (url, _), client(url) as session:
-        result = await session.call_tool("search", {"query": "x"})
+        result = await session.call_tool("search", {"query": "x", "content_mode": "discovery"})
         assert not result.isError
         assert body(result)["results"][0]["title"] == "Isolated"
 

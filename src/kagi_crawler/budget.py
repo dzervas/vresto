@@ -59,7 +59,8 @@ def apply_budget(data, limit):
         'limit_bytes': limit, 'unit': 'serialized_mcp_result_utf8_bytes',
         'source_count': original_count, 'returned_source_count': original_count,
         'failed_source_count': sum('error' in s for s in sources),
-        'omitted_source_indices': [], 'partial_coverage': any('error' in s for s in sources),
+        'omitted_source_indices': [], 'partial_coverage': any('error' in s for s in sources)
+            or bool(output.get('selection', {}).get('partial_coverage')),
     }
     if wire_bytes(output) <= limit:
         return output

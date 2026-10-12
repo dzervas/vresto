@@ -11,7 +11,7 @@ async def test_discovery_shared_budget_includes_large_metadata_and_both_mcp_copi
                          'snippet': 'Qualification: do not enable legacy mode. ' * 200,
                          'rank': i + 1} for i in range(10)]}
     async with running(tmp_path, max_bytes=200000, source=cli_response(json.dumps(payload))) as (url, _), client(url) as session:
-        result = await session.call_tool('search', {'query': 'docs', 'response_budget_bytes': 4096})
+        result = await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery', 'response_budget_bytes': 4096})
         assert not result.isError
         data = body(result)
         assert data == result.structuredContent
@@ -63,7 +63,7 @@ async def test_untrimmable_metadata_is_omitted_explicitly_not_corrupted(tmp_path
     payload = {'data': [{'url': 'https://example.org/' + 'a' * 10000, 'title': 'Long URL', 'rank': 1},
                         {'url': 'https://example.org/useful', 'title': 'Useful', 'rank': 2}]}
     async with running(tmp_path, source=cli_response(json.dumps(payload))) as (url, _), client(url) as session:
-        result = await session.call_tool('search', {'query': 'docs', 'response_budget_bytes': 4096})
+        result = await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery', 'response_budget_bytes': 4096})
         data = body(result)
         assert not result.isError
         assert [s['url'] for s in data['results']] == ['https://example.org/useful']
@@ -77,8 +77,8 @@ async def test_operator_default_is_advertised_and_used_with_client_override(tmp_
     async with running(tmp_path, response_budget_bytes=8192) as (url, _), client(url) as session:
         assert all(t.inputSchema['properties']['response_budget_bytes']['default'] == 8192
                    for t in (await session.list_tools()).tools)
-        default = body(await session.call_tool('search', {'query': 'docs'}))
-        override = body(await session.call_tool('search', {'query': 'docs', 'response_budget_bytes': 4096}))
+        default = body(await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery'}))
+        override = body(await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery', 'response_budget_bytes': 4096}))
         assert default['budget']['limit_bytes'] == 8192
         assert override['budget']['limit_bytes'] == 4096
 
@@ -86,7 +86,7 @@ async def test_operator_default_is_advertised_and_used_with_client_override(tmp_
 @pytest.mark.parametrize('limit', [None, 4096, 262144])
 async def test_representative_discovery_budget_measurements_and_boundaries(tmp_path, limit):
     async with running(tmp_path) as (url, _), client(url) as session:
-        arguments = {'query': 'docs'}
+        arguments = {'query': 'docs', 'content_mode': 'discovery'}
         if limit is not None:
             arguments['response_budget_bytes'] = limit
         result = await session.call_tool('search', arguments)

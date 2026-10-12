@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 import time
 
+from .safety import contains_secret
+
 
 class DocumentCache:
     def __init__(self, directory, cap_bytes=268_435_456, retention_seconds=604_800):
@@ -102,7 +104,12 @@ class CachedAcquisition:
     async def fetch_many(self, urls, *, freshness='ordinary', max_age_seconds=3600):
         sources = []
         for url in urls:
+            if contains_secret(url, self.secrets):
+                sources.append({'error': {'code': 'fetch_failed'}})
+                continue
             cached = self.cache.lookup(url)
+            if cached and contains_secret(cached, self.secrets):
+                cached = None
             if freshness == 'cache_only':
                 sources.append(self._hit(cached, max_age_seconds) if cached else
                                {'requested_url': url, 'error': {'code': 'cache_miss'}})
@@ -113,7 +120,7 @@ class CachedAcquisition:
             # Acquisition owns bounded queueing; never hide it behind an
             # unbounded cache lock. Concurrent misses may acquire twice.
             source = (await self.acquisition.fetch_many([url]))['sources'][0]
-            if any(secret in value for value in source.values() if isinstance(value, str) for secret in self.secrets):
+            if contains_secret(source, self.secrets):
                 source = {'error': {'code': 'fetch_failed'}}
             if 'error' not in source:
                 self.cache.store(source)

@@ -16,9 +16,9 @@ async def test_documents_reused_across_queries_and_server_restart(tmp_path):
     before = browser_pids()
     async with site(handler) as (base, options):
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
-            first = body(await session.call_tool('fetch', {'urls': [base + '?version=1'], 'query': 'one'}))['sources'][0]
+            first = body(await session.call_tool('fetch', {'urls': [base + '?version=1'], 'query': 'one', 'content_mode': 'full_text'}))['sources'][0]
             assert 'content' in first, first
-            again = body(await session.call_tool('fetch', {'urls': [base + '?version=1'], 'query': 'another'}))['sources'][0]
+            again = body(await session.call_tool('fetch', {'urls': [base + '?version=1'], 'query': 'another', 'content_mode': 'full_text'}))['sources'][0]
             assert again['cache_state'] == 'hit'
             assert again['content_version'] == first['content_version']
             assert again['fetched_at'] == first['fetched_at']
