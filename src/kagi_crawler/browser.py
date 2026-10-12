@@ -7,6 +7,7 @@ or hard browser CPU/RAM containment is claimed.
 """
 import asyncio
 import os
+import signal
 from pathlib import Path
 import sys
 import tempfile
@@ -51,6 +52,8 @@ class Browser:
         self.proxy_tasks = set()
         self.start_lock = asyncio.Lock()
         self.denied = 0
+        self.driver_pid = None
+        self.driver_context = None
 
     async def _deny(self, reader, writer):
         task = asyncio.current_task()
@@ -69,6 +72,8 @@ class Browser:
     async def start(self):
         async with self.start_lock:
             if self.crawler is not None:
+                if not self.crawler.crawler_strategy.browser_manager.browser.is_connected():
+                    raise FetchError('browser_unavailable')
                 return
             self.proxy = await asyncio.start_server(self._deny, '127.0.0.1', 0)
             port = self.proxy.sockets[0].getsockname()[1]
@@ -93,13 +98,38 @@ class Browser:
                     safe_env = {k: os.environ[k] for k in _RUNTIME_ENV if k in os.environ}
                     with tempfile.TemporaryDirectory(prefix='crawler-driver-') as directory:
                         wrapper = Path(directory) / 'node'
-                        wrapper.write_text(f'#!{sys.executable}\nimport os, sys\nos.execve({node!r}, [{node!r}, *sys.argv[1:]], {safe_env!r})\n')
+                        pidfile = Path(directory) / 'pid'
+                        # Own a process group even before Patchright completes its
+                        # handshake. A cancelled/failed startup may not have a
+                        # Playwright handle capable of closing its driver yet.
+                        wrapper.write_text(f'#!{sys.executable}\nimport os, sys\nos.setsid()\nopen({str(pidfile)!r}, "w").write(str(os.getpid()))\nos.execve({node!r}, [{node!r}, *sys.argv[1:]], {safe_env!r})\n')
                         wrapper.chmod(0o700)
                         previous = os.environ.get('PLAYWRIGHT_NODEJS_PATH')
                         os.environ['PLAYWRIGHT_NODEJS_PATH'] = str(wrapper)
+                        import patchright.async_api as driver_api
+                        factory = driver_api.async_playwright
+                        def owned_driver():
+                            self.driver_context = factory()
+                            return self.driver_context
+                        # Pinned Crawl4AI drops this manager if the handshake is
+                        # cancelled. Keep ownership even before start() returns
+                        # the public Playwright handle. Startup is serialized.
+                        driver_api.async_playwright = owned_driver
                         try:
                             await self.crawler.start()
                         finally:
+                            driver_api.async_playwright = factory
+                            if self.driver_context is not None and not pidfile.exists():
+                                # Cancellation can arrive between spawning the
+                                # wrapper and its first instruction. Let ownership
+                                # handshake finish before removing the directory.
+                                with anyio.CancelScope(shield=True):
+                                    for _ in range(20):
+                                        if pidfile.exists():
+                                            break
+                                        await asyncio.sleep(0.01)
+                            if pidfile.exists():
+                                self.driver_pid = int(pidfile.read_text())
                             if previous is None:
                                 os.environ.pop('PLAYWRIGHT_NODEJS_PATH', None)
                             else:
@@ -205,6 +235,8 @@ class Browser:
             if self.denied != denied_before:
                 raise FetchError('rendering_unsupported')
             if not result.success:
+                if not self.crawler.crawler_strategy.browser_manager.browser.is_connected():
+                    raise FetchError('browser_unavailable')
                 code = 'blocked' if (result.error_message or '').startswith('Blocked by anti-bot protection:') else 'fetch_failed'
                 raise FetchError(code)
             if len(result.html.encode()) > transport.options.response_bytes:
@@ -232,8 +264,29 @@ class Browser:
         crawler, self.crawler = self.crawler, None
         try:
             if crawler is not None:
-                await crawler.close()
+                try:
+                    async with asyncio.timeout(2):
+                        await crawler.close()
+                except Exception:
+                    # Teardown must not hang forever on a crashed driver. The
+                    # owned group below is the final cancellation/startup guard.
+                    pass
         finally:
+            if self.driver_pid is not None:
+                try:
+                    os.killpg(self.driver_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                self.driver_pid = None
+            if self.driver_context is not None:
+                context, self.driver_context = self.driver_context, None
+                # Termination above unblocks even a driver that never answered
+                # initialization. Reap its transport and pending init callbacks.
+                try:
+                    async with asyncio.timeout(2):
+                        await context.__aexit__()
+                except Exception:
+                    pass
             if self.proxy is not None:
                 self.proxy.close()
                 await self.proxy.wait_closed()

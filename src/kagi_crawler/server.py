@@ -58,6 +58,10 @@ class Settings:
     cache_cap_bytes: int = 268_435_456
     cache_retention_seconds: float = 604_800
 
+    # Injectable time boundary for hour-long lifecycle tests, never MCP inputs.
+    browser_clock: object = None
+    browser_sleep: object = None
+
     def __post_init__(self):
         if not 1024 <= self.cache_cap_bytes <= 1_073_741_824:
             raise ValueError('cache cap must be 1 KiB–1 GiB')
@@ -75,7 +79,12 @@ def create_app(settings: Settings):
     if type(settings.response_budget_bytes) is not int or not MIN_RESPONSE_BYTES <= settings.response_budget_bytes <= MAX_RESPONSE_BYTES:
         raise ValueError("Service response budget is outside the hard limits")
     discovery = Discovery(settings)
-    acquisition = Acquisition(settings.acquisition_options)
+    timing = {}
+    if settings.browser_clock is not None:
+        timing['clock'] = settings.browser_clock
+    if settings.browser_sleep is not None:
+        timing['sleep'] = settings.browser_sleep
+    acquisition = Acquisition(settings.acquisition_options, **timing)
     cache = DocumentCache(settings.cache_directory, settings.cache_cap_bytes,
                           settings.cache_retention_seconds)
     cached_acquisition = CachedAcquisition(acquisition, cache,
@@ -130,8 +139,9 @@ def create_app(settings: Settings):
         if 'response_budget_bytes' not in request.model_fields_set:
             request.response_budget_bytes = settings.response_budget_bytes
         if name == "fetch":
-            data = await cached_acquisition.fetch_many(request.urls, freshness=request.freshness,
-                                                       max_age_seconds=request.max_age_seconds)
+            with acquisition.request():
+                data = await cached_acquisition.fetch_many(request.urls, freshness=request.freshness,
+                                                           max_age_seconds=request.max_age_seconds)
             # Never echo configured credentials, even if an untrusted upstream
             # guesses or reflects their values. No page bodies enter normal logs.
             for index, source in enumerate(data['sources']):
@@ -180,6 +190,7 @@ def create_app(settings: Settings):
                 await send({"type": "http.response.body", "body": b'{"error":"access_rejected"}'})
                 return
             if scope["path"] == "/mcp":
+                acquisition.warmup()
                 await manager.handle_request(scope, receive, send)
                 return
         await app(scope, receive, send)

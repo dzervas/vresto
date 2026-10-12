@@ -16,7 +16,7 @@ from kagi_crawler.server import Settings, create_app
 
 @asynccontextmanager
 async def running(tmp_path, *, timeout=2, max_bytes=65536, source=None, stop=None, acquisition_options=None,
-                  response_budget_bytes=65536, **cache_settings):
+                  response_budget_bytes=65536, browser_clock=None, browser_sleep=None, **cache_settings):
     # Executable fixture is the external CLI boundary, not a mock of our modules.
     fixture = tmp_path / "cli.py"
     fixture.write_text(source or '''import json, sys
@@ -29,6 +29,7 @@ else:
                               command=(sys.executable, str(fixture)), timeout=timeout,
                               max_output_bytes=max_bytes, acquisition_options=acquisition_options,
                               response_budget_bytes=response_budget_bytes,
+                              browser_clock=browser_clock, browser_sleep=browser_sleep,
                               cache_directory=tmp_path / 'cache', **cache_settings))
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))

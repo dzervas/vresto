@@ -1,5 +1,7 @@
-"""Application-owned, serialized acquisition; lifecycle refinement belongs to .3."""
+"""Shared warmup and idle lifetime, independent of MCP sessions and documents."""
 import asyncio
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 import hashlib
 import time
@@ -9,10 +11,11 @@ import aiohttp
 import anyio
 
 from .transport import AcquisitionOptions, DestinationPolicy, FetchError, Transport
+from .browser import Browser
 
 
 class Acquisition:
-    def __init__(self, options=None):
+    def __init__(self, options=None, *, clock=time.monotonic, sleep=asyncio.sleep):
         self.options = options or AcquisitionOptions()
         self.policy = DestinationPolicy(self.options)
         self.browser = None
@@ -21,9 +24,85 @@ class Acquisition:
         self.active = set()
         self.closed = False
         self.backoff = {}
+        self.clock = clock
+        self.sleep = sleep
+        self.lifecycle_lock = asyncio.Lock()
+        self.startup = None
+        self.idle_task = None
+        self.last_work = None
+        self.request_deadline = ContextVar('acquisition_deadline', default=None)
+
+    @contextmanager
+    def request(self):
+        # Cache/composed requests may call fetch_many one URL at a time. Share
+        # the acquisition deadline without making cache hits join its queue.
+        token = self.request_deadline.set(asyncio.get_running_loop().time() + self.options.deadline)
+        try:
+            yield
+        finally:
+            self.request_deadline.reset(token)
+
+    def warmup(self):
+        # ASGI requests never wait for startup. Keep its result for acquisition;
+        # discovery does not consume/reset idle time or hide startup failures.
+        if self.closed:
+            return None
+        if self.startup is None or (self.startup.done() and self.browser is None):
+            self.startup = asyncio.create_task(self._warm())
+        return self.startup
+
+    async def _warm(self):
+        async with self.lifecycle_lock:
+            if self.closed:
+                return False
+            if self.browser is not None:
+                return True
+            browser = Browser()
+            try:
+                async with asyncio.timeout(self.options.deadline):
+                    await browser.start()
+            except asyncio.CancelledError:
+                with anyio.CancelScope(shield=True):
+                    await browser.close()
+                raise
+            except Exception:
+                with anyio.CancelScope(shield=True):
+                    await browser.close()
+                return False
+            self.browser = browser
+            self.last_work = self.clock()
+            if self.idle_task is None or self.idle_task.done():
+                self.idle_task = asyncio.create_task(self._idle())
+            return True
+
+    async def _idle(self):
+        while not self.closed:
+            await self.sleep(max(0, 3600 - (self.clock() - self.last_work)))
+            # Taking the acquisition permit protects *all* active work, including
+            # initial transport, from teardown. Recheck after a queued job finishes.
+            async with self.lock:
+                if self.clock() - self.last_work >= 3600:
+                    await self._retire()
+                    return
+
+    async def _retire(self):
+        async with self.lifecycle_lock:
+            browser, self.browser = self.browser, None
+            if browser is not None:
+                with anyio.CancelScope(shield=True):
+                    await browser.close()
 
     async def fetch_many(self, urls):
+        task = asyncio.current_task()
+        self.active.add(task)
+        try:
+            return await self._fetch_many(urls)
+        finally:
+            self.active.discard(task)
+
+    async def _fetch_many(self, urls):
         sources = []
+        deadline = self.request_deadline.get() or asyncio.get_running_loop().time() + self.options.deadline
         for url in urls:
             normalized = None
             try:
@@ -34,22 +113,32 @@ class Acquisition:
                     raise FetchError('queue_full')
                 self.waiting += 1
                 try:
-                    async with asyncio.timeout(self.options.queue_wait):
+                    remaining = deadline - asyncio.get_running_loop().time()
+                    if remaining <= 0:
+                        raise FetchError('fetch_timeout')
+                    async with asyncio.timeout(min(self.options.queue_wait, remaining)):
                         await self.lock.acquire()
                 except TimeoutError:
-                    raise FetchError('queue_timeout') from None
+                    code = 'fetch_timeout' if asyncio.get_running_loop().time() >= deadline else 'queue_timeout'
+                    raise FetchError(code) from None
                 finally:
                     self.waiting -= 1
-                task = asyncio.current_task()
-                self.active.add(task)
                 try:
                     if self.closed:
                         raise FetchError('fetch_failed')
-                    async with asyncio.timeout(self.options.deadline):
+                    async with asyncio.timeout_at(deadline):
                         source = await self._acquire(url, normalized)
                     sources.append(source)
+                except asyncio.CancelledError:
+                    # This permit owns cancellation cleanup, even when abandoned
+                    # during initial transport or while joining shared startup.
+                    with anyio.CancelScope(shield=True):
+                        if self.startup is not None and not self.startup.done():
+                            self.startup.cancel()
+                            await asyncio.gather(self.startup, return_exceptions=True)
+                        await self._retire()
+                    raise
                 finally:
-                    self.active.discard(task)
                     self.lock.release()
             except FetchError as error:
                 source = {'error': {'code': error.code}}
@@ -89,20 +178,25 @@ class Acquisition:
                 b'verify you are human', b'captcha', b'checking your browser')):
                 raise FetchError('blocked')
             try:
-                if self.browser is None:
-                    from .browser import Browser
-                    self.browser = Browser()
+                startup = self.startup
+                if startup is None or (startup.done() and not startup.cancelled() and startup.result() and self.browser is None):
+                    startup = self.warmup()
+                if startup is None or not await asyncio.shield(startup):
+                    raise FetchError('browser_unavailable')
+                self.last_work = self.clock()
                 title, markdown = await self.browser.render(initial, transport)
-            except FetchError:
-                raise
-            except asyncio.CancelledError:
-                with anyio.CancelScope(shield=True):
-                    await self.browser.close()
+            except FetchError as error:
+                if error.code == 'browser_unavailable':
+                    await self._retire()
                 raise
             except Exception:
-                if self.browser is not None:
-                    await self.browser.close()
+                await self._retire()
                 raise FetchError('browser_unavailable') from None
+            finally:
+                # Completion starts a full idle interval; long active work never
+                # loses its browser when the previous idle deadline passes.
+                if self.browser is not None:
+                    self.last_work = self.clock()
             if any(marker in markdown.lower() for marker in ('verify you are human', 'just a moment...', 'checking your browser')):
                 raise FetchError('blocked')
             return {'requested_url': requested, 'resolved_url': initial.url,
@@ -115,6 +209,9 @@ class Acquisition:
         for task in list(self.active):
             task.cancel()
         await asyncio.gather(*list(self.active), return_exceptions=True)
-        if self.browser is not None:
-            with anyio.CancelScope(shield=True):
-                await self.browser.close()
+        tasks = [t for t in (self.startup, self.idle_task) if t is not None]
+        for task in tasks:
+            task.cancel()
+        with anyio.CancelScope(shield=True):
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await self._retire()
