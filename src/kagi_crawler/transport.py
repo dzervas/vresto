@@ -25,7 +25,13 @@ class FetchError(Exception):
 
 @dataclass(frozen=True)
 class AcquisitionOptions:
-    # Initial containment defaults, not response budgets (.4) or measured parity.
+    # Containment defaults, not provider parity or heavy-site sizing. Release
+    # fixture runs (scripts/release_check.py, x86_64/32 logical CPUs, 2026-10-13)
+    # completed nine serial acquisitions across two clients in 6.843–7.045s:
+    # one active + eight waiting fit the 10s queue / 30s request defaults on
+    # those tiny pages. Slow/heavy sites can time out; repeat on deployment CPUs.
+    # HTML/PDF/JS/traversal fixture tree RSS peaks were 652,115,968–654,401,536
+    # bytes (20ms sampling, shared pages double-counted), not a RAM guarantee.
     deadline: float = 30
     request_timeout: float = 10
     queue_wait: float = 10
@@ -44,6 +50,16 @@ class AcquisitionOptions:
     # not MCP inputs, environment configuration or a production internal-URL flag.
     fixture_destinations: tuple[tuple[str, int, str], ...] = ()
     dns_lookup: object = field(default=None, repr=False)
+
+    def __post_init__(self):
+        # Operator knobs cannot remove request/queue containment. Short durations
+        # remain useful for deterministic fixtures; production defaults are 30/10s.
+        if not 0.01 <= self.deadline <= 120:
+            raise ValueError('acquisition deadline must be 0.01–120 seconds')
+        if not 0.01 <= self.queue_wait <= 30:
+            raise ValueError('queue wait must be 0.01–30 seconds')
+        if type(self.queue_capacity) is not int or not 1 <= self.queue_capacity <= 32:
+            raise ValueError('queue capacity must be 1–32')
 
 
 class DestinationPolicy:

@@ -15,6 +15,14 @@ build-backend = "hatchling.build"
 "NOTICE" = "kagi_crawler/NOTICE"
 "licenses" = "kagi_crawler/licenses"
 
+# The source artifact is an allowlist too: Hatch recognizes Git metadata but
+# otherwise includes Jujutsu working-copy files. Never publish those or secrets.
+[tool.hatch.build.targets.sdist]
+include = ["/src/kagi_crawler/*.py", "/licenses/*LICENSE*", "/licenses/*NOTICE*",
+           "/README.md", "/NOTICE", "/Dockerfile", "/.dockerignore",
+           "/pyproject.toml", "/uv.lock", "/scripts/*.py", "/tests/*.py"]
+exclude = ["**/.env*", "**/.beads/**", "**/.jj/**", "**/.git/**", "**/*credentials*", "**/*.key", "**/*.pem"]
+
 [dependency-groups]
 dev = ["pytest==9.0.2", "pytest-asyncio==1.3.0"]
 

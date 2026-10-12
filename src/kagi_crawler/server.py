@@ -3,6 +3,8 @@ import argparse
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 import hmac
+import logging
+import time
 import os
 from pathlib import Path
 import shutil
@@ -136,6 +138,21 @@ def create_app(settings: Settings):
 
     @mcp.call_tool(validate_input=False)
     async def call(name, arguments):
+        started = time.monotonic()
+        outcome = 'cancelled_or_failed'
+        try:
+            result = await retrieve(name, arguments)
+            outcome = 'error' if result.isError else 'completed'
+            return result
+        finally:
+            # Deliberately no arguments, URLs, queries, credentials, bodies or
+            # exception strings. Per-source error/cache details stay in MCP.
+            logging.getLogger('kagi_crawler').info(
+                'tool=%s outcome=%s elapsed_ms=%.1f',
+                name if name in ('search', 'fetch') else 'unsupported', outcome,
+                (time.monotonic() - started) * 1000)
+
+    async def retrieve(name, arguments):
         # SDK JSON-schema validation echoes inputs in errors. Validate here instead
         # and never serialize ValidationError (which may contain client secrets).
         try:
@@ -237,11 +254,15 @@ def create_app(settings: Settings):
 
 
 def main():
-    argparse.ArgumentParser(description="Private HTTP MCP discovery and HTML acquisition.",
-                            epilog=CRAWL4AI_NOTICE).parse_args()
+    parser = argparse.ArgumentParser(description="Private HTTP MCP discovery and HTML acquisition.",
+                                    epilog=CRAWL4AI_NOTICE)
+    parser.add_argument('--host', default=os.environ.get('KAGI_CRAWLER_HOST', '127.0.0.1'))
+    parser.add_argument('--port', type=int, default=int(os.environ.get('KAGI_CRAWLER_PORT', '8000')))
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format='%(name)s %(message)s')
     # uv sync --locked; uv run python -m patchright install chromium (no sudo).
     # Patchright 1.63.0 pins Chromium 153.0.8010.12, revision 1243; retain bundled
-    # notices. Native system libraries must already exist (.12 owns image setup).
+    # notices. Native system libraries must already exist; Dockerfile supplies them.
     # Provision both variables separately, then uv run kagi-crawler.
     # Never source a shell file, read CLI auth config, or use API fallback.
     settings = Settings(access_token=os.environ.get("KAGI_CRAWLER_ACCESS_TOKEN", ""),
@@ -250,8 +271,12 @@ def main():
                                                                  str(DEFAULT_RESPONSE_BYTES))),
                         cache_directory=Path(os.environ.get('KAGI_CRAWLER_CACHE_DIRECTORY', '/data/cache')),
                         cache_cap_bytes=int(os.environ.get('KAGI_CRAWLER_CACHE_CAP_BYTES', '268435456')),
-                        cache_retention_seconds=float(os.environ.get('KAGI_CRAWLER_CACHE_RETENTION_SECONDS', '604800')))
+                        cache_retention_seconds=float(os.environ.get('KAGI_CRAWLER_CACHE_RETENTION_SECONDS', '604800')),
+                        acquisition_options=AcquisitionOptions(
+                            deadline=float(os.environ.get('KAGI_CRAWLER_DEADLINE_SECONDS', '30')),
+                            queue_wait=float(os.environ.get('KAGI_CRAWLER_QUEUE_WAIT_SECONDS', '10')),
+                            queue_capacity=int(os.environ.get('KAGI_CRAWLER_QUEUE_CAPACITY', '8'))))
     # Bound graceful HTTP shutdown, including idle SDK SSE sessions; lifespan
     # then cancels MCP work and reaps remaining CLI process groups.
-    uvicorn.run(create_app(settings), host="127.0.0.1", port=8000, access_log=False,
+    uvicorn.run(create_app(settings), host=args.host, port=args.port, access_log=False,
                 timeout_graceful_shutdown=2)

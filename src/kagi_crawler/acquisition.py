@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 import hashlib
+import logging
 import time
 from urllib.parse import urlsplit
 
@@ -69,7 +70,9 @@ class Acquisition:
             except Exception:
                 with anyio.CancelScope(shield=True):
                     await browser.close()
+                logging.getLogger('kagi_crawler').info('browser_start=failed')
                 return False
+            logging.getLogger('kagi_crawler').info('browser_start=ready')
             self.browser = browser
             self.last_work = self.clock()
             if self.idle_task is None or self.idle_task.done():
@@ -92,6 +95,7 @@ class Acquisition:
             if browser is not None:
                 with anyio.CancelScope(shield=True):
                     await browser.close()
+                logging.getLogger('kagi_crawler').info('browser_stop=completed')
 
     async def fetch_many(self, urls):
         task = asyncio.current_task()
@@ -111,6 +115,7 @@ class Acquisition:
                 if self.closed:
                     raise FetchError('fetch_failed')
                 if self.waiting >= self.options.queue_capacity:
+                    logging.getLogger('kagi_crawler').info('acquisition_queue=full')
                     raise FetchError('queue_full')
                 self.waiting += 1
                 try:
@@ -121,6 +126,7 @@ class Acquisition:
                         await self.lock.acquire()
                 except TimeoutError:
                     code = 'fetch_timeout' if asyncio.get_running_loop().time() >= deadline else 'queue_timeout'
+                    logging.getLogger('kagi_crawler').info('acquisition_queue=%s', code)
                     raise FetchError(code) from None
                 finally:
                     self.waiting -= 1

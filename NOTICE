@@ -3,3 +3,9 @@ This product includes software developed by UncleCode (https://x.com/unclecode) 
 Crawl4AI 0.9.4's full license, including its appended Attribution Requirement,
 is distributed in licenses/Crawl4AI-LICENSE. Keep installed Patchright package,
 driver and Chromium third-party license notices when packaging the runtime.
+
+The Docker runtime also includes Microck's Kagi CLI 0.22.0 at revision
+cb64cf514a99e527429468f92bc9f6b633a765e4. Its upstream MIT license and bundled
+Rust dependency license/notice files are retained under /usr/share/licenses/kagi-cli.
+Installed Python dependency .dist-info license files and Chromium distributions
+(including headless-shell LICENSE and driver ThirdPartyNotices) remain intact.
