@@ -1,0 +1,5 @@
+This product includes software developed by UncleCode (https://x.com/unclecode) as part of the Crawl4AI project (https://github.com/unclecode/crawl4ai).
+
+Crawl4AI 0.9.4's full license, including its appended Attribution Requirement,
+is distributed in licenses/Crawl4AI-LICENSE. Keep installed Patchright package,
+driver and Chromium third-party license notices when packaging the runtime.

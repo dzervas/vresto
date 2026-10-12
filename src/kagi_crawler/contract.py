@@ -5,6 +5,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class FetchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    urls: list[str] = Field(min_length=1, max_length=10)
+    content_mode: Literal["full_text"] = "full_text"
+
+
 class SearchInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 

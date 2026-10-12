@@ -15,7 +15,7 @@ from kagi_crawler.server import Settings, create_app
 
 
 @asynccontextmanager
-async def running(tmp_path, *, timeout=2, max_bytes=65536, source=None, stop=None):
+async def running(tmp_path, *, timeout=2, max_bytes=65536, source=None, stop=None, acquisition_options=None):
     # Executable fixture is the external CLI boundary, not a mock of our modules.
     fixture = tmp_path / "cli.py"
     fixture.write_text(source or '''import json, sys
@@ -26,7 +26,7 @@ else:
 ''')
     app = create_app(Settings(access_token="client-secret", session_token="subscriber-secret",
                               command=(sys.executable, str(fixture)), timeout=timeout,
-                              max_output_bytes=max_bytes))
+                              max_output_bytes=max_bytes, acquisition_options=acquisition_options))
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     url = f"http://127.0.0.1:{sock.getsockname()[1]}/mcp"
@@ -75,7 +75,7 @@ def body(result):
 async def test_search_defaults_preserve_provider_order_and_label_snippets(tmp_path):
     async with running(tmp_path) as (url, _), client(url) as session:
         tools = (await session.list_tools()).tools
-        assert [t.name for t in tools] == ["search"]
+        assert [t.name for t in tools] == ["search", "fetch"]
         assert tools[0].inputSchema["properties"]["content_mode"]["const"] == "discovery"
         assert tools[0].inputSchema["additionalProperties"] is False
         result = await session.call_tool("search", {"query": "Python docs"})
@@ -226,7 +226,7 @@ async def test_mcp_cancellation_reaps_subprocess_and_session_remains_usable(tmp_
                 assert "cancel" in str(exc).lower()
             while alive(pid):
                 await asyncio.sleep(0.01)
-        assert [t.name for t in (await session.list_tools()).tools] == ["search"]
+        assert [t.name for t in (await session.list_tools()).tools] == ["search", "fetch"]
 
 
 async def test_unpinned_cli_is_rejected(tmp_path):
