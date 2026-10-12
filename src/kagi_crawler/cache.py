@@ -125,7 +125,7 @@ class CachedAcquisition:
             if 'error' not in source:
                 self.cache.store(source)
                 source = dict(source, cache_state='refresh' if cached else 'miss', stale=False)
-            elif cached and freshness != 'fresh_only' and source['error']['code'] != 'policy_rejected':
+            elif cached and freshness != 'fresh_only' and source['error']['code'] not in ('policy_rejected', 'scope_rejected', 'traversal_byte_limit'):
                 source = dict(cached, cache_state='stale', stale=True, refresh_error=source['error'])
             sources.append(source)
         return {'sources': sources, 'content_mode': 'full_text'}

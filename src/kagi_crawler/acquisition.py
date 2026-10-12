@@ -159,7 +159,7 @@ class Acquisition:
             raise FetchError('rate_limited')
         async with Transport(self.options) as transport:
             try:
-                initial = await transport.fetch(normalized)
+                initial = await transport.fetch(normalized, document=True)
             except FetchError as error:
                 if error.code == 'rate_limited':
                     # No immediate retries or unbounded Retry-After sleeps. At
@@ -191,7 +191,7 @@ class Acquisition:
                 if startup is None or not await asyncio.shield(startup):
                     raise FetchError('browser_unavailable')
                 self.last_work = self.clock()
-                title, markdown = await self.browser.render(initial, transport)
+                title, markdown, links, links_truncated = await self.browser.render(initial, transport)
             except FetchError as error:
                 if error.code == 'browser_unavailable':
                     await self._retire()
@@ -209,7 +209,8 @@ class Acquisition:
             return {'requested_url': requested, 'resolved_url': initial.url,
                 'title': title, 'document_type': 'html', 'fetched_at': fetched,
                 'cache_state': 'miss', 'content_version': hashlib.sha256(markdown.encode()).hexdigest(),
-                'content_mode': 'full_text', 'content': markdown}
+                'content_mode': 'full_text', 'content': markdown,
+                'link_targets': links, 'links_truncated': links_truncated}
 
     async def close(self):
         self.closed = True

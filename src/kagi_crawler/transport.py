@@ -218,9 +218,13 @@ class Transport:
         with anyio.CancelScope(shield=True):
             await self.session.close()
 
-    async def fetch(self, url, *, redirects=True, method='GET'):
+    async def fetch(self, url, *, redirects=True, method='GET', document=False):
+        from .traversal import active_traversal
+        traversal = active_traversal.get()
         for hop in range(self.options.max_redirects + 1):
             url = self.policy.url(url)
+            if document and traversal is not None:
+                traversal.check_document(url)
             async with self.semaphore:
                 self.requests += 1
                 if self.requests > self.options.max_requests:
@@ -229,6 +233,8 @@ class Transport:
                     headers = {k.lower(): v for k, v in r.headers.items()}
                     if 300 <= r.status < 400:
                         target = self.policy.url(urljoin(url, headers.get('location', '')))
+                        if document and traversal is not None:
+                            traversal.check_document(target)
                         if not redirects:
                             raise FetchError('rendering_unsupported')
                         if hop == self.options.max_redirects or 'location' not in headers:
@@ -257,6 +263,8 @@ class Transport:
                         data = decoder.decompress(chunk, remaining + 1) if decoder else chunk
                         if len(data) > remaining or (decoder and decoder.unconsumed_tail):
                             raise FetchError('resource_limit')
+                        if traversal is not None:
+                            traversal.charge(len(data))
                         body.extend(data)
                         self.decoded += len(data)
                     if decoder and (not decoder.eof or decoder.unused_data):

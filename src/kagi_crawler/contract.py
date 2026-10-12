@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .budget import DEFAULT_RESPONSE_BYTES, MIN_RESPONSE_BYTES, MAX_RESPONSE_BYTES
+from .traversal import TraversalInput
 
 
 class BudgetInput(BaseModel):
@@ -20,8 +21,9 @@ class FetchInput(BudgetInput):
     urls: list[str] | None = Field(default=None, min_length=1, max_length=10)
     evidence_ids: list[str] | None = Field(default=None, min_length=1, max_length=10,
         description="Expand exact retained passage versions, never fetch current pages. "
-                    "Exclusive with URLs, query, content_mode and freshness controls; "
+                    "Exclusive with URLs, query, content_mode, traversal and freshness controls; "
                     "only response_budget_bytes applies. Context sections may be omitted atomically.")
+    traversal: TraversalInput | None = None
     content_mode: Literal["full_text", "highlights"] | None = Field(default=None,
         description="Defaults to highlights when query is supplied, otherwise full_text.")
     query: str | None = Field(default=None, min_length=1, max_length=4096)
@@ -33,8 +35,10 @@ class FetchInput(BudgetInput):
         if (self.urls is None) == (self.evidence_ids is None):
             raise ValueError('choose URLs or evidence IDs')
         if self.evidence_ids is not None and self.model_fields_set & {
-                'urls', 'query', 'content_mode', 'freshness', 'max_age_seconds'}:
-            raise ValueError('expansion excludes URL/relevance/freshness controls')
+                'urls', 'query', 'content_mode', 'freshness', 'max_age_seconds', 'traversal'}:
+            raise ValueError('expansion excludes URL/relevance/freshness/traversal controls')
+        if self.traversal is not None and len(self.urls) != 1:
+            raise ValueError('traversal requires one URL seed')
         if self.query is not None and not self.query.strip():
             raise ValueError('empty query')
         if self.content_mode == 'highlights' and self.query is None:

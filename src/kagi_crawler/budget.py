@@ -60,7 +60,8 @@ def apply_budget(data, limit):
         'source_count': original_count, 'returned_source_count': original_count,
         'failed_source_count': sum('error' in s for s in sources),
         'omitted_source_indices': [], 'partial_coverage': any('error' in s or s.get('pdf', {}).get('partial') for s in sources)
-            or bool(output.get('selection', {}).get('partial_coverage')),
+            or bool(output.get('selection', {}).get('partial_coverage'))
+            or bool(output.get('traversal', {}).get('omissions')),
     }
     if wire_bytes(output) <= limit:
         return output

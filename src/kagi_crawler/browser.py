@@ -12,6 +12,8 @@ from pathlib import Path
 import sys
 import tempfile
 import uuid
+from html.parser import HTMLParser
+from urllib.parse import urljoin
 import patchright
 import anyio
 
@@ -43,6 +45,29 @@ class IsolatedBrowserManager(BrowserManager):
         args['args'] = [a for a in args['args'] if not a.startswith('--ignore-certificate-errors')]
         args['env'] = {k: os.environ[k] for k in _RUNTIME_ENV if k in os.environ}
         return args
+
+
+class LinkTargets(HTMLParser):
+    """Keep original anchor queries: Crawl4AI link metadata drops ref/utm keys."""
+    def __init__(self, url):
+        super().__init__(convert_charrefs=True)
+        self.base = url
+        self.has_base = False
+        self.targets = []
+        self.truncated = False
+
+    def handle_starttag(self, tag, attrs):
+        href = dict(attrs).get('href')
+        if not href or len(href) > 4096:
+            return
+        if tag == 'base' and not self.has_base:
+            self.base = urljoin(self.base, href)
+            self.has_base = True
+        if tag == 'a':
+            if len(self.targets) < 256:
+                self.targets.append(href)
+            else:
+                self.truncated = True
 
 
 class Browser:
@@ -246,7 +271,13 @@ class Browser:
                 raise FetchError('unsupported_format')
             if len(markdown.encode()) > transport.options.response_bytes:
                 raise FetchError('resource_limit')
-            return result.metadata.get('title', ''), markdown
+            # Canonical cached documents retain bounded original link targets,
+            # independently of query evidence. Parse already-bounded rendered HTML
+            # because upstream link metadata normalizes away meaningful query keys.
+            links = LinkTargets(initial.url)
+            links.feed(result.html)
+            targets = [urljoin(links.base, href) for href in links.targets]
+            return result.metadata.get('title', ''), markdown, targets, links.truncated
         finally:
             # Explicit session release closes pages/context (including popups and
             # workers), unlike Crawl4AI's last-headless-page retention. Cancelling
