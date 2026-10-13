@@ -1,0 +1,428 @@
+{
+  "schema_version": 1,
+  "notes": "Synthetic fixture facts only. Labels fixed independently of ranking/query tokens. No generated answers. Absent cases excluded from positive recall. Case 02 replaces the redundant A paraphrase with a predeclared ranking-discriminating synthetic storage case: five coherent positive windows, irrelevant lexical distractors, no required model improvement.",
+  "cases": [
+    {
+      "id": "01",
+      "documents": [
+        "A"
+      ],
+      "query": "TaskGroup cancellation CancelledError uncancel",
+      "tags": [
+        "technical_wording",
+        "warning",
+        "release"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "A",
+          "role": "claim",
+          "anchor": "TaskGroup cancellation propagates to unfinished tasks."
+        },
+        {
+          "document": "A",
+          "role": "qualification",
+          "anchor": "TaskGroup uses cancellation internally. Do not swallow CancelledError: if suppressing it is truly desired, also call uncancel to remove cancellation state."
+        },
+        {
+          "document": "A",
+          "role": "version",
+          "anchor": "Changed in version 3.12: this warning applies to the documented release."
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "documents": [
+        "L"
+      ],
+      "query": "Which operation provides durable writes during power loss?",
+      "tags": [
+        "ranking_discrimination",
+        "paraphrase",
+        "warning"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "L",
+          "role": "claim",
+          "anchor": "store_atomic commits each update to stable storage."
+        },
+        {
+          "document": "L",
+          "role": "claim",
+          "anchor": "Committed records survive an unexpected electrical outage."
+        },
+        {
+          "document": "L",
+          "role": "qualification",
+          "anchor": "Do not use store_atomic on network drives."
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "documents": [
+        "A"
+      ],
+      "query": "Can I ignore an interrupted coroutine?",
+      "tags": [
+        "paraphrase_low_overlap"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "A",
+          "role": "claim",
+          "anchor": "TaskGroup uses cancellation internally. Do not swallow CancelledError: if suppressing it is truly desired, also call uncancel to remove cancellation state."
+        },
+        {
+          "document": "A",
+          "role": "version",
+          "anchor": "Changed in version 3.12: this warning applies to the documented release."
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "documents": [
+        "B"
+      ],
+      "query": "asyncio.TaskGroup",
+      "tags": [
+        "qualified_identifier"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "B",
+          "role": "claim",
+          "anchor": "asyncio.TaskGroup uses asyncio.CancelledError for cancellation."
+        },
+        {
+          "document": "B",
+          "role": "qualification",
+          "anchor": "Do not swallow asyncio.CancelledError; also call Task.uncancel when suppressing it."
+        }
+      ]
+    },
+    {
+      "id": "05",
+      "documents": [
+        "C"
+      ],
+      "query": "TaskGroup cancellation",
+      "tags": [
+        "warning_across_explanation",
+        "overflow"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "C",
+          "role": "claim",
+          "anchor": "TaskGroup cancellation propagates to unfinished tasks."
+        },
+        {
+          "document": "C",
+          "role": "qualification",
+          "anchor": "Do not swallow CancelledError; if suppression is desired also call uncancel."
+        }
+      ]
+    },
+    {
+      "id": "06",
+      "documents": [
+        "D"
+      ],
+      "query": "connect_safe transactions",
+      "tags": [
+        "numeric_release",
+        "platform",
+        "overflow"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "D",
+          "role": "claim",
+          "anchor": "connect_safe enables transactions."
+        },
+        {
+          "document": "D",
+          "role": "qualification",
+          "anchor": "Never use this interface on unsupported platforms."
+        },
+        {
+          "document": "D",
+          "role": "qualification",
+          "anchor": "Do not disable validation."
+        },
+        {
+          "document": "D",
+          "role": "version",
+          "anchor": "2.4.1-rc.2"
+        },
+        {
+          "document": "D",
+          "role": "version",
+          "anchor": "Linux only"
+        }
+      ]
+    },
+    {
+      "id": "07",
+      "documents": [
+        "E"
+      ],
+      "query": "Which versions support connect_safe, and what retry limitation applies?",
+      "tags": [
+        "main_content",
+        "outside_main_qualification"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "E",
+          "role": "claim",
+          "anchor": "Only version 2.4 supports connect_safe."
+        },
+        {
+          "document": "E",
+          "role": "qualification",
+          "anchor": "Warning: do not enable retries in version 2.3."
+        },
+        {
+          "document": "E",
+          "role": "qualification",
+          "anchor": "Version constraint: this does not apply to Windows."
+        },
+        {
+          "document": "E",
+          "role": "qualification",
+          "anchor": "1. Do not use connect_safe with unsupported transports."
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "documents": [
+        "F"
+      ],
+      "query": "Does connect_safe support retries in 2.3?",
+      "tags": [
+        "negative_answer",
+        "attribution"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "F",
+          "role": "claim",
+          "anchor": "No. connect_safe requires 2.4; it does not support retries in 2.3."
+        },
+        {
+          "document": "F",
+          "role": "attribution",
+          "anchor": "Accepted answer by Bob"
+        }
+      ]
+    },
+    {
+      "id": "09",
+      "documents": [
+        "G"
+      ],
+      "query": "Can connect_safe be deployed on Windows?",
+      "tags": [
+        "heading_poor",
+        "negative_answer"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "G",
+          "role": "claim",
+          "anchor": "Warning: do not deploy on Windows."
+        },
+        {
+          "document": "G",
+          "role": "qualification",
+          "anchor": "connect_safe works on version 2.4 only. It does not support retries."
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "documents": [
+        "H"
+      ],
+      "query": "connect_safe(retries=0)",
+      "tags": [
+        "code_identifier",
+        "table",
+        "version_negation"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "H",
+          "role": "claim",
+          "anchor": "connect_safe(retries=0)"
+        },
+        {
+          "document": "H",
+          "role": "qualification",
+          "anchor": "connect_safe supports retries in version 2.4 only."
+        },
+        {
+          "document": "H",
+          "role": "qualification",
+          "anchor": "Warning: do not enable retries on version 2.3; it is not safe."
+        },
+        {
+          "document": "H",
+          "role": "version",
+          "anchor": "connect_safe version 2.4"
+        },
+        {
+          "document": "H",
+          "role": "structural",
+          "anchor": "``` connect_safe(retries=0) ```"
+        },
+        {
+          "document": "H",
+          "role": "structural",
+          "anchor": "| Version | Retries | | --- | --- | | 2.4 | 0 |"
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "documents": [
+        "I"
+      ],
+      "query": "TaskGroup._abort() uncancel",
+      "tags": [
+        "expanded_code",
+        "caveat"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "I",
+          "role": "claim",
+          "anchor": "TaskGroup._abort()"
+        },
+        {
+          "document": "I",
+          "role": "qualification",
+          "anchor": "Warning: uncancel does not restore cancelled work."
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "documents": [
+        "I"
+      ],
+      "query": "Is cancel_called reliable before version 3.13?",
+      "tags": [
+        "loaded_reply",
+        "negative_answer",
+        "release",
+        "author"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "I",
+          "role": "claim",
+          "anchor": "cancel_called is not reliable before version 3.13."
+        },
+        {
+          "document": "I",
+          "role": "attribution",
+          "anchor": "Bob"
+        }
+      ]
+    },
+    {
+      "id": "13",
+      "documents": [
+        "K1",
+        "K2",
+        "K3"
+      ],
+      "query": "What do these sources say about connect_safe safety in 2.3?",
+      "tags": [
+        "multiple_sources",
+        "conflicting_qualification",
+        "exact_duplicate"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "K1",
+          "role": "claim",
+          "anchor": "connect_safe is safe in 2.3."
+        },
+        {
+          "document": "K3",
+          "role": "claim",
+          "anchor": "connect_safe is not safe in 2.3."
+        }
+      ],
+      "required_attributed_documents": [
+        "K1",
+        "K2",
+        "K3"
+      ]
+    },
+    {
+      "id": "14",
+      "documents": [
+        "J"
+      ],
+      "query": "Which operation writes durable storage?",
+      "tags": [
+        "paraphrase",
+        "non_cancellation"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "J",
+          "role": "claim",
+          "anchor": "store_atomic writes durable storage."
+        }
+      ]
+    },
+    {
+      "id": "15",
+      "documents": [
+        "A"
+      ],
+      "query": "xyzzymissing",
+      "tags": [
+        "absent_no_overlap"
+      ],
+      "answerable": false,
+      "anchors": []
+    },
+    {
+      "id": "16",
+      "documents": [
+        "A"
+      ],
+      "query": "Does TaskGroup cancellation guarantee rollback of database writes?",
+      "tags": [
+        "absent_with_overlap"
+      ],
+      "answerable": false,
+      "anchors": []
+    }
+  ]
+}
