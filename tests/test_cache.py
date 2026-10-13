@@ -99,12 +99,12 @@ async def test_cap_evicts_oldest_documents_and_oversized_document_is_not_cached(
 
 
 async def test_refreshing_same_content_does_not_evict_other_retained_sources(tmp_path):
-    # Include truthful coverage metadata in the 2048-byte cap: two rows fit,
-    # but three do not, so double-counting a same-content replacement still fails.
+    # Include initial-render coverage metadata in the 2560-byte cap: measured
+    # rows are about 1068 bytes, so two fit but three (double-counting) do not.
     async def handler(request):
         return web.Response(content_type='text/html', text=f'<h1>{request.path}</h1><p>' + 'Stable technical documentation. ' * 15 + '</p>')
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
-            cache_cap_bytes=2048) as (url, _), client(url) as session:
+            cache_cap_bytes=2560) as (url, _), client(url) as session:
         first = await fetch(session, base + '/first')
         second = await fetch(session, base + '/second')
         assert 'content' in first and 'content' in second

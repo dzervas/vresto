@@ -1,6 +1,6 @@
 """Bounded native read-only controls, not a general browser automation API.
 
-Only details and explicitly associated in-page text/discussion controls qualify.
+Only details and structurally associated in-page text/discussion controls qualify.
 Labels alone never authorize form submission, links, navigation or account actions.
 Native page scripts/networking still require operator egress/resource containment.
 """
@@ -14,6 +14,25 @@ _INSPECT = r'''elements => {
     const scope = el => el.closest('main, article, [role="main"], .discussion-timeline');
     const label = el => (el.innerText || el.getAttribute('aria-label') || '').trim();
     const more = /^(load|show|view) (more|older)( (comments|replies|discussion|items))?[.!…]*$/i;
+    const references = (el, attr) => (el.getAttribute(attr) || '').split(/\s+/).filter(Boolean).map(id => document.getElementById(id));
+    const discussionContinuation = el => {
+        const list = el.closest('ol, ul, [role="list"]');
+        const item = el.closest('li, [role="listitem"]');
+        if (!list || !item || !list.contains(item) || !scope(list)) return false;
+        const headings = references(list, 'aria-labelledby');
+        const descriptions = references(el, 'aria-describedby');
+        const entries = [...list.querySelectorAll(':scope > li, :scope > [role="listitem"]')];
+        const attributed = entries.some(entry => entry !== item && (
+            entry.querySelector('article [rel="author"]') ||
+            (entry.querySelector('article h2, article h3, article h4') && entry.querySelector('article [datetime]')) ||
+            [...entry.querySelectorAll('h2, h3, h4')].some(h =>
+                /\S.+ (commented|replied|wrote|posted)\b/i.test(h.textContent) && h.querySelector('[datetime]'))));
+        return headings.length && headings.every(h => h && /^H[1-6]$/.test(h.tagName) &&
+            /^(activity|discussion|comments|replies)$/i.test(h.textContent.trim())) &&
+            descriptions.length && descriptions.every(h => h && item.contains(h) && /^H[1-6]$/.test(h.tagName) &&
+                /^\d+ remaining (items|comments|replies)$/i.test(h.textContent.trim())) &&
+            entries.length > 1 && attributed;
+    };
     const textToggle = /^(show|view|read) (more|details|text|code|spoiler)[.!…]*$/i;
     let unsupported = false;
     let action = -1;
@@ -29,7 +48,8 @@ _INSPECT = r'''elements => {
         }
         const ids = (el.getAttribute('aria-controls') || '').split(/\s+/).filter(Boolean);
         const targets = ids.map(id => document.getElementById(id));
-        const associated = targets.length && targets.every(target => target && scope(target));
+        const associated = (targets.length && targets.every(target => target && scope(target))) ||
+            (more.test(label(el)) && discussionContinuation(el));
         if (associated && el.getAttribute('aria-busy') === 'true') {
             unsupported = true;
             return;
@@ -37,9 +57,8 @@ _INSPECT = r'''elements => {
         const collapsed = el.getAttribute('aria-expanded') === 'false';
         const candidate = more.test(label(el)) || collapsed;
         if (!candidate) return;
-        // GitHub python/cpython#108951 public smoke (2026-10-13) has a
-        // type=button "Load more" with no aria-controls/aria-expanded.
-        // It remains unsupported: a label alone is not a content association.
+        // A heading-labelled discussion list plus a contained remaining-items
+        // heading is a structural association; the button label alone is not.
         // Links masquerading as buttons and submit controls are not read-only.
         const safe = el.tagName === 'BUTTON' && !el.hasAttribute('form') &&
             el.type === 'button' && associated && scope(el) &&
@@ -77,15 +96,29 @@ _DEDUP = '''() => {
 }'''
 
 
-async def expand_content(page, options, *, deadline):
+async def expand_content(page, options, *, deadline, revalidate):
     coverage = {'exhaustive': False, 'partial': False, 'actions': 0,
                 'policy': 'bounded_read_only_in_page_controls', 'stop_reason': 'settled'}
     limits = {'dom': options.dom_bytes, 'content': options.response_bytes}
     controls = page.locator(_CONTROLS)
+    pending = set()
+    def requested(request):
+        if request.resource_type in ('fetch', 'xhr'):
+            pending.add(request)
+    def completed(request):
+        pending.discard(request)
+    # Observe only native requests begun during expansion, not a pre-existing
+    # analytics connection. No interception, inferred APIs or separate downloads.
+    page.on('request', requested)
+    page.on('requestfinished', completed)
+    page.on('requestfailed', completed)
     try:
         until = min(deadline, asyncio.get_running_loop().time() + options.expansion_timeout)
         async with asyncio.timeout_at(until):
             while True:
+                if not await revalidate():
+                    coverage.update(partial=True, stop_reason='document_replaced')
+                    break
                 if not await page.evaluate(_SIZE, limits):
                     coverage.update(partial=True, stop_reason='content_limit')
                     break
@@ -106,7 +139,26 @@ async def expand_content(page, options, *, deadline):
                         break
                     await page.evaluate('() => window.scrollTo(0, document.documentElement.scrollHeight)')
                 coverage['actions'] += 1
-                await asyncio.sleep(options.expansion_wait)
+                # A spinner or disappearing button is not loaded discussion.
+                # Wait for post-action native fetch/XHR and a quiet visible DOM;
+                # the enclosing duration/content/deadline caps still apply.
+                previous = None
+                quiet_since = asyncio.get_running_loop().time()
+                while True:
+                    await asyncio.sleep(0.1)
+                    if not await revalidate():
+                        coverage.update(partial=True, stop_reason='document_replaced')
+                        break
+                    if not await page.evaluate(_SIZE, limits):
+                        break
+                    current = await page.evaluate('() => document.body.innerText')
+                    now = asyncio.get_running_loop().time()
+                    if current != previous or pending:
+                        previous, quiet_since = current, now
+                    if not pending and now - quiet_since >= options.expansion_wait:
+                        break
+                if coverage['stop_reason'] == 'document_replaced':
+                    break
                 if not await page.evaluate(_SIZE, limits):
                     coverage.update(partial=True, stop_reason='content_limit')
                     break
@@ -123,6 +175,10 @@ async def expand_content(page, options, *, deadline):
         # Detached/replaced controls do not turn an otherwise useful document
         # into a failure or trigger arbitrary retries. Cancellation propagates.
         coverage.update(partial=True, stop_reason='control_unavailable')
+    finally:
+        page.remove_listener('request', requested)
+        page.remove_listener('requestfinished', completed)
+        page.remove_listener('requestfailed', completed)
     # A duration bound may interrupt settling *after* content was appended.
     # Canonicalize exact identified repeats even in that partial document.
     if await page.evaluate(_SIZE, limits):

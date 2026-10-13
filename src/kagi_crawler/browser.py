@@ -204,6 +204,35 @@ class Browser:
             # clicking, request interception, fingerprint injection or retries.
             await asyncio.sleep(0.1)
 
+    async def _settle_rendered(self, page, latest, state, options, response, pending):
+        # Long-lived native resources need not prevent reading public text. Give
+        # normal rendering its network-idle window, then require a quiet DOM
+        # window instead; neither wait extends the original acquisition deadline.
+        idle = True
+        try:
+            await page.wait_for_load_state('networkidle', timeout=min(1000, options.request_timeout * 1000))
+        except BrowserTimeout:
+            idle = False
+        if idle and not pending:
+            return await self._settled_response(page, latest, state) is response, True, True, False
+        started = asyncio.get_running_loop().time()
+        changed = started
+        previous = None
+        while True:
+            if await self._settled_response(page, latest, state) is not response:
+                return False, idle, False, bool(pending)
+            if not await page.evaluate(DOM_WITHIN_LIMIT, options.dom_bytes):
+                raise FetchError('resource_limit')
+            text = await page.evaluate('() => document.body?.innerText || ""')
+            now = asyncio.get_running_loop().time()
+            if text != previous:
+                previous, changed = text, now
+            if not pending and now - changed >= 0.4:
+                return True, idle, True, False
+            if now - started >= 3:
+                return True, idle, now - changed >= 0.4, bool(pending)
+            await asyncio.sleep(0.1)
+
     @staticmethod
     async def _download(download, options):
         filename = await download.path()
@@ -225,6 +254,15 @@ class Browser:
                                             no_viewport=self.headful)
         try:
             page = await context.new_page()
+            pending = set()
+            def requested(request):
+                if request.resource_type in ('fetch', 'xhr'):
+                    pending.add(request)
+            def completed(request):
+                pending.discard(request)
+            page.on('request', requested)
+            page.on('requestfinished', completed)
+            page.on('requestfailed', completed)
             download_ready = asyncio.get_running_loop().create_future()
             def downloaded(download):
                 if not download_ready.done():
@@ -240,7 +278,7 @@ class Browser:
                     state['challenge'] = response.headers.get('cf-mitigated') == 'challenge'
             page.on('response', responded)
             try:
-                response = await page.goto(url, wait_until='domcontentloaded', timeout=options.request_timeout * 1000)
+                response = await page.goto(url, wait_until='domcontentloaded', timeout=min(10, options.request_timeout) * 1000)
             except Error as error:
                 if navigation_response is not None and not state['challenge']:
                     self._check_status(navigation_response)
@@ -270,15 +308,25 @@ class Browser:
                     if data.startswith(b'%PDF-'):
                         return {'url': response.url, 'pdf': data}
                     raise FetchError('unsupported_format')
-                await page.wait_for_load_state('networkidle', timeout=options.request_timeout * 1000)
-                if await self._settled_response(page, latest, state) is not response:
+                settled, idle, quiet, pending_load = await self._settle_rendered(page, latest, state, options, response, pending)
+                if not settled:
                     continue
                 if coverage is None:
                     # Reserve serialization/cleanup time. Page-controlled native
                     # expansion can replace the document: validate it again,
                     # including challenge continuation, HTTP errors and downloads,
                     # under the original deadline without expanding it again.
-                    coverage = await expand_content(page, options, deadline=state['deadline'] - 0.15)
+                    async def revalidate():
+                        return await self._settled_response(page, latest, state) is response
+                    coverage = await expand_content(page, options, deadline=state['deadline'] - 0.15,
+                                                    revalidate=revalidate)
+                    coverage['initial_render'] = {'network_idle': idle, 'dom_quiet': quiet,
+                                                  'pending_native_load': pending_load,
+                                                  'partial': not idle or not quiet or pending_load}
+                if not idle or not quiet or pending_load:
+                    coverage['partial'] = True
+                    if coverage['stop_reason'] in ('settled', 'no_progress'):
+                        coverage['stop_reason'] = 'render_settling_limit'
                 if await self._settled_response(page, latest, state) is response:
                     break
             # Bound DOM serialization, not browser allocations/resource traffic.

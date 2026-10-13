@@ -69,7 +69,7 @@ async def test_action_bound_is_public_and_old_expanded_evidence_survives_refresh
             assert original['coverage']['actions'] == 1
             assert data['budget']['partial_coverage']
             assert data['acquisition_limits']['expansion_actions'] == 1
-            assert data['acquisition_limits']['expansion_seconds'] == 2
+            assert data['acquisition_limits']['expansion_seconds'] == 10
             quote = original['highlights'][0]
             version = '3.14'
             current = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
@@ -115,25 +115,35 @@ async def test_duration_and_no_progress_bounds_keep_initial_document(tmp_path):
 
 
 # Opt-in only: choose an authorized public page and a curated literal known to
-# occur in its expanded discussion. No fixture/private-destination exception,
+# occur in its expanded discussion (newline-separated literals are supported).
+# No fixture/private-destination exception,
 # credentials, Python downloads or caller JS are supplied to acquisition.
 # KAGI_CRAWLER_EXPANSION_SMOKE_URL=https://... \
 # KAGI_CRAWLER_EXPANSION_SMOKE_EXPECTED='qualified loaded text' pytest -q ...
 @pytest.mark.skipif(not os.environ.get('KAGI_CRAWLER_EXPANSION_SMOKE_URL'), reason='authorized public smoke is opt-in')
 async def test_opt_in_public_expansion_fetch_and_composed_search(tmp_path):
     target = os.environ['KAGI_CRAWLER_EXPANSION_SMOKE_URL']
-    expected = os.environ['KAGI_CRAWLER_EXPANSION_SMOKE_EXPECTED']
+    expected = os.environ['KAGI_CRAWLER_EXPANSION_SMOKE_EXPECTED'].splitlines()
     source = cli_response(json.dumps({'data': [{'t': 0, 'rank': 1, 'url': target, 'title': 'Public discussion'}]}))
     async with running(tmp_path, source=source) as (url, _), client(url, timeout=60) as session:
         fetched = body(await session.call_tool('fetch', {'urls': [target], 'freshness': 'fresh_only',
             'response_budget_bytes': 262144}))['sources'][0]
         assert 'error' not in fetched
-        assert expected in fetched['content']
-        searched = body(await session.call_tool('search', {'query': expected, 'num_results': 1,
+        assert all(text in fetched['content'] for text in expected), fetched
+        searched = body(await session.call_tool('search', {'query': expected[0], 'num_results': 1, 'freshness': 'fresh_only',
             'response_budget_bytes': 262144}))['results'][0]
-        assert searched['content_version'] == fetched['content_version']
-        assert expected in ' '.join(h['text'] for h in searched['highlights'])
+        assert expected[0] in ' '.join(h['text'] for h in searched['highlights']), searched
+        # Independently inspect the acquired canonical search document; a
+        # response/evidence budget must not masquerade as missing acquisition.
+        canonical = body(await session.call_tool('fetch', {'urls': [target], 'freshness': 'cache_only',
+            'response_budget_bytes': 262144}))['sources'][0]
+        assert 'content' not in fetched.get('truncated_fields', [])
+        assert 'content' not in canonical.get('truncated_fields', [])
+        assert canonical['content_version'] == searched['content_version']
+        assert all(text in canonical['content'] for text in expected), canonical
         assert fetched['coverage']['exhaustive'] is False
+        print('public HTTP fresh fetch and fresh composed search passed; canonical literals:', expected,
+              'fetch coverage:', fetched['coverage'], 'search coverage:', searched['coverage'])
 
 
 async def test_expansion_document_growth_obeys_resource_limit(tmp_path):
@@ -240,3 +250,135 @@ async def test_successful_expansion_navigation_does_not_restart_action_budget(tm
         assert visits == ['/', '/second']
         assert source['coverage']['actions'] == 1
         assert source['coverage']['partial']
+
+
+async def test_public_text_and_expansion_survive_a_never_idle_native_resource(tmp_path):
+    import asyncio
+    finished = asyncio.Event()
+    async def handler(request):
+        if request.path == '/events':
+            response = web.StreamResponse(headers={'Content-Type': 'text/event-stream'})
+            await response.prepare(request)
+            await response.write(b'data: connected\n\n')
+            await finished.wait()
+            return response
+        return web.Response(content_type='text/html', text='''<main><h1>Live discussion</h1>
+        <section id="comments"><p>Initial public discussion.</p></section>
+        <button type="button" aria-controls="comments" onclick="document.querySelector('#comments').insertAdjacentHTML('beforeend', '<p>Warning: uncancel cannot restore work.</p>');this.remove()">Load more comments</button>
+        <p id=rendered></p><script>fetch('/events').then(r => r.text());setTimeout(() => document.querySelector('#rendered').textContent='Delayed rendered cancellation qualification.', 1200)</script></main>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
+        try:
+            source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+            assert 'error' not in source, source
+            assert 'Warning: uncancel cannot restore work.' in source['content']
+            assert 'Delayed rendered cancellation qualification.' in source['content']
+            assert source['coverage']['partial']
+        finally:
+            finished.set()
+
+
+async def test_labelled_discussion_list_continuation_waits_for_loaded_items(tmp_path):
+    import asyncio
+    async def handler(request):
+        if request.path == '/older':
+            await asyncio.sleep(2.3)
+            return web.Response(text='<li><article><h3>Bob</h3><p>Warning: cancel_called cannot restore work.</p><pre>TaskGroup._abort()</pre></article></li>')
+        return web.Response(content_type='text/html', text='''<main><h1>Discussion</h1><h2 id="activity">Activity</h2>
+        <ol role="list" aria-labelledby="activity"><li><article><h3>Alice</h3><time datetime="2026-01-01">Jan 1</time><p>Initial discussion.</p></article></li>
+        <li id="continuation"><h3 id="remaining">66 remaining items</h3><button type="button" aria-describedby="remaining" onclick="load(this)">Load more</button></li></ol>
+        <script>async function load(button) {button.disabled=true;button.textContent='Loading...';
+        const text=await fetch('/older').then(r=>r.text());button.remove();
+        setTimeout(() => {document.querySelector('#continuation').insertAdjacentHTML('beforebegin', text);document.querySelector('#continuation').remove()}, 250);}</script></main>''')
+    async with site(handler) as (base, options):
+        discovery = cli_response(json.dumps({'data': [{'t': 0, 'rank': 1, 'url': base, 'title': 'Discussion'}]}))
+        async with running(tmp_path, acquisition_options=options, source=discovery) as (url, _), client(url, timeout=60) as session:
+            fetched = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+            assert 'error' not in fetched, fetched
+            assert 'Warning: cancel_called cannot restore work.' in fetched['content']
+            assert fetched['content'].index('Alice') < fetched['content'].index('Bob')
+            searched = body(await session.call_tool('search', {'query': 'cancel_called', 'num_results': 1, 'freshness': 'fresh_only'}))['results'][0]
+            assert any('Warning: cancel_called cannot restore work.' in h['text'] for h in searched['highlights'])
+
+
+@pytest.mark.parametrize('change', ['unlabelled', 'account_list', 'external_description', 'no_remaining_count', 'single_item', 'submit', 'form', 'activity_lookalike'])
+async def test_continuation_label_does_not_authorize_without_safe_structure(tmp_path, change):
+    markup = '''<main><h1>Public discussion</h1><h2 id="activity">Activity</h2>
+    <ol aria-labelledby="activity"><li><article><h3><a rel="author">Alice</a></h3><p>Initial qualified discussion.</p></article></li>
+    <li><h3 id="remaining">66 remaining items</h3><button type="button" aria-describedby="remaining"
+    onclick="document.querySelector('main').append('Unsafe action executed')">Load more</button></li></ol></main>'''
+    if change == 'activity_lookalike':
+        markup = markup.replace('<li><article><h3><a rel="author">Alice</a></h3><p>Initial qualified discussion.</p></article></li>', '<li><h3>Backup activity</h3><p>Restore account data.</p></li>')
+    elif change == 'unlabelled':
+        markup = markup.replace('aria-labelledby="activity"', '')
+    elif change == 'account_list':
+        markup = markup.replace('>Activity<', '>Account<')
+    elif change == 'external_description':
+        markup = markup.replace('<h3 id="remaining">66 remaining items</h3>', '').replace('<ol ', '<h3 id="remaining">66 remaining items</h3><ol ')
+    elif change == 'no_remaining_count':
+        markup = markup.replace('66 remaining items', 'Account actions')
+    elif change == 'single_item':
+        markup = markup.replace('<li><article><h3><a rel="author">Alice</a></h3><p>Initial qualified discussion.</p></article></li>', '')
+    elif change == 'submit':
+        markup = markup.replace('type="button"', 'type="submit"')
+    elif change == 'form':
+        markup = markup.replace('<button ', '<form><button ').replace('</button>', '</button></form>')
+    async def handler(request):
+        return web.Response(content_type='text/html', text=markup)
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
+        assert 'Unsafe action executed' not in source['content']
+        assert source['coverage']['partial']
+        assert source['coverage']['stop_reason'] == 'unsupported_controls'
+
+
+@pytest.mark.parametrize('replacement, expected', [('challenge', 'blocked'), ('error', 'fetch_failed')])
+async def test_late_replacement_during_persistent_resource_settling_is_not_cached(tmp_path, replacement, expected):
+    import asyncio
+    from dataclasses import replace
+    finished = asyncio.Event()
+    async def handler(request):
+        if request.path == '/events':
+            response = web.StreamResponse()
+            await response.prepare(request)
+            await response.write(b'pending')
+            await finished.wait()
+            return response
+        if request.path == '/replacement':
+            return web.Response(content_type='text/html', status=200 if replacement == 'challenge' else 500,
+                headers={'cf-mitigated': 'challenge'} if replacement == 'challenge' else {},
+                text='<h1>Replacement must not become evidence.</h1>')
+        return web.Response(content_type='text/html', text='''<main><h1>Initial must not become evidence.</h1></main>
+        <script>fetch('/events').then(r=>r.text());setTimeout(()=>location.href='/replacement',1200)</script>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options, request_timeout=3)) as (url, _), client(url, timeout=60) as session:
+        try:
+            source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+            assert source['error']['code'] == expected, source
+            cached = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+            assert cached['error']['code'] == 'cache_miss'
+        finally:
+            finished.set()
+
+
+async def test_initial_substantive_fetch_settles_beside_unrelated_persistent_fetch(tmp_path):
+    import asyncio
+    finished = asyncio.Event()
+    async def handler(request):
+        if request.path == '/telemetry':
+            response = web.StreamResponse()
+            await response.prepare(request)
+            await response.write(b'pending')
+            await finished.wait()
+            return response
+        if request.path == '/content':
+            await asyncio.sleep(2.7)
+            return web.Response(text='Warning: late rendered cancellation qualification.')
+        return web.Response(content_type='text/html', text='''<main><h1>Rendered public reference</h1><p id=content>Loading public content...</p></main>
+        <script>fetch('/telemetry').then(r=>r.text());fetch('/content').then(r=>r.text()).then(t=>document.querySelector('#content').textContent=t)</script>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
+        try:
+            source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+            assert 'Warning: late rendered cancellation qualification.' in source['content']
+            assert source['coverage']['initial_render']['partial']
+            assert source['coverage']['partial']
+        finally:
+            finished.set()

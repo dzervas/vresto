@@ -100,7 +100,8 @@ def create_app(settings: Settings):
                 'expansion_seconds': options.expansion_timeout,
                 'native_network_resource_bounds': 'operator_memory_disk_egress_limits',
                 'queue_capacity': options.queue_capacity,
-                'queue_wait_seconds': options.queue_wait, 'browser_navigation_seconds': options.request_timeout}
+                'queue_wait_seconds': options.queue_wait, 'browser_navigation_seconds': min(10, options.request_timeout),
+                'browser_acquisition_seconds': options.request_timeout}
 
     def input_schema(model):
         schema = model.model_json_schema()

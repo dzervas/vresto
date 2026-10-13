@@ -26,7 +26,7 @@ class FetchError(Exception):
 @dataclass(frozen=True)
 class AcquisitionOptions:
     deadline: float = 30
-    request_timeout: float = 10
+    request_timeout: float = 20
     queue_wait: float = 10
     queue_capacity: int = 8
     # Conservative rendered-DOM estimate and serialized HTML input limit.
@@ -35,10 +35,10 @@ class AcquisitionOptions:
     # Post-acquisition text/PDF limit, NOT streamed native resource containment.
     response_bytes: int = 2 * 1024 * 1024
     # Within the existing native context and request deadline; not network caps.
-    expansion_timeout: float = 2
+    expansion_timeout: float = 10
     expansion_actions: int = 8
-    # Deterministic native scroll fixture delivers text after 300 ms. Allow
-    # 400 ms per action, still inside the independent 2 s expansion cap.
+    # Require a quiet DOM window after native fetch/XHR settles. The public
+    # continuation smoke needed about 8 s; all actions share a 10 s cap.
     expansion_wait: float = 0.4
     pdf_pages: int = 100
     pdf_timeout: float = 10
