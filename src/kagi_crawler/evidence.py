@@ -178,12 +178,13 @@ def markdown_blocks(text, start, end):
         yield block_start, end
 
 
-def passage_windows(text, start, end):
+def passage_windows(text, start, end, *, include_attached_qualification=True):
     """Coherent contiguous windows retaining both neighboring block groups.
 
     Neighbors are included even without query overlap: warnings and release
-    caveats must not disappear because they score poorly. These are canonical
-    slices, not prefix cuts or reconstructed quotes. 400 characters is a grouping
+    caveats must not disappear because they score poorly. Attached qualification
+    headings extend preceding windows through their complete body. These are
+    canonical slices, not prefix cuts or reconstructed quotes. 400 characters is a grouping
     target, not a truncation limit; oversized blocks and the shared byte gate
     remain atomic. Sections up to 1200 characters need no finer windows.
     """
@@ -192,20 +193,30 @@ def passage_windows(text, start, end):
         return
     groups = []
     attached = False
+    fence = None
     for a, b in markdown_blocks(text, start, end):
         # Qualification headings are part of this section, not new sections.
         # Keep their entire body with the preceding claim block: no window
         # containing that claim may stop halfway through its attached warning.
-        title = _heading_title(text[a:b].lstrip().splitlines()[0])
-        if _QUALIFICATION.match(title or ''):
-            attached = True
+        # An unpunctuated explanation may share a block with the heading.
+        # Inspect every heading outside code, not just the block's first line.
+        for line in text[a:b].splitlines():
+            fence = _fence_transition(line, fence)
+            if fence is None and _QUALIFICATION.match(_heading_title(line) or ''):
+                attached = True
         if groups and (attached or b - groups[-1][0] <= 400):
             groups[-1] = (groups[-1][0], b)
         else:
             groups.append((a, b))
     seen = set()
     for i in range(len(groups)):
-        window = (groups[max(0, i - 1)][0], groups[min(len(groups) - 1, i + 1)][1])
+        # A Warning heading qualifies preceding claims in this section even
+        # across intervening explanations, not only the immediately prior block.
+        # Extend contiguously through its complete body; an oversized qualified
+        # quote is omitted atomically. Do not use this extension to classify a
+        # distant local warning as an introductory scope for child sections.
+        window = (groups[max(0, i - 1)][0],
+                  end if attached and include_attached_qualification else groups[min(len(groups) - 1, i + 1)][1])
         if window not in seen:
             seen.add(window)
             yield window
@@ -237,7 +248,8 @@ def sections(text):
         # Conventional release headings and nearby introductory constraints are
         # scopes, not just section labels. Inspect the first complete window:
         # later local warnings must not scope every descendant of a long section.
-        _, introduction_end = next(passage_windows(text, start, end), (start, end))
+        _, introduction_end = next(passage_windows(text, start, end,
+            include_attached_qualification=False), (start, end))
         qualified = bool(re.search(r'(?i)\b(version|only|not|never|warning|caution|experimental|deprecated|except|requires?)\b', text[start:introduction_end]) or
             (title and re.search(r'(?i)(?<!\w)v?\d+(?:\.\d+)*(?:[-+][\w.]+)?(?!\w)', title)))
         if text[start:end].strip():

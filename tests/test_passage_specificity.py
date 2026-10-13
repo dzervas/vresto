@@ -251,3 +251,35 @@ async def test_bare_identifier_query_matches_qualified_names_without_dropping_qu
         qualified = body(await session.call_tool('fetch', {'urls': [base], 'query': 'asyncio.TaskGroup', 'freshness': 'cache_only'}))['sources'][0]
         assert qualified['highlights']
         assert all('other.TaskGroup' not in h['text'] for h in qualified['highlights'])
+
+
+@pytest.mark.parametrize('explanation', ['Cleanup scheduling details. ', 'Cleanup scheduling details '])
+async def test_attached_warning_qualifies_claims_across_intervening_explanation(tmp_path, explanation):
+    # Exact original reviewer fixture prose and query: a cleanup explanation
+    # separates the propagation claim from its attached Warning heading.
+    claim = 'TaskGroup cancellation propagates to unfinished tasks.'
+    caveat = 'Do not swallow CancelledError; if suppression is desired also call uncancel.'
+    async def handler(request):
+        return web.Response(content_type='text/html', text=(
+            '<h1>TaskGroup</h1>' + ''.join('<p>' + 'Background scheduling. ' * 30 + '</p>' for _ in range(4)) +
+            '<p>' + claim + ' ' + 'TaskGroup cancellation mechanics. ' * 20 + '</p>' +
+            '<p>' + explanation * 30 + '</p><h2>Warning</h2><p>' + caveat + '</p>' +
+            '<p>' + 'Other scheduling details. ' * 30 + '</p>'))
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
+            source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Tasks', 'rank': 1}]}))) as (url, _), client(url, timeout=60) as session:
+        full = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
+        for tool, arguments, key in [('fetch', {'urls': [base], 'freshness': 'cache_only'}, 'sources'),
+                                     ('search', {'num_results': 1}, 'results')]:
+            source = body(await session.call_tool(tool, {**arguments, 'query': 'TaskGroup cancellation'}))[key][0]
+            claims = [h for h in source['highlights'] if claim in h['text']]
+            assert claims
+            assert all(caveat in h['text'] for h in claims)
+            for h in claims:
+                assert h['section'] == 'TaskGroup'
+                assert h['text'] == full['content'][h['start']:h['end']]
+                expanded = body(await session.call_tool('fetch', {'evidence_ids': [h['evidence_id']]}))['sources'][0]
+                assert expanded['highlights'] == [h]
+        small = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only',
+            'query': 'TaskGroup cancellation', 'response_budget_bytes': 4096}))
+        assert small['budget']['partial_coverage']
+        assert all(not source.get('highlights') for source in small['sources'])
