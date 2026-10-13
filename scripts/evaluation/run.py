@@ -150,7 +150,8 @@ class Worker:
 
     A sampled 512 MiB RSS ceiling supplements hard 2 GiB address-space/120 CPU-s
     limits. Polling (10 ms) and ru_maxrss are reported separately; neither claims
-    system-wide browser RAM. No arbitrary inherited env, service secrets or URLs.
+    system-wide browser RAM. No arbitrary inherited env or service configuration;
+    verbatim canonical public passage text can contain public links, not credentials.
     """
     def __init__(self, python, model, libraries, deadline=30):
         self.temp = tempfile.TemporaryDirectory(prefix='ncn-offline-')
@@ -195,10 +196,13 @@ class Worker:
                     return json.loads(buffer)
         raise TimeoutError('Worker deadline exceeded')
 
-    def score(self, query, passages):
-        request = json.dumps(dict(query=query, passages=passages), ensure_ascii=False).encode() + b'\n'
+    def score(self, query, passages, **diagnostics):
+        request = json.dumps(dict(query=query, passages=passages, **diagnostics), ensure_ascii=False).encode() + b'\n'
         if len(passages) > 128 or len(request) > 1024**2:
-            return dict(fallback='candidate_or_request_limit', overflow=False, scores=[], lengths=[])
+            return dict(fallback='candidate_or_request_limit', overflow=False, scores=[], lengths=[], eligible=[],
+                roundtrip_ms=0.0, tokenization_ms=0.0, inference_ms=0.0,
+                query_encoding_ms=0.0, passage_encoding_miss_ms=0.0, passage_reuse_hit_ms=0.0,
+                passage_hits=0, passage_misses=0, excluded_overflow=[], unavailable=[])
         start = time.perf_counter()
         end = time.monotonic() + self.deadline
         try:
@@ -217,7 +221,7 @@ class Worker:
             raise
         response['roundtrip_ms'] = (time.perf_counter()-start)*1000
         if not response['fallback']:
-            assert len(response['scores']) == len(passages)
+            assert len(response['scores']) == len(response.get('eligible', passages))
             assert all(math.isfinite(s) for s in response['scores'])
         return response
 
@@ -233,6 +237,25 @@ class Worker:
 def percentile(values, fraction):
     ordered = sorted(values)
     return ordered[max(0, math.ceil(len(ordered)*fraction)-1)] if ordered else None
+
+
+def load_corpus(path):
+    corpus = json.loads(path.read_text())
+    documents = corpus['documents']
+    cases = corpus['cases']
+    for source in documents.values():
+        if hashlib.sha256(source['content'].encode()).hexdigest() != source['content_version']:
+            raise ValueError('Invalid frozen canonical version')
+    for case in cases:
+        for span in case['gold']:
+            source = documents[span['document']]
+            if (span['requested_url'] != source['requested_url'] or
+                span['content_version'] != source['content_version'] or
+                not 0 <= span['start'] < span['end'] <= len(source['content']) or
+                span['text'] != source['content'][span['start']:span['end']] or
+                span['sha256'] != hashlib.sha256(span['text'].encode()).hexdigest()):
+                raise ValueError('Invalid frozen gold: version, offset or exact quote mismatch')
+    return corpus
 
 
 def main():
@@ -251,21 +274,8 @@ def main():
         parser.error('--worker-deadline must be between 0.1 and 30 seconds')
     if bool(args.worker_python) != bool(args.model_dir):
         parser.error('--worker-python and --model-dir must be supplied together')
-    corpus = json.loads(args.corpus.read_text())
-    documents = corpus['documents']
-    cases = corpus['cases']
-    for source in documents.values():
-        if hashlib.sha256(source['content'].encode()).hexdigest() != source['content_version']:
-            raise ValueError('Invalid frozen canonical version')
-    for case in cases:
-        for span in case['gold']:
-            source = documents[span['document']]
-            if (span['requested_url'] != source['requested_url'] or
-                span['content_version'] != source['content_version'] or
-                not 0 <= span['start'] < span['end'] <= len(source['content']) or
-                span['text'] != source['content'][span['start']:span['end']] or
-                span['sha256'] != hashlib.sha256(span['text'].encode()).hexdigest()):
-                raise ValueError('Invalid frozen gold: version, offset or exact quote mismatch')
+    corpus = load_corpus(args.corpus)
+    documents, cases = corpus['documents'], corpus['cases']
     pools = {}
     for case in cases:
         canonical = dict(sources=[dict(deepcopy(documents[d]), cache_state='hit', stale=False)

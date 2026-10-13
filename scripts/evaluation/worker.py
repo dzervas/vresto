@@ -4,7 +4,8 @@ Linux x86_64 seccomp denies socket creation/connect, fork/vfork and exec;
 clone/clone3 remain available for trusted ORT threads (not a hostile-code sandbox).
 ordinary-user rlimits bound address space/CPU/fds. This is a trusted pinned
 runtime, not a hostile-code filesystem sandbox. Parent kills/reaps on deadline,
-cancellation, output or RSS limits. Worker never receives URLs or credentials.
+cancellation, output or RSS limits. Worker receives no service configuration or
+credentials; verbatim public canonical passages may contain public link text.
 """
 import ctypes
 import errno
@@ -53,6 +54,97 @@ def emit(data):
     print(json.dumps(data, separators=(',', ':')), flush=True)
 
 
+def embedding_response(request, tokenizer, session, np, cache, artifact_identity):
+    """Process-local exact-version representations; no persistence or project hooks."""
+    if request.get('clear_cache'):
+        cache.clear()
+    query, passages, identities = request['query'], request['passages'], request['identities']
+    if len(identities) != len(passages):
+        raise ValueError('Missing canonical representation identities')
+    recipe = 'bert-single-specials:no-truncation:256:attention-mask-mean:L2:float32:384:v1'
+    keys = []
+    for text, identity in zip(passages, identities):
+        if (set(identity) != {'version', 'start', 'end', 'text_sha256', 'segmentation'} or
+            len(identity['version']) != 64 or identity['start'] < 0 or
+            identity['end'] - identity['start'] != len(text) or
+            identity['text_sha256'] != hashlib.sha256(text.encode()).hexdigest()):
+            raise ValueError('Invalid representation version/offset/text hash')
+        keys.append((identity['version'], identity['start'], identity['end'],
+                     identity['text_sha256'], identity['segmentation'], artifact_identity, recipe))
+    for identity in request.get('evict_versions', []):
+        for key in list(cache):
+            if key[0] == identity:
+                del cache[key]
+    available = set(request.get('available_versions', [k[0] for k in keys]))
+    start = time.perf_counter()
+    qencoding = tokenizer.encode(query)
+    encodings = [tokenizer.encode(p) for p in passages]
+    lengths = [len(e.ids) for e in encodings]
+    token_ms = (time.perf_counter()-start)*1000
+    eligible = [i for i, n in enumerate(lengths) if n <= 256 and keys[i][0] in available]
+
+    def encode(encoding, padding=0):
+        feed = {'input_ids': np.array([encoding.ids + [0]*padding], dtype=np.int64),
+                'attention_mask': np.array([encoding.attention_mask + [0]*padding], dtype=np.int64),
+                'token_type_ids': np.array([encoding.type_ids + [0]*padding], dtype=np.int64)}
+        hidden = session.run(None, feed)[0]
+        if hidden.shape != (1, len(encoding.ids)+padding, 384) or not np.isfinite(hidden).all():
+            raise ValueError('Unexpected/nonfinite embedding graph output')
+        mask = feed['attention_mask'][..., None]
+        vector = (hidden * mask).sum(axis=1) / mask.sum(axis=1)
+        vector = vector.astype(np.float32)
+        norm = np.linalg.norm(vector)
+        if not np.isfinite(norm) or norm <= 0:
+            raise ValueError('Invalid embedding norm')
+        vector = (vector / norm)[0]
+        assert abs(float(np.linalg.norm(vector))-1) < 1e-5
+        return vector
+
+    query_ms = miss_ms = hit_ms = 0.0
+    hits = misses = 0
+    scores = []
+    overflow = len(qencoding.ids) > 256
+    fallback = 'whole_query_lexical' if overflow else None
+    if not overflow:
+        start = time.perf_counter()
+        qvector = encode(qencoding)
+        query_ms = (time.perf_counter()-start)*1000
+        for i in eligible:
+            start = time.perf_counter()
+            if keys[i] in cache:
+                vector = cache[keys[i]]
+                hits += 1
+                hit_ms += (time.perf_counter()-start)*1000
+            else:
+                vector = encode(encodings[i])
+                # Bounded FIFO; expiry loses only reuse, never evidence availability.
+                if len(cache) >= 1024:
+                    del cache[next(iter(cache))]
+                cache[keys[i]] = vector
+                misses += 1
+                miss_ms += (time.perf_counter()-start)*1000
+            scores.append(float(np.dot(qvector, vector)))
+    diagnostic = None
+    if request.get('verify_pooling'):
+        example = tokenizer.encode('A short English sentence.')
+        vector = encode(example)
+        padded = encode(example, 11)
+        delta = float(np.max(np.abs(vector-padded)))
+        assert delta < 1e-5
+        diagnostic = dict(dimension=384, finite=True, unit_norm=float(np.linalg.norm(vector)),
+                          padding_max_abs_delta=delta, padding_invariant=True,
+                          pooling='attention-mask-aware mean then L2; graph emits token embeddings')
+    return dict(scores=scores, lengths=lengths, query_length=len(qencoding.ids), eligible=eligible,
+        excluded_overflow=[i for i,n in enumerate(lengths) if n > 256],
+        unavailable=[i for i,k in enumerate(keys) if k[0] not in available],
+        overflow=overflow, fallback=fallback, tokenization_ms=token_ms,
+        query_encoding_ms=query_ms, passage_encoding_miss_ms=miss_ms,
+        passage_reuse_hit_ms=hit_ms, passage_hits=hits, passage_misses=misses,
+        cache_entries=len(cache), vector_payload_bytes=sum(v.nbytes for v in cache.values()),
+        inference_ms=query_ms+miss_ms+hit_ms, pooling_verification=diagnostic,
+        peak_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+
+
 def main():
     began = time.perf_counter()
     constrain()
@@ -94,6 +186,19 @@ def main():
         outputs=[dict(name=i.name, shape=i.shape, type=i.type) for i in session.get_outputs()],
         offline_probe=True, cpu_threads=1, batch_size=1,
         idle_rss_kib=int(Path('/proc/self/status').read_text().split('VmRSS:')[1].split()[0])))
+    embedding = manifest['model'] == 'sentence-transformers/all-MiniLM-L6-v2'
+    if embedding:
+        assert tokenizer.encode('a').ids == [101, 1037, 102]
+        assert json.loads((directory / 'sentence_bert_config.json').read_text())['max_seq_length'] == 256
+        pooling = json.loads((directory / '1_Pooling/config.json').read_text())
+        assert pooling == dict(word_embedding_dimension=384, pooling_mode_cls_token=False,
+            pooling_mode_mean_tokens=True, pooling_mode_max_tokens=False,
+            pooling_mode_mean_sqrt_len_tokens=False)
+        modules = json.loads((directory / 'modules.json').read_text())
+        assert [m['type'].split('.')[-1] for m in modules] == ['Transformer', 'Pooling', 'Normalize']
+        assert session.get_outputs()[0].shape[-1] == 384
+    cache = {}
+    artifact_identity = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     for line in sys.stdin:
         if len(line.encode()) > 1024**2:
             raise ValueError('Request exceeds one MiB')
@@ -103,6 +208,9 @@ def main():
             raise ValueError('Query/candidate limit')
         if any(not isinstance(p, str) or len(p.encode()) > 262144 for p in passages):
             raise ValueError('Passage limit')
+        if embedding:
+            emit(embedding_response(request, tokenizer, session, np, cache, artifact_identity))
+            continue
         start = time.perf_counter()
         encodings = [tokenizer.encode(query, passage) for passage in passages]
         lengths = [len(e.ids) for e in encodings]

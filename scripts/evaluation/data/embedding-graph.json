@@ -1,0 +1,28 @@
+{
+  "inspector_version": "1.20.1",
+  "ir_version": 7,
+  "producer_name": "pytorch",
+  "producer_version": "2.5.0",
+  "opsets": [
+    {
+      "domain": "",
+      "version": 14
+    }
+  ],
+  "external_tensor_count": 0,
+  "initializers": 101,
+  "nodes": 780,
+  "checker_passed": true,
+  "model_sha256": "6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452",
+  "outputs": [
+    {
+      "name": "last_hidden_state",
+      "shape": [
+        "batch_size",
+        "sequence_length",
+        384
+      ]
+    }
+  ],
+  "inspection_command": "Isolated onnx==1.20.1: onnx.load(path, load_external_data=False); onnx.checker.check_model(model); graph emits 384-dim token embeddings; worker mean-pools attention-mask and L2 normalizes."
+}
