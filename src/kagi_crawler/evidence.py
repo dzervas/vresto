@@ -129,11 +129,69 @@ def expand_evidence(cache, identifiers):
         'budget_policy': 'omit_context_sections_then_whole_sources_preserve_quote_and_reference'}}
 
 
+def markdown_blocks(text, start, end):
+    """Canonical block offsets, including single-newline rendered prose.
+
+    Complete sentence-ending prose lines are boundaries, but wrapped/structural
+    lines are not. Blank lines in fenced code do not divide the code. Headings
+    stay with their following text; oversized prose lines remain atomic.
+    """
+    position = block_start = start
+    fence = None
+    heading_pending = False
+    for line in text[start:end].splitlines(keepends=True):
+        stripped = line.lstrip()
+        marker = re.match(r'(`{3,}|~{3,})', stripped)
+        if marker:
+            if fence is None:
+                fence = marker[1]
+            elif marker[1][0] == fence[0] and len(marker[1]) >= len(fence):
+                fence = None
+        if re.match(r'^#{1,6}\s', line):
+            heading_pending = True
+        elif line.strip():
+            heading_pending = False
+        position += len(line)
+        prose_end = (re.search(r'[.!?][\"\u201d\u2019\')\]]*\s*$', line) and
+                     not re.match(r'^(?: {4}|\t|\s*(?:[|>#`~]|[-*+]\s|\d+[.)]\s))', line))
+        if (not line.strip() or prose_end) and fence is None and not heading_pending:
+            if text[block_start:position].strip():
+                yield block_start, position
+            block_start = position
+    if text[block_start:end].strip():
+        yield block_start, end
+
+
+def passage_windows(text, start, end):
+    """Coherent contiguous windows retaining both neighboring block groups.
+
+    Neighbors are included even without query overlap: warnings and release
+    caveats must not disappear because they score poorly. These are canonical
+    slices, not prefix cuts or reconstructed quotes. 400 characters is a grouping
+    target, not a truncation limit; oversized blocks and the shared byte gate
+    remain atomic. Sections up to 1200 characters need no finer windows.
+    """
+    if end - start <= 1200:
+        yield start, end
+        return
+    groups = []
+    for a, b in markdown_blocks(text, start, end):
+        if groups and b - groups[-1][0] <= 400:
+            groups[-1] = (groups[-1][0], b)
+        else:
+            groups.append((a, b))
+    seen = set()
+    for i in range(len(groups)):
+        window = (groups[max(0, i - 1)][0], groups[min(len(groups) - 1, i + 1)][1])
+        if window not in seen:
+            seen.add(window)
+            yield window
+
+
 def sections(text):
-    # Keep entire heading sections, code fences and tables, including paragraphs
-    # before/after matches. Oversized sections are omitted atomically by the
-    # shared budget rather than splitting away negation/warnings. Separate
-    # warning/note headings attach to their preceding section as qualifications.
+    # Small sections and explicitly scoped ancestry remain atomic. Long ordinary
+    # sections use coherent block windows rather than almost-whole-page quotes.
+    # Separate warning/note headings still attach to their preceding section.
     boundaries = [(0, None, 0)]
     offset = 0
     fence = None
@@ -161,14 +219,23 @@ def sections(text):
         # excess context / explicit budget omission over a misleading small quote.
         scoped = [position for _, position, qualified in ancestors if qualified]
         passage_start = min([start, *scoped])
-        if text[start:end].strip():
-            yield passage_start, end, title
-        # Conventional numeric/release headings are scopes even without the
-        # word "version" (v2, 2.4, 2.4.1-rc.2, calendar releases). Recognize
-        # tokens in headings, not arbitrary numeric prose; retain all qualifying
-        # ancestry as one verbatim atomic range, including intervening sections.
-        qualified = bool(re.search(r'(?i)\b(version|only|not|never|warning|caution|experimental|deprecated|except|requires?)\b', text[start:end]) or
+        # Conventional release headings and nearby introductory constraints are
+        # scopes, not just section labels. Inspect the first complete window:
+        # later local warnings must not scope every descendant of a long section.
+        _, introduction_end = next(passage_windows(text, start, end), (start, end))
+        qualified = bool(re.search(r'(?i)\b(version|only|not|never|warning|caution|experimental|deprecated|except|requires?)\b', text[start:introduction_end]) or
             (title and re.search(r'(?i)(?<!\w)v?\d+(?:\.\d+)*(?:[-+][\w.]+)?(?!\w)', title)))
+        if text[start:end].strip():
+            if scoped:
+                # Parent scopes cannot be stitched onto a later quote: retain
+                # the contiguous range, or disclose a budget omission.
+                yield passage_start, end, title
+            else:
+                for a, b in passage_windows(text, start, end):
+                    # A local scoped introduction can end at a complete block
+                    # window, but must begin at that introduction. Distant claims
+                    # may still be oversized; never fabricate a stitched quote.
+                    yield start if qualified else a, b, title
         ancestors.append((level, start, qualified))
 
 
