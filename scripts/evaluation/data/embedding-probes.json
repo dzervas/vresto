@@ -1,0 +1,7 @@
+{
+  "scope": "Supplemental context-eligible English paraphrase probes predeclared before their first model inference. Existing frozen canonical documents and exact independent gold are reused, never edited. These are separate from the original ncn 16-case comparison; short pools test semantic candidate inclusion, not difficult ranking or representative benefit.",
+  "cases": [
+    {"id": "P04", "gold_origin": "04", "query": "Propagate shutdown exceptions; reset suppressed interrupt state?"},
+    {"id": "P14", "gold_origin": "14", "query": "Persist data permanently?"}
+  ]
+}

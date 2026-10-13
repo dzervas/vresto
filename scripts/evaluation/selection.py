@@ -119,3 +119,25 @@ def select_order(data, ranked):
         'deduplication': 'exact_canonical_document_versions_with_attributed_references',
         'partial_coverage': any(s.get('selection_omitted_highlight_count') for s in sources)}
     return data
+
+
+def embedding_order(lexical, windows, response):
+    """Predeclared all-window dense and equal-weight RRF(k=60), no thresholds.
+
+    Up to 128 coherent windows/request; no top-K lexical reduction. Overflow
+    windows are ineligible for both experimental arms, never clipped. The
+    unchanged lexical baseline retains its original candidates. Same three
+    quotes/source and atomic wire budgets apply downstream. Scores are sidecar
+    diagnostics only; the controlled evidence envelope is not a production API.
+    """
+    if response['fallback']:
+        return lexical, lexical
+    eligible = [windows[i] for i in response['eligible']]
+    dense = [p for _, p in sorted(zip(response['scores'], eligible),
+        key=lambda pair: (-pair[0], pair[1][1], pair[1][2]))]
+    identity = lambda p: (p[1], p[2], p[3])
+    ranks = {identity(p): 1 / (60 + rank) for rank, p in enumerate(dense, 1)}
+    for rank, p in enumerate((p for p in lexical if identity(p) in ranks), 1):
+        ranks[identity(p)] += 1 / (60 + rank)
+    hybrid = sorted(dense, key=lambda p: (-ranks[identity(p)], p[1], p[2]))
+    return dense, hybrid
