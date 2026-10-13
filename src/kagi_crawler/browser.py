@@ -22,6 +22,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from .transport import FetchError
 from .content_expansion import DOM_WITHIN_LIMIT, expand_content
 from .normalization import main_content_html
+from .native_observation import NativeLoadObservation
 
 _DRIVER_START_LOCK = asyncio.Lock()
 # Inspect the live page, not occurrences in documentation, scripts or hidden
@@ -206,15 +207,14 @@ class Browser:
 
     async def _settle_rendered(self, page, latest, state, options, response, pending):
         # Long-lived native resources need not prevent reading public text. Give
-        # normal rendering its network-idle window, then require a quiet DOM
-        # window instead; neither wait extends the original acquisition deadline.
+        # normal rendering its network-idle window, then always observe a quiet
+        # DOM window: timers can render without requests even after network idle.
+        # Neither wait extends the original acquisition deadline.
         idle = True
         try:
             await page.wait_for_load_state('networkidle', timeout=min(1000, options.request_timeout * 1000))
         except BrowserTimeout:
             idle = False
-        if idle and not pending:
-            return await self._settled_response(page, latest, state) is response, True, True, False
         started = asyncio.get_running_loop().time()
         changed = started
         previous = None
@@ -252,17 +252,10 @@ class Browser:
         # redirects work natively inside it, but never survive another acquisition.
         context = await browser.new_context(accept_downloads=True, ignore_https_errors=False,
                                             no_viewport=self.headful)
+        native_loads = None
         try:
             page = await context.new_page()
-            pending = set()
-            def requested(request):
-                if request.resource_type in ('fetch', 'xhr'):
-                    pending.add(request)
-            def completed(request):
-                pending.discard(request)
-            page.on('request', requested)
-            page.on('requestfinished', completed)
-            page.on('requestfailed', completed)
+            native_loads = NativeLoadObservation(page)
             download_ready = asyncio.get_running_loop().create_future()
             def downloaded(download):
                 if not download_ready.done():
@@ -308,7 +301,7 @@ class Browser:
                     if data.startswith(b'%PDF-'):
                         return {'url': response.url, 'pdf': data}
                     raise FetchError('unsupported_format')
-                settled, idle, quiet, pending_load = await self._settle_rendered(page, latest, state, options, response, pending)
+                settled, idle, quiet, pending_load = await self._settle_rendered(page, latest, state, options, response, native_loads.pending)
                 if not settled:
                     continue
                 if coverage is None:
@@ -363,6 +356,8 @@ class Browser:
             code = 'fetch_failed' if browser.is_connected() else 'browser_unavailable'
             raise FetchError(code) from None
         finally:
+            if native_loads is not None:
+                native_loads.close()
             with anyio.CancelScope(shield=True):
                 await context.close()
 

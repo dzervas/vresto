@@ -8,6 +8,8 @@ import asyncio
 
 from patchright.async_api import Error
 
+from .native_observation import NativeLoadObservation
+
 _CONTROLS = 'details > summary, button, [role="button"], a'
 _INSPECT = r'''elements => {
     const visible = el => el.checkVisibility({checkOpacity:true, checkVisibilityCSS:true});
@@ -101,17 +103,10 @@ async def expand_content(page, options, *, deadline, revalidate):
                 'policy': 'bounded_read_only_in_page_controls', 'stop_reason': 'settled'}
     limits = {'dom': options.dom_bytes, 'content': options.response_bytes}
     controls = page.locator(_CONTROLS)
-    pending = set()
-    def requested(request):
-        if request.resource_type in ('fetch', 'xhr'):
-            pending.add(request)
-    def completed(request):
-        pending.discard(request)
     # Observe only native requests begun during expansion, not a pre-existing
-    # analytics connection. No interception, inferred APIs or separate downloads.
-    page.on('request', requested)
-    page.on('requestfinished', completed)
-    page.on('requestfailed', completed)
+    # analytics connection. Keep this window separate from initial rendering.
+    native_loads = NativeLoadObservation(page)
+    pending = native_loads.pending
     try:
         until = min(deadline, asyncio.get_running_loop().time() + options.expansion_timeout)
         async with asyncio.timeout_at(until):
@@ -176,9 +171,7 @@ async def expand_content(page, options, *, deadline, revalidate):
         # into a failure or trigger arbitrary retries. Cancellation propagates.
         coverage.update(partial=True, stop_reason='control_unavailable')
     finally:
-        page.remove_listener('request', requested)
-        page.remove_listener('requestfinished', completed)
-        page.remove_listener('requestfailed', completed)
+        native_loads.close()
     # A duration bound may interrupt settling *after* content was appended.
     # Canonicalize exact identified repeats even in that partial document.
     if await page.evaluate(_SIZE, limits):
