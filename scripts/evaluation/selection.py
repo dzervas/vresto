@@ -133,8 +133,7 @@ def embedding_order(lexical, windows, response):
     if response['fallback']:
         return lexical, lexical
     eligible = [windows[i] for i in response['eligible']]
-    dense = [p for _, p in sorted(zip(response['scores'], eligible),
-        key=lambda pair: (-pair[0], pair[1][1], pair[1][2]))]
+    dense = rescore_order(eligible, response)
     identity = lambda p: (p[1], p[2], p[3])
     ranks = {identity(p): 1 / (60 + rank) for rank, p in enumerate(dense, 1)}
     for rank, p in enumerate((p for p in lexical if identity(p) in ranks), 1):

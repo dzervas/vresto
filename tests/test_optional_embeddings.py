@@ -28,6 +28,20 @@ def test_hybrid_rrf_keeps_zero_lexical_candidates_without_support_threshold():
     assert [p[2] for p in hybrid] == [0, 20]
 
 
+def test_dense_ties_use_source_offset_order_with_eligible_filter_and_early_fallback():
+    from selection import embedding_order, rescore_order
+    windows = [(0., 0, 0, 10, 'excluded'), (0., 1, 0, 10, 'later source'),
+               (0., 0, 20, 30, 'later offset'), (0., 0, 10, 20, 'first')]
+    lexical = [windows[0], windows[1]]
+    response = dict(scores=[1., 1., 1.], eligible=[1, 2, 3], fallback=None)
+    dense, hybrid = embedding_order(lexical, windows, response)
+    assert dense == [windows[3], windows[2], windows[1]]
+    assert hybrid == [windows[1], windows[3], windows[2]]
+    assert dense == rescore_order([windows[1], windows[2], windows[3]], response)
+    # Whole-query fallback must not try to inspect missing eligibility/scores.
+    assert embedding_order(lexical, windows, {'fallback': 'whole_query_lexical'}) == (lexical, lexical)
+
+
 def test_embedding_model_free_cli_retains_frozen_baseline_without_model_deps(tmp_path):
     output = tmp_path/'model-free.json'
     subprocess.run([sys.executable, str(ROOT/'scripts/evaluation/embedding_run.py'),
