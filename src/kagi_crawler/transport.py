@@ -34,12 +34,24 @@ class AcquisitionOptions:
     dom_bytes: int = 10 * 1024 * 1024
     # Post-acquisition text/PDF limit, NOT streamed native resource containment.
     response_bytes: int = 2 * 1024 * 1024
+    # Within the existing native context and request deadline; not network caps.
+    expansion_timeout: float = 2
+    expansion_actions: int = 8
+    # Deterministic native scroll fixture delivers text after 300 ms. Allow
+    # 400 ms per action, still inside the independent 2 s expansion cap.
+    expansion_wait: float = 0.4
     pdf_pages: int = 100
     pdf_timeout: float = 10
     pdf_memory_bytes: int = 1536 * 1024 * 1024
     fixture_destinations: tuple[tuple[str, int, str], ...] = ()
 
     def __post_init__(self):
+        if not 0.01 <= self.expansion_timeout <= 10:
+            raise ValueError('expansion duration must be 0.01–10 seconds')
+        if type(self.expansion_actions) is not int or not 0 <= self.expansion_actions <= 32:
+            raise ValueError('expansion actions must be 0–32')
+        if not 0.01 <= self.expansion_wait <= 1:
+            raise ValueError('expansion settle wait must be 0.01–1 second')
         if not 0.01 <= self.deadline <= 120:
             raise ValueError('acquisition deadline must be 0.01–120 seconds')
         if not 0.01 <= self.queue_wait <= 30:

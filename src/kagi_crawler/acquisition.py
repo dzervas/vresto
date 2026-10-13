@@ -199,7 +199,8 @@ class Acquisition:
             document_type = 'pdf'
         else:
             title, content = result['title'], result['content']
-            extras = {'link_targets': result['links'], 'links_truncated': result['links_truncated']}
+            extras = {'link_targets': result['links'], 'links_truncated': result['links_truncated'],
+                      'coverage': result['coverage']}
             document_type = 'html'
         return {'requested_url': requested, 'resolved_url': result['url'],
             'title': title, 'document_type': document_type, 'fetched_at': fetched,
