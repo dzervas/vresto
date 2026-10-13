@@ -161,7 +161,7 @@ async def test_search_explicit_modes_and_twelve_pages_have_no_hidden_cap(tmp_pat
             assert len(result['results']) == 12 and len(visits) == 12
             assert all('option_safe' in s.get('content', '') for s in result['results']), [s.get('error') for s in result['results']]
             assert result['acquisition_limits']['request_deadline_seconds'] == 30
-            assert result['acquisition_limits']['page_response_bytes'] == 2 * 1024 * 1024
+            assert result['acquisition_limits']['post_acquisition_document_bytes'] == 2 * 1024 * 1024
             assert result['acquisition_limits']['returned_page_limit'] == 20
 
 

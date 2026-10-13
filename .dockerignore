@@ -1,12 +1,10 @@
 # Allowlist: credentials and workspace metadata never enter the build context.
 **
 !Dockerfile
+!Dockerfile.headful
+!Dockerfile.chrome
 !pyproject.toml
 !uv.lock
-!NOTICE
-!licenses/
-!licenses/*LICENSE*
-!licenses/*NOTICE*
 !src/
 !src/kagi_crawler/
 !src/kagi_crawler/*.py

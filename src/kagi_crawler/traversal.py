@@ -23,7 +23,7 @@ active_traversal = ContextVar('active_traversal', default=None)
 
 class TraversalInput(BaseModel):
     # Provisional containment defaults/hard limits are published in MCP schema;
-    # each page also inherits service queue/request/download/parser limits. These
+    # each page also inherits service queue/duration/document/parser limits. These
     # are not measured deployment sizing or inferred Exa coverage guarantees.
     model_config = ConfigDict(extra='forbid', strict=True)
     origin: str = Field(max_length=4096, description='Explicit exact HTTP(S) origin, including port; no subdomains.')
@@ -33,7 +33,7 @@ class TraversalInput(BaseModel):
     max_seconds: float = Field(default=15, gt=0, le=30, description='Also bounded by service request deadline.')
     max_frontier: int = Field(default=32, ge=1, le=128)
     max_bytes: int = Field(default=8_388_608, ge=1024, le=33_554_432,
-        description='Aggregate decoded downloads plus canonical document bytes (including cache reuse); not response budget.')
+        description='Canonical document and link bytes (including cache reuse); post-acquisition, not native traffic or response budget.')
 
     @model_validator(mode='after')
     def scope_shape(self):
@@ -192,6 +192,7 @@ class Traversal:
                 'scope': {'origin': self.input.origin, 'path_prefix': self.input.path_prefix},
                 'limits': self.input.model_dump(exclude={'origin', 'path_prefix'}),
                 'attempted_pages': self.attempted, 'accounted_bytes': self.bytes,
-                'omissions': dict(self.omissions), 'exhaustive': False}}
+                'omissions': dict(self.omissions), 'exhaustive': False,
+                'network_scope_enforced': False}}
         finally:
             active_traversal.reset(token)

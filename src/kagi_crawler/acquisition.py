@@ -8,10 +8,9 @@ import logging
 import time
 from urllib.parse import urlsplit
 
-import aiohttp
 import anyio
 
-from .transport import AcquisitionOptions, DestinationPolicy, FetchError, Transport
+from .transport import AcquisitionOptions, DestinationPolicy, FetchError
 from .browser import Browser
 from .pdf import parse_pdf
 
@@ -83,7 +82,7 @@ class Acquisition:
         while not self.closed:
             await self.sleep(max(0, 3600 - (self.clock() - self.last_work)))
             # Taking the acquisition permit protects *all* active work, including
-            # initial transport, from teardown. Recheck after a queued job finishes.
+            # native navigation and PDF parsing, from teardown. Recheck after queued work.
             async with self.lock:
                 if self.clock() - self.last_work >= 3600:
                     await self._retire()
@@ -138,7 +137,7 @@ class Acquisition:
                     sources.append(source)
                 except asyncio.CancelledError:
                     # This permit owns cancellation cleanup, even when abandoned
-                    # during initial transport or while joining shared startup.
+                    # during native navigation or while joining shared startup.
                     with anyio.CancelScope(shield=True):
                         if self.startup is not None and not self.startup.done():
                             self.startup.cancel()
@@ -146,15 +145,19 @@ class Acquisition:
                         await self._retire()
                     raise
                 finally:
+                    # Completion includes PDF parsing, not just native download.
+                    # Start a full idle interval before releasing ownership.
+                    if self.browser is not None:
+                        self.last_work = self.clock()
                     self.lock.release()
             except FetchError as error:
-                source = {'error': {'code': error.code}}
+                source = {'error': {'code': error.code, **error.details}}
                 if normalized is not None:
                     source['requested_url'] = normalized
                 sources.append(source)
             except TimeoutError:
                 sources.append({'requested_url': normalized, 'error': {'code': 'fetch_timeout'}})
-            except (aiohttp.ClientError, OSError, ValueError):
+            except (OSError, ValueError):
                 sources.append({'requested_url': normalized, 'error': {'code': 'fetch_failed'}})
         return {'sources': sources, 'content_mode': 'full_text'}
 
@@ -163,60 +166,45 @@ class Acquisition:
         origin = (parts.scheme, parts.hostname, parts.port or (443 if parts.scheme == 'https' else 80))
         if self.backoff.get(origin, 0) > time.monotonic():
             raise FetchError('rate_limited')
-        async with Transport(self.options) as transport:
-            try:
-                initial = await transport.fetch(normalized, document=True)
-            except FetchError as error:
-                if error.code == 'rate_limited':
-                    # No immediate retries or unbounded Retry-After sleeps. At
-                    # most one attempt; hold no browser while origin backs off.
-                    if len(self.backoff) >= 256:
-                        self.backoff = {k: v for k, v in self.backoff.items() if v > time.monotonic()}
-                    if len(self.backoff) < 256:
-                        self.backoff[origin] = time.monotonic() + 5
-                raise
-            fetched = datetime.now(timezone.utc).isoformat()
-            mime = initial.headers.get('content-type', '').split(';')[0].lower()
-            if mime == 'application/pdf' or initial.body.startswith(b'%PDF-'):
-                title, content, pdf = await parse_pdf(initial.body, self.options)
-                return {'requested_url': requested, 'resolved_url': initial.url,
-                    'title': title, 'document_type': 'pdf', 'fetched_at': fetched,
-                    'cache_state': 'miss', 'content_version': hashlib.sha256(content.encode()).hexdigest(),
-                    'content_mode': 'full_text', 'content': content, 'pdf': pdf}
-            if mime not in ('text/html', 'application/xhtml+xml'):
-                raise FetchError('unsupported_format')
-            # Known challenge signatures are conservative, not universal detection.
-            text = initial.body.lower()
-            if any(marker in text for marker in (b'cf-chl-', b'just a moment...',
-                b'verify you are human', b'captcha', b'checking your browser')):
-                raise FetchError('blocked')
-            try:
-                startup = self.startup
-                if startup is None or (startup.done() and not startup.cancelled() and startup.result() and self.browser is None):
-                    startup = self.warmup()
-                if startup is None or not await asyncio.shield(startup):
-                    raise FetchError('browser_unavailable')
-                self.last_work = self.clock()
-                title, markdown, links, links_truncated = await self.browser.render(initial, transport)
-            except FetchError as error:
-                if error.code == 'browser_unavailable':
-                    await self._retire()
-                raise
-            except Exception:
+        try:
+            startup = self.startup
+            if startup is None or (startup.done() and not startup.cancelled() and startup.result() and self.browser is None):
+                startup = self.warmup()
+            if startup is None or not await asyncio.shield(startup):
+                raise FetchError('browser_unavailable')
+            self.last_work = self.clock()
+            result = await self.browser.acquire(normalized, self.options)
+        except FetchError as error:
+            if error.code == 'rate_limited':
+                if len(self.backoff) >= 256:
+                    self.backoff = {k: v for k, v in self.backoff.items() if v > time.monotonic()}
+                if len(self.backoff) < 256:
+                    self.backoff[origin] = time.monotonic() + 5
+            if error.code == 'browser_unavailable':
                 await self._retire()
-                raise FetchError('browser_unavailable') from None
-            finally:
-                # Completion starts a full idle interval; long active work never
-                # loses its browser when the previous idle deadline passes.
-                if self.browser is not None:
-                    self.last_work = self.clock()
-            if any(marker in markdown.lower() for marker in ('verify you are human', 'just a moment...', 'checking your browser')):
-                raise FetchError('blocked')
-            return {'requested_url': requested, 'resolved_url': initial.url,
-                'title': title, 'document_type': 'html', 'fetched_at': fetched,
-                'cache_state': 'miss', 'content_version': hashlib.sha256(markdown.encode()).hexdigest(),
-                'content_mode': 'full_text', 'content': markdown,
-                'link_targets': links, 'links_truncated': links_truncated}
+            raise
+        except Exception:
+            await self._retire()
+            raise FetchError('browser_unavailable') from None
+        # Final URL screening is post-acquisition. Native redirects have already
+        # connected: this is evidence/traversal scope, never a socket firewall.
+        from .traversal import active_traversal
+        traversal = active_traversal.get()
+        if traversal is not None:
+            traversal.check_document(result['url'])
+        fetched = datetime.now(timezone.utc).isoformat()
+        if 'pdf' in result:
+            title, content, pdf = await parse_pdf(result['pdf'], self.options)
+            extras = {'pdf': pdf}
+            document_type = 'pdf'
+        else:
+            title, content = result['title'], result['content']
+            extras = {'link_targets': result['links'], 'links_truncated': result['links_truncated']}
+            document_type = 'html'
+        return {'requested_url': requested, 'resolved_url': result['url'],
+            'title': title, 'document_type': document_type, 'fetched_at': fetched,
+            'cache_state': 'miss', 'content_version': hashlib.sha256(content.encode()).hexdigest(),
+            'content_mode': 'full_text', 'content': content, **extras}
 
     async def close(self):
         self.closed = True

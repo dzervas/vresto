@@ -55,6 +55,35 @@ async def test_pdf_full_text_page_citations_highlights_and_cache(tmp_path):
         assert requests == ['/redirect', '/document']
 
 
+async def test_pdf_native_download_after_challenge_continuation(tmp_path):
+    async def handler(request):
+        if request.path == '/document':
+            assert request.cookies.get('clearance') == 'fixture'
+            return web.Response(content_type='application/pdf', body=pdf_bytes(['Native verified PDF reference.']))
+        response = web.Response(status=403, content_type='text/html',
+            headers={'cf-mitigated': 'challenge'}, text='''<title>Just a moment...</title>
+            <script>setTimeout(() => location.href='/document', 750)</script>''')
+        response.set_cookie('clearance', 'fixture')
+        return response
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+        assert 'error' not in source, source
+        assert source['resolved_url'] == base + '/document'
+        assert source['document_type'] == 'pdf'
+        assert 'Native verified PDF reference.' in source['content']
+        assert source['pdf']['total_pages'] == 1
+
+
+async def test_challenge_marked_native_download_is_not_evidence(tmp_path):
+    async def handler(request):
+        return web.Response(content_type='application/pdf',
+            headers={'cf-mitigated': 'challenge'}, body=pdf_bytes(['Not cleared evidence.']))
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+        assert source['error']['code'] == 'blocked'
+        assert 'content' not in source and 'content_version' not in source
+
+
 async def test_search_discovers_pdf_and_preserves_verbatim_page_evidence(tmp_path):
     import json
     async def handler(request):
@@ -120,7 +149,10 @@ async def test_pdf_failures_are_explicit_and_workers_reaped(tmp_path, kind, code
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
             assert source['error']['code'] == code
-            assert not any(arg.endswith('pdf_worker.py') for p in psutil.Process().children(recursive=True) for arg in p.cmdline())
+            # A running full Chrome can be reaping a renderer/crashpad child;
+            # only live worker processes can continue parser work.
+            assert not any(arg.endswith('pdf_worker.py') for p in psutil.Process().children(recursive=True)
+                           if p.status() != psutil.STATUS_ZOMBIE for arg in p.cmdline())
     assert {p.pid for p in psutil.Process().children(recursive=True)} <= before
 
 
@@ -149,7 +181,7 @@ async def test_pdf_object_stream_inflation_is_contained_by_parser_and_worker_bou
             assert source['error']['code'] == 'resource_limit'
 
 
-async def test_pdf_forbidden_redirect_is_never_downloaded(tmp_path):
+async def test_pdf_native_redirect_is_downloaded_without_socket_screening(tmp_path):
     hits = []
     async def private(request):
         hits.append(request.path)
@@ -159,8 +191,9 @@ async def test_pdf_forbidden_redirect_is_never_downloaded(tmp_path):
             raise web.HTTPFound(sink + '/private.pdf')
         async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             source = body(await session.call_tool('fetch', {'urls': [base + '/doc.pdf']}))['sources'][0]
-            assert source['error']['code'] == 'policy_rejected'
-            assert hits == []
+            assert 'Private' in source['content']
+            assert source['resolved_url'] == sink + '/private.pdf'
+            assert hits == ['/private.pdf']
 
 
 async def test_pdf_parser_subprocess_never_inherits_service_credentials(tmp_path, monkeypatch, caplog):

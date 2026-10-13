@@ -1,0 +1,10 @@
+# syntax=docker/dockerfile:1
+# Build Dockerfile from this working tree as kagi-crawler:local first.
+ARG BASE_IMAGE=kagi-crawler:latest
+FROM ${BASE_IMAGE}
+# Pinned Patchright's Debian --with-deps already installs Xvfb. Fail the
+# experimental image build rather than silently reverting to headless mode.
+RUN command -v Xvfb > /dev/null \
+ && python -c 'import kagi_crawler.headful'
+ENV KAGI_CRAWLER_HEADFUL=1
+ENTRYPOINT ["python", "-m", "kagi_crawler.headful"]

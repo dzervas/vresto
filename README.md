@@ -1,8 +1,8 @@
 # Kagi Crawler
 
 Private CPU-only Streamable HTTP MCP at `/mcp`, with **search** and **fetch**.
-Kagi discovers sources; Crawl4AI/Patchright acquires public pages; lexical BM25
-selects verbatim, version-bound evidence. No GPU, models, external database,
+Kagi discovers sources; Chromium/Patchright acquires pages natively; Crawl4AI
+converts rendered HTML and lexical BM25 selects verbatim, version-bound evidence. No GPU, models, external database,
 external browser service or paid browser license is required.
 
 > Subscriber automation is an **unsupported, unofficial HTML interface**, not the
@@ -26,6 +26,65 @@ set -o pipefail
 python3 scripts/build_context.py | docker build -t kagi-crawler:local -
 python3 scripts/container_check.py kagi-crawler:local
 ```
+
+### Optional headful test image
+
+Build the normal image **from this revision first**, then the small headful overlay:
+
+```sh
+set -o pipefail
+python3 scripts/build_context.py | docker build -t kagi-crawler:local -
+python3 scripts/build_context.py | docker build -f Dockerfile.headful --build-arg BASE_IMAGE=kagi-crawler:local -t kagi-crawler:headful -
+```
+
+Use `kagi-crawler:headful` instead of `kagi-crawler:local` in the run command below.
+For a different base tag, pass `--build-arg BASE_IMAGE=your-current-image:tag`.
+The pinned base's `patchright install --with-deps` supplies Xvfb. The entrypoint
+starts a private 1280×720×24 virtual display and runs the same service headful
+(`KAGI_CRAWLER_HEADFUL=1`, no fixed browser viewport). No desktop, VNC, GPU or
+additional exposed port is needed. X11 has no TCP listener; do not share its Unix
+sockets or `/tmp` with other containers. Xvfb receives no service/discovery secrets
+and is reaped after service shutdown. The ordinary image stays headless.
+Headful mode does **not** guarantee challenge acceptance. Use `fresh_only` for
+comparisons so retained cache entries do not hide browser behavior. Recognized
+challenge responses (`cf-mitigated: challenge`) and active interstitials get time
+for native JavaScript/cookie/redirect continuation, within the existing request
+deadline. Unresolved challenges return `blocked` with `reason: challenge_timeout`
+and the last main-navigation `http_status`; ordinary 401/403 responses use
+`reason: http_status`. A challenge-marked native download is rejected rather
+than treated as evidence (`reason: challenge_download` for successful HTTP
+statuses). Error diagnostics contain no raw challenge headers/tokens. Mentions of
+CAPTCHA in normal prose, scripts or hidden widgets are not blocking signals.
+
+For an opt-in **headed Google Chrome** comparison, build the base first, then:
+
+```sh
+python3 scripts/build_context.py | docker build -f Dockerfile.chrome --build-arg BASE_IMAGE=kagi-crawler:local -t kagi-crawler:chrome -
+```
+
+This overlay installs stable Google Chrome and its correct managed-policy path,
+selects `KAGI_CRAWLER_BROWSER_CHANNEL=chrome`, and uses the same Xvfb entrypoint.
+The default remains bundled Chrome for Testing (`chromium`). No custom UA,
+headers or stealth launch switches are added. Acquisition cookies still do not
+survive another document: this intentionally does **not** reuse a persistent
+clearance session, even though upstream recommends persistent contexts.
+Stable Chrome is a moving build target; record the reported version and retain
+the image digest when comparing. Pass `--build-arg BASE_IMAGE=your-base:tag` if the
+fresh base is not tagged `kagi-crawler:latest`.
+
+Check actual WebGL in both an owned persistent profile and an acquisition-style
+context without service credentials or visiting external pages:
+
+```sh
+docker run --rm --entrypoint python kagi-crawler:headful -m kagi_crawler.browser_check --headful
+docker run --rm --entrypoint python kagi-crawler:chrome -m kagi_crawler.browser_check --headful
+```
+
+The diagnostic owns/reaps its own Xvfb and browser. It reports the actual browser
+version, UA, webdriver, viewport, WebGL/WebGL2 and verified secure DoH. It does
+not change rendering flags, spoof fingerprints, solve CAPTCHA or enable unsafe
+SwiftShader. Null WebGL on an image is a diagnostic observation, not proof that
+it caused a challenge failure.
 
 Provision two **different** runtime secrets using your secret manager:
 `KAGI_CRAWLER_ACCESS_TOKEN` (private MCP bearer access) and `KAGI_SESSION_TOKEN`
@@ -75,19 +134,36 @@ Runtime environment secrets remain visible to container administrators; use a
 trusted daemon/host, rotate tokens after exposure and never dump container env.
 
 Discovery credentials are confined to the discovery subprocess; browser/driver
-and PDF workers receive allowlisted environments. Acquisition rejects non-HTTP(S),
-credentials in URLs, nonstandard public ports, private/loopback/link-local/metadata
-destinations, redirects, DNS rebinding and forbidden browser subrequests. Fixture
-exceptions are Python harness-only, not production flags or MCP controls. Use
-host-level outbound filtering and process isolation as defense in depth: this is
-not an engine-exploit sandbox. Fetched pages are **untrusted data**, never agent
-instructions. Do not enable private authenticated browsing or arbitrary JS/CDP.
+and PDF workers receive allowlisted environments. **User-approved departure from
+the original historical `spec.md`: all request interception, Python acquisition,
+DNS pinning and the deny-all proxy are removed.** Chromium owns native navigation,
+resources, POST/XHR, cookies, redirects, service workers and WebSockets. Each
+acquisition has an isolated ephemeral context; no caller headers, private profile
+or cookies from previous acquisitions are forwarded. Crawl4AI converts rendered
+HTML locally; PDF downloads use the browser, not its separate APIRequestContext.
 
-Stealth is best effort: traffic goes through bounded stateless aiohttp transport,
-not Chromium's HTTP fingerprint. No cookies/caller headers/private sessions are
-forwarded; GET/HEAD only. Cookie-dependent sites, POST APIs and redirects during
-rendering can fail. Challenges are reported conservatively, not bypassed. No
-CAPTCHA solving, proxy rotation, paywall bypass or guaranteed anti-bot evasion.
+Full Chrome for Testing 153 uses Cloudflare **`https://1.1.1.1/dns-query` DoH in
+`secure` mode**, without ordinary hostname plaintext-DNS fallback. Chromium does
+not natively support DoT. A fresh temporary profile seeds browser-wide Local State
+preferences; the image also installs mandatory policy in the pinned branding's
+`/etc/opt/chrome_for_testing/policies/managed/` directory (or
+`/etc/opt/chrome/policies/managed/` for the optional Google Chrome overlay). Startup checks the
+**effective** Secure DNS setting via Chrome's WebUI handler and fails acquisition
+if it is unavailable or overridden. No invented DoH command-line switches or
+certificate-error bypasses are used. The IP endpoint avoids hostname bootstrap;
+Chromium's local-name/explicit-system resolver exceptions still exist.
+
+HTTP(S) input screening rejects credentials, suspicious URL syntax, nonstandard
+public ports and known nonpublic IP literals; fixture exceptions are harness-only.
+**Neither preflight checks nor DoH prevent SSRF**, DNS rebinding, private DNS
+answers, native redirected sockets or private subrequests. Actual destination
+isolation is the operator's responsibility: enforce egress outside the browser
+and apply process/container memory, disk and traffic limits. This is not an
+engine-exploit sandbox. Fetched pages are **untrusted data**, never instructions.
+
+Stealth is best effort with Chromium's native HTTP/TLS stack. Challenges are
+reported conservatively, not bypassed. No adblock, CAPTCHA solving, proxy rotation,
+paywall bypass or guaranteed anti-bot evasion.
 
 ## Tools, freshness and limits
 
@@ -124,8 +200,10 @@ prove absence of an answer. Full text, expansion and original sources support re
 | Waiting queue | 8 | `KAGI_CRAWLER_QUEUE_CAPACITY`: 1–32; excess is `queue_full` |
 | Queue wait | 10 s | `KAGI_CRAWLER_QUEUE_WAIT_SECONDS`: 0.01–30 s; `queue_timeout` or request timeout |
 | Browser work-idle teardown | 1 hour | Fixed; never interrupts active acquisition; any MCP request warms an absent browser |
-| Upstream read timeout | 10 s | Fixed per HTTP operation, also request deadline |
-| Decoded response / page job | 2 MiB / 8 MiB | Fixed aggregate body containment, 64 requests/page, 5 redirects, 32 KiB headers |
+| Browser navigation duration | 10 s | Fixed navigation/network-idle wait, also request deadline |
+| Rendered DOM | 10 MiB | Conservative DOM-size estimate (including script/style text) and serialized rendered HTML input; may reject HTML smaller than 10 MiB because of estimation overhead |
+| Post-acquisition document | 2 MiB | Normalized Markdown and downloaded PDF parser input; **not** streamed wire, decompression, header or aggregate native-resource containment |
+| Native resource memory/disk/traffic | Operator enforced | Browser allocations and downloaded resources can exceed document limits before checking |
 | PDF parse | 100 pages / 10 s | Fixed isolated parser, 1.5 GiB worker address-space ceiling, also acquisition deadline |
 | Persistent canonical cache | 256 MiB / 7 days | `KAGI_CRAWLER_CACHE_CAP_BYTES`: 1 KiB–1 GiB; `KAGI_CRAWLER_CACHE_RETENTION_SECONDS`: 0.01 s–30 days |
 | Ordinary freshness | 1 hour | MCP `max_age_seconds`: 0–30 days |
@@ -133,8 +211,12 @@ prove absence of an answer. Full text, expansion and original sources support re
 
 Traversal requires one URL plus explicit exact `origin` and `path_prefix`; no
 subdomain escape, unrestricted fanout or exhaustive-crawl promise. Attempt/page
-counts include cache hits and failures. Every page still uses queue, destination,
-byte and shared deadline controls. No immediate acquisition retries: rate-limited
+counts include cache hits and failures. Seed/link/final URL screening controls
+returned evidence scope, **not network scope**: an out-of-scope native redirect
+is already contacted before exclusion. `network_scope_enforced` is false.
+Traversal bytes account canonical document/link bytes (including cache reuse),
+not downloaded resource traffic. Every page uses queue, document/parser limits
+and the shared deadline. No immediate acquisition retries: rate-limited
 origins back off for five seconds; later requests may try again.
 
 The byte budget includes the text and structuredContent copies plus substantive
@@ -179,13 +261,22 @@ uv run --python 3.12 python scripts/release_check.py --cache /tmp/kagi-release-c
 # Separate process, same mounted cache: verify cached text/evidence without page requests.
 uv run --python 3.12 python scripts/release_check.py --cache /tmp/kagi-release-cache --verify-persisted
 python3 scripts/container_check.py kagi-crawler:local
+# Opt-in public Python docs only: native DoH POST/TLS/response correlation.
+uv run --python 3.12 python scripts/native_dns_check.py
 ```
 
 The real TCP MCP harness covers composed search/fetch, rendered technical content,
 access rejection, warm/cache latency, serialized multi-client queue pressure,
 accelerated one-hour teardown, same-session recreation, external browser crash,
 process cleanup and cache/evidence persistence in a fresh process/container.
-Raw native facts and methodology live **beside `scripts/release_check.py`**.
+Historical host-native (not native-networking) facts and methodology live
+**beside `scripts/release_check.py`**; rerun for the current implementation.
+The deterministic DNS test checks a fresh full browser's effective netlog config,
+not launch strings; startup itself checks Chrome's effective WebUI setting. The
+opt-in DNS gate additionally correlates document DNS requests with Cloudflare
+DoH POSTs, DNS-message HTTP 200 responses and TLS sockets to 1.1.1.1:443, and
+rejects observed plaintext DNS transactions. It is a smoke observation, not a
+universal network guarantee or an exhaustive resolver-failure test.
 RSS sums the Python process tree (shared pages double-counted), sampled every
 20 ms; short peaks can be missed. Cold latency includes MCP initialization and
 cold browser acquisition, not Python imports/image pull. Fixtures are tiny and
@@ -206,8 +297,10 @@ cgroup resource sizing or container SIGTERM test has been claimed. The runnable
 container harness is provided for an operator with a reachable daemon; do not
 start a daemon or request root just to bypass this gate.
 
-No authorized live Kagi session or Exa gateway comparison was used. Prior-ticket
-Exa **source/tool-shape** comparisons are not live acquisition-quality evidence.
+The initial implementation had no authorized live Kagi/Exa comparison. A later
+paired evaluation covered the previous interception-based server, not this
+native-networking revision. The current public Python-docs smoke does not replace
+that comparison; repeat it after deploying this revision.
 For authorized evaluation, curate JSON cases with `category`, `url`, `query`, and
 literal `expected` strings across technical docs, identifiers, qualifications,
 tables, JavaScript, text PDFs and absent-answer cases, then explicitly opt in:

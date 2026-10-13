@@ -91,7 +91,8 @@ os.execv({node!r}, [{node!r}, *sys.argv[1:]])
         await eventually(marker.exists)
         pid = int(marker.read_text())
         task = asyncio.create_task(session.call_tool('fetch', {'urls': [base]}))
-        await asyncio.wait_for(received.wait(), 3)
+        await asyncio.sleep(.1)
+        assert not received.is_set()  # Native acquisition waits for its driver.
         await session.send_notification(types.ClientNotification(types.CancelledNotification(
             method='notifications/cancelled', params=types.CancelledNotificationParams(requestId=calls[-1]))))
         try:
@@ -126,11 +127,14 @@ async def test_one_request_deadline_bounds_all_urls_without_new_downloads_after_
     received = []
     async def handler(request):
         received.append(request.path)
-        await asyncio.sleep(0.15)
+        await asyncio.sleep(1.5)
         return web.Response(status=404)
+    clock = Clock()
     async with site(handler) as (base, options):
-        options = replace(options, deadline=0.25, request_timeout=1)
-        async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        options = replace(options, deadline=2.5, request_timeout=2)
+        async with running(tmp_path, acquisition_options=options, browser_clock=clock,
+                           browser_sleep=clock.sleep) as (url, _), client(url) as session:
+            await asyncio.wait_for(clock.ready.wait(), 10)
             data = body(await session.call_tool('fetch', {'urls': [base + '/first', base + '/second', base + '/third']}))
             assert [s['error']['code'] for s in data['sources']] == ['fetch_failed', 'fetch_timeout', 'fetch_timeout']
             assert received == ['/first', '/second']

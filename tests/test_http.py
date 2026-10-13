@@ -82,6 +82,9 @@ async def test_discovery_preserves_provider_order_and_labels_snippets(tmp_path):
         assert [t.name for t in tools] == ["search", "fetch"]
         assert tools[0].inputSchema["properties"]["content_mode"]["default"] == "highlights"
         assert tools[0].inputSchema["additionalProperties"] is False
+        assert 'Native Chromium networking' in tools[1].description
+        assert 'not SSRF protection' in tools[1].description
+        assert 'Stateless GET/HEAD only' not in tools[1].description
         result = await session.call_tool("search", {"query": "Python docs", "content_mode": "discovery"})
         assert not result.isError
         data = body(result)

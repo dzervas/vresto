@@ -30,13 +30,42 @@ async def site(handler):
     'http://example.org\\@127.0.0.1/', 'http://[64:ff9b::7f00:1]/',
     'http://example.org:0/', 'http://0177.0.0.1/', 'http://127.0.0.1./',
     'http://[fe80::1%25lo]/', 'http://%31%32%37.0.0.1/', 'http://localhost/'])
-async def test_fetch_rejects_forbidden_destinations(tmp_path, target):
+async def test_fetch_screens_unsafe_url_inputs_without_network_guarantee(tmp_path, target):
     async with running(tmp_path) as (url, _), client(url) as session:
         result = await session.call_tool('fetch', {'urls': [target]})
         assert not result.isError
         assert body(result)['sources'][0]['error']['code'] == 'policy_rejected'
         assert 'subscriber-secret' not in result.model_dump_json()
         assert 'pass@' not in result.model_dump_json()
+
+
+async def test_native_post_redirects_and_cookies_are_acquisition_local(tmp_path):
+    received = []
+    async def handler(request):
+        received.append((request.path, request.method, dict(request.headers)))
+        if request.path == '/script':
+            raise web.HTTPFound('/actual-script')
+        if request.path == '/actual-script':
+            return web.Response(content_type='application/javascript', text="fetch('/telemetry', {method:'POST', body:'native'}).then(r=>r.text()).then(t=>document.querySelector('#dynamic').textContent=t)")
+        if request.path == '/telemetry':
+            assert await request.text() == 'native'
+            return web.Response(text='Cookie-backed native evidence' if request.cookies.get('visit') == 'local' else 'Missing cookie')
+        response = web.Response(content_type='text/html', text='<h1>Native networking</h1><p id="dynamic"></p><script src="/script"></script>')
+        if request.path == '/first':
+            assert 'visit' not in request.cookies
+            response.set_cookie('visit', 'local')
+        else:
+            assert 'visit' not in request.cookies
+        return response
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base + '/first']}))['sources'][0]
+        assert 'error' not in source, source
+        assert 'Cookie-backed native evidence' in source['content']
+        second = body(await session.call_tool('fetch', {'urls': [base + '/second']}))['sources'][0]
+        assert 'error' not in second, second
+        telemetry = [headers for path, method, headers in received if path == '/telemetry' and method == 'POST']
+        assert len(telemetry) == 2
+        assert all('Chrome/' in headers['User-Agent'] and headers['Sec-Fetch-Site'] == 'same-origin' for headers in telemetry)
 
 
 async def test_rendered_technical_markdown_and_source_metadata(tmp_path, caplog):
@@ -75,7 +104,95 @@ async def test_rendered_technical_markdown_and_source_metadata(tmp_path, caplog)
         assert 'client-secret' not in str(requests) + result.model_dump_json() + caplog.text
 
 
-async def test_redirect_and_browser_subrequests_never_reach_forbidden_site(tmp_path):
+async def test_normal_challenge_words_and_scripts_are_not_blocked(tmp_path):
+    async def handler(request):
+        return web.Response(content_type='text/html', text='''<title>Challenge integration guide</title>
+            <h1>CAPTCHA integration</h1><p>Examples say verify you are human,
+            checking your browser, or just a moment...</p>
+            <script>const captcha = {name: 'cf-chl-widget'};</script>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+        assert 'error' not in source, source
+        assert 'CAPTCHA integration' in source['content']
+        assert 'verify you are human' in source['content']
+
+
+@pytest.mark.parametrize('style', ['visibility:hidden', 'opacity:0', 'display:none'])
+async def test_hidden_challenge_widgets_in_documentation_are_not_blocked(tmp_path, style):
+    async def handler(request):
+        return web.Response(content_type='text/html', text=f'''<title>Challenge integration guide</title>
+            <h1>Verify you are human</h1><p>This is a documentation example.</p>
+            <form id='challenge-form' style='{style}'><button>Example widget</button></form>''')
+    async with site(handler) as (base, options):
+        options = replace(options, request_timeout=1)
+        async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+            source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+            assert 'error' not in source, source
+            assert 'documentation example' in source['content']
+
+
+async def test_native_challenge_redirect_keeps_cookies_and_final_document(tmp_path):
+    received = []
+    async def handler(request):
+        received.append(request.path)
+        if request.path == '/transit':
+            raise web.HTTPFound('/accepted')
+        if request.path == '/accepted':
+            assert request.cookies.get('clearance') == 'fixture'
+            await asyncio.sleep(0.4)
+            return web.Response(content_type='text/html', text='<title>Public reference</title><h1>Native challenge continuation</h1>')
+        response = web.Response(status=403, content_type='text/html',
+            headers={'cf-mitigated': 'challenge'}, text='''<title>Just a moment...</title>
+            <script>setTimeout(() => location.href='/transit', 750)</script>''')
+        response.set_cookie('clearance', 'fixture')
+        return response
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+        assert 'error' not in source, source
+        assert source['resolved_url'] == base + '/accepted'
+        assert source['title'] == 'Public reference'
+        assert 'Native challenge continuation' in source['content']
+        assert received == ['/', '/transit', '/accepted']
+
+
+async def test_unresolved_challenge_has_sanitized_status_and_deadline(tmp_path):
+    async def handler(request):
+        return web.Response(status=403, content_type='text/html',
+            headers={'cf-mitigated': 'challenge'}, text='<title>Just a moment...</title>')
+    async with site(handler) as (base, options):
+        options = replace(options, request_timeout=0.7)
+        async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+            source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+            assert source['error'] == {'code': 'blocked', 'reason': 'challenge_timeout', 'http_status': 403}
+            assert 'content' not in source and 'content_version' not in source
+
+
+async def test_nonchallenge_forbidden_is_not_retried_or_misclassified(tmp_path):
+    received = []
+    async def handler(request):
+        received.append(request.path)
+        return web.Response(status=403, content_type='text/html', text='<title>Forbidden</title><p>No permission</p>')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+        assert source['error'] == {'code': 'blocked', 'reason': 'http_status', 'http_status': 403}
+        assert received == ['/']
+
+
+async def test_active_interstitial_can_clear_without_a_navigation(tmp_path):
+    async def handler(request):
+        return web.Response(content_type='text/html', text='''<title>Checking your browser</title>
+            <h1>Checking your browser</h1><script>setTimeout(() => {
+                document.title = 'Ready';
+                document.body.innerHTML = '<h1>Public reference after verification</h1>';
+            }, 750)</script>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+        assert 'error' not in source, source
+        assert source['title'] == 'Ready'
+        assert 'Public reference after verification' in source['content']
+
+
+async def test_native_redirects_and_subrequests_are_not_network_isolated(tmp_path):
     forbidden = []
     async def sink(request):
         forbidden.append(request.path)
@@ -91,33 +208,17 @@ async def test_redirect_and_browser_subrequests_never_reach_forbidden_site(tmp_p
             </script>''')
         async with site(upstream) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             result = body(await session.call_tool('fetch', {'urls': [base + '/redirect', base + '/js']}))
-            assert all(s['error']['code'] == 'policy_rejected' for s in result['sources'])
-            assert forbidden == []
-
-
-async def test_mixed_dns_answers_and_rebinding_are_rejected_before_connect(tmp_path):
-    requests = []
-    async def handler(request):
-        requests.append(request.path)
-        return web.Response(content_type='text/html', text="<h1>DNS</h1><script>fetch('/forbidden')</script>")
-    async with site(handler) as (base, options):
-        port = int(base.rsplit(':', 1)[1])
-        calls = 0
-        async def lookup(host, _):
-            nonlocal calls
-            calls += 1
-            return ['127.0.0.1'] if calls == 1 else ['127.0.0.1', '127.0.0.2']
-        options = replace(options, fixture_destinations=(('fixture.test', port, '127.0.0.1'),), dns_lookup=lookup)
-        async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
-            result = body(await session.call_tool('fetch', {'urls': [f'http://fixture.test:{port}/first', f'http://fixture.test:{port}/second']}))
-            assert all(s['error']['code'] == 'policy_rejected' for s in result['sources'])
-            assert requests == ['/first']
+            assert '/redirect-target' in forbidden
+            assert '/frame' in forbidden
+            assert '/fetch' in forbidden
+            # Chromium's own popup blocker may suppress window.open.
+            assert 'Untrusted' in result['sources'][1]['content']
 
 
 @pytest.mark.parametrize('kind,code', [('gzip', 'resource_limit'), ('chunked', 'resource_limit'),
     ('rate', 'rate_limited'), ('challenge', 'blocked'), ('pdf', 'pdf_parse_failed'),
     ('missing', 'fetch_failed'), ('slow', 'fetch_timeout')])
-async def test_transport_failures_are_distinct_and_bounded(tmp_path, kind, code):
+async def test_native_acquisition_errors_and_post_acquisition_limits(tmp_path, kind, code):
     import gzip
     async def handler(request):
         if kind == 'gzip':
@@ -141,7 +242,7 @@ async def test_transport_failures_are_distinct_and_bounded(tmp_path, kind, code)
             return web.Response(content_type='application/pdf', body=b'%PDF-1.7')
         return web.Response(status=404)
     async with site(handler) as (base, options):
-        options = replace(options, response_bytes=4096, request_timeout=0.1)
+        options = replace(options, response_bytes=4096, request_timeout=0.1 if kind == 'slow' else 2)
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             result = body(await session.call_tool('fetch', {'urls': [base]}))
             assert result['sources'][0]['error']['code'] == code
@@ -239,7 +340,7 @@ async def test_cancelled_render_closes_downloads_browser_and_keeps_mcp_usable(tm
 
 
 @pytest.mark.parametrize('kind', ['service_worker', 'websocket'])
-async def test_service_worker_and_websocket_paths_cannot_bypass_transport(tmp_path, kind):
+async def test_service_worker_and_websocket_use_native_networking(tmp_path, kind):
     forbidden = []
     async def sink(request):
         forbidden.append(request.path)
@@ -253,13 +354,9 @@ async def test_service_worker_and_websocket_paths_cannot_bypass_transport(tmp_pa
         async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             data = body(await session.call_tool('fetch', {'urls': [base]}))
             source = data['sources'][0]
-            if kind == 'service_worker' or 'error' in source:
-                assert source['error']['code'] in ('rendering_unsupported', 'policy_rejected')
-            else:
-                # Patchright may suppress the socket before reporting its route;
-                # the externally meaningful safety assertion is zero handshakes.
-                assert 'Worker test' in source['content']
-            assert forbidden == []
+            assert 'error' not in source, source
+            assert 'Worker test' in source['content']
+            assert ('/worker' if kind == 'service_worker' else '/socket') in forbidden
 
 
 async def test_queue_capacity_and_wait_are_bounded_across_clients(tmp_path):
@@ -293,13 +390,13 @@ async def test_fetch_only_advertises_implemented_inputs(tmp_path, arguments):
         assert body(result)['error']['code'] == 'invalid_input'
 
 
-async def test_aggregate_headers_are_bounded_before_body_acquisition(tmp_path):
+async def test_native_headers_do_not_claim_python_protocol_bounds(tmp_path):
     async def handler(request):
         return web.Response(content_type='text/html', text='<h1>Not evidence</h1>',
                             headers={f'X-Header-{i}': 'x' * 1000 for i in range(40)})
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
         data = body(await session.call_tool('fetch', {'urls': [base]}))
-        assert data['sources'][0]['error']['code'] == 'resource_limit'
+        assert 'Not evidence' in data['sources'][0]['content']
 
 
 async def test_driver_receives_only_allowlisted_environment(tmp_path, monkeypatch):
@@ -331,28 +428,48 @@ os.execv({node!r}, [{node!r}, *sys.argv[1:]])
         assert marker.exists()
 
 
-async def test_render_navigation_redirect_is_explicit_not_wrong_source_metadata(tmp_path):
+async def test_native_script_navigation_reports_final_source_url(tmp_path):
     requests = []
     async def handler(request):
         requests.append(request.path)
+        if request.path == '/next':
+            return web.Response(content_type='text/html', text='<h1>Final native document</h1>')
         return web.Response(content_type='text/html', text='<h1>Redirecting</h1><script>location.href="/next"</script>')
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
         data = body(await session.call_tool('fetch', {'urls': [base]}))
-        assert data['sources'][0]['error']['code'] == 'rendering_unsupported'
-        assert requests == ['/']
+        assert data['sources'][0]['resolved_url'] == base + '/next'
+        assert 'Final native document' in data['sources'][0]['content']
+        assert '/' in requests and '/next' in requests
 
 
-@pytest.mark.parametrize('bound', ['dom', 'requests', 'aggregate_bytes'])
-async def test_rendered_page_resource_limits_are_explicit(tmp_path, bound):
+async def test_browser_mode_matches_runtime_setting(tmp_path):
+    import os
     async def handler(request):
-        if request.path == '/data':
-            return web.Response(text='x' * 2048)
-        script = "document.body.append('x'.repeat(10000))" if bound == 'dom' else "for(let i=0;i<6;i++) fetch('/data?i='+i);"
+        return web.Response(content_type='text/html', text='<h1>Browser mode</h1>'
+            '<script>document.body.append(navigator.userAgent)</script>')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+        assert 'Chrome/' in source['content']
+        assert ('HeadlessChrome/' not in source['content']) == (os.environ.get('KAGI_CRAWLER_HEADFUL') == '1')
+
+
+async def test_default_dom_limit_allows_large_noncontent_scripts(tmp_path):
+    async def handler(request):
+        return web.Response(content_type='text/html', text='<h1>Large DOM, small evidence</h1>'
+            '<p>Public documentation.</p><script type="application/json">' + 'x' * 600_000 + '</script>')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        data = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))
+        assert 'Large DOM, small evidence' in data['sources'][0]['content']
+        assert data['acquisition_limits']['rendered_dom_bytes'] == 10_485_760
+        assert data['acquisition_limits']['post_acquisition_document_bytes'] == 2_097_152
+
+
+async def test_rendered_dom_limit_is_explicit_after_native_acquisition(tmp_path):
+    async def handler(request):
+        script = "document.body.append('x'.repeat(10000))"
         return web.Response(content_type='text/html', text=f"<h1>Bounded</h1><p>{'Public documentation. ' * 20}</p><script>{script}</script>")
     async with site(handler) as (base, options):
-        options = replace(options, response_bytes=4096,
-                          max_requests=2 if bound == 'requests' else 64,
-                          job_bytes=3000 if bound == 'aggregate_bytes' else 8 * 1024 * 1024)
+        options = replace(options, dom_bytes=4096)
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             data = body(await session.call_tool('fetch', {'urls': [base]}))
             assert data['sources'][0]['error']['code'] == 'resource_limit'

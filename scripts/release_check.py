@@ -7,6 +7,14 @@ only in this fixture bootstrap, never in the production entry point. Observation
 use real TCP MCP clients and external process trees, not browser ownership fields.
 RSS sums shared pages multiple times; sample interval 20ms may miss shorter peaks.
 Numbers are sandbox observations, NOT a RAM limit or deployment sizing guarantee.
+Historical facts below predate user-approved removal of interception; they are
+NOT measurements of the current native-networking implementation. Repeat this
+gate for current release observations; native resource traffic has no Python
+stream/header/decompression bounds. Native-networking rerun (2026-10-13, same
+host, overlapping suite): cold/cache/refresh 1390.06/43.83/643.83 ms, 1,673,199,616
+bytes sampled tree peak (shared pages double-counted), 108 observed descendants,
+none surviving live; fresh-process cache/evidence persistence passed. These tiny
+fixtures are not deployment memory sizing or a native resource traffic cap.
 Raw facts, 2026-10-13 sandbox x86_64 / 32 logical CPUs / Python 3.12.13,
 locked dependencies, system node + Chromium 153.0.8010.12/r1243. Three fresh
 cache runs, before the subsequent pytest run; host load is not controlled.

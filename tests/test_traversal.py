@@ -27,7 +27,7 @@ async def test_related_pages_are_opt_in_scoped_and_cached(tmp_path):
         assert all('link_targets' not in s for s in second['sources'])
 
 
-async def test_exact_origin_escape_is_refused_even_when_destination_policy_allows_it(tmp_path):
+async def test_exact_origin_escape_is_excluded_after_native_redirect_contact(tmp_path):
     forbidden = []
     async def sink(request):
         forbidden.append(request.path)
@@ -46,11 +46,12 @@ async def test_exact_origin_escape_is_refused_even_when_destination_policy_allow
                 assert len(data['sources']) == 2
                 assert data['sources'][1]['error']['code'] == 'scope_rejected'
                 assert data['traversal']['omissions']['scope_rejected'] == 2
-                assert forbidden == []
+                assert forbidden == ['/docs/escaped']
+                assert data['traversal']['network_scope_enforced'] is False
 
 
 @pytest.mark.parametrize('redirect', ['/outside', '/docs-other', '/docs/%2e%2e/outside'])
-async def test_traversal_refuses_redirect_before_contact(tmp_path, redirect):
+async def test_traversal_excludes_out_of_scope_redirect_after_contact(tmp_path, redirect):
     seen = []
     async def handler(request):
         seen.append(request.path)
@@ -61,7 +62,7 @@ async def test_traversal_refuses_redirect_before_contact(tmp_path, redirect):
         data = body(await session.call_tool('fetch', {'urls': [base + '/docs/seed'],
             'traversal': {'origin': base, 'path_prefix': '/docs'}}))
         assert data['sources'][0]['error']['code'] == 'scope_rejected'
-        assert seen == ['/docs/seed']
+        assert seen[0] == '/docs/seed' and len(seen) == 2
 
 
 async def test_failed_pages_count_toward_attempt_limit_and_share_highlight_budget(tmp_path):
@@ -97,7 +98,7 @@ async def test_allowed_redirect_alias_is_not_reacquired_as_a_cycle(tmp_path):
         assert seen == ['/docs/seed', '/docs/final']
 
 
-async def test_traversal_browser_subrequests_still_apply_destination_policy(tmp_path):
+async def test_traversal_document_scope_does_not_intercept_subrequests(tmp_path):
     forbidden = []
     async def sink(request):
         forbidden.append(request.path)
@@ -109,8 +110,8 @@ async def test_traversal_browser_subrequests_still_apply_destination_policy(tmp_
         async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             data = body(await session.call_tool('fetch', {'urls': [base + '/docs'],
                 'traversal': {'origin': base, 'path_prefix': '/docs'}}))
-            assert data['sources'][0]['error']['code'] == 'policy_rejected'
-            assert forbidden == []
+            assert 'Guide' in data['sources'][0]['content']
+            assert forbidden == ['/private']
 
 
 async def test_zero_depth_and_cached_redirect_never_widen_path_scope(tmp_path):
