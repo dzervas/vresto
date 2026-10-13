@@ -37,6 +37,9 @@ _INSPECT = r'''elements => {
         const collapsed = el.getAttribute('aria-expanded') === 'false';
         const candidate = more.test(label(el)) || collapsed;
         if (!candidate) return;
+        // GitHub python/cpython#108951 public smoke (2026-10-13) has a
+        // type=button "Load more" with no aria-controls/aria-expanded.
+        // It remains unsupported: a label alone is not a content association.
         // Links masquerading as buttons and submit controls are not read-only.
         const safe = el.tagName === 'BUTTON' && !el.hasAttribute('form') &&
             el.type === 'button' && associated && scope(el) &&
@@ -117,6 +120,10 @@ async def expand_content(page, options, *, deadline):
         # Detached/replaced controls do not turn an otherwise useful document
         # into a failure or trigger arbitrary retries. Cancellation propagates.
         coverage.update(partial=True, stop_reason='control_unavailable')
+    # A duration bound may interrupt settling *after* content was appended.
+    # Canonicalize exact identified repeats even in that partial document.
+    if await page.evaluate(_SIZE, limits):
+        await page.evaluate(_DEDUP)
     inspected = await controls.evaluate_all(_INSPECT)
     coverage['partial'] |= inspected['unsupported'] or inspected['action'] >= 0
     if inspected['unsupported'] and coverage['stop_reason'] in ('settled', 'no_progress'):

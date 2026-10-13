@@ -188,3 +188,16 @@ async def test_unsupported_form_and_link_pagination_are_disclosed_without_visiti
         assert visits == ['/']
         assert data['sources'][0]['coverage']['partial']
         assert data['sources'][0]['coverage']['stop_reason'] == 'unsupported_controls'
+
+
+async def test_duration_bound_still_suppresses_loaded_exact_repeats(tmp_path):
+    from dataclasses import replace
+    async def handler(request):
+        return web.Response(content_type='text/html', text='''<main><h1>Repeated discussion</h1>
+        <section id="comments"><article data-comment-id="one"><p>Warning: repeated public qualification.</p></article></section>
+        <button type="button" aria-controls="comments" onclick="document.querySelector('#comments').insertAdjacentHTML('beforeend', document.querySelector('article').outerHTML)">Load more comments</button></main>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options,
+            expansion_timeout=0.2)) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
+        assert source['coverage']['stop_reason'] == 'duration_limit'
+        assert source['content'].count('Warning: repeated public qualification.') == 1

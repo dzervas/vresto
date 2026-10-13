@@ -21,6 +21,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from .transport import FetchError
 from .content_expansion import expand_content
+from .normalization import main_content_html
 
 _DRIVER_START_LOCK = asyncio.Lock()
 # Inspect the live page, not occurrences in documentation, scripts or hidden
@@ -299,7 +300,7 @@ class Browser:
             config = CrawlerRunConfig(word_count_threshold=0)
             params = config.__dict__.copy()
             params.pop('url', None)
-            scraped = config.scraping_strategy.scrap(final_url, html, **params)
+            scraped = config.scraping_strategy.scrap(final_url, main_content_html(html), **params)
             cleaned_html = scraped['cleaned_html'] if isinstance(scraped, dict) else scraped.cleaned_html
             markdown = DefaultMarkdownGenerator().generate_markdown(
                 input_html=cleaned_html, base_url=links.base).raw_markdown
