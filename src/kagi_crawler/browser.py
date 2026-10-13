@@ -20,6 +20,7 @@ from crawl4ai import CrawlerRunConfig
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from .transport import FetchError
+from .content_expansion import expand_content
 
 _DRIVER_START_LOCK = asyncio.Lock()
 # Inspect the live page, not occurrences in documentation, scripts or hidden
@@ -150,7 +151,8 @@ class Browser:
 
     async def acquire(self, url, options):
         await self.start()
-        state = {'challenge': False, 'http_status': None}
+        state = {'challenge': False, 'http_status': None,
+                 'deadline': asyncio.get_running_loop().time() + options.request_timeout}
         try:
             # One duration across navigation, native challenge continuation,
             # JS settling, downloads and conversion. Never extend the deadline.
@@ -269,6 +271,9 @@ class Browser:
                 await page.wait_for_load_state('networkidle', timeout=options.request_timeout * 1000)
                 if await self._settled_response(page, latest, state) is response:
                     break
+            # Reserve bounded serialization/conversion/context cleanup time;
+            # optional expansion must not consume the entire useful fetch.
+            coverage = await expand_content(page, options, deadline=state['deadline'] - 0.15)
             # Bound DOM serialization, not browser allocations/resource traffic.
             within = await page.evaluate('''limit => {
                 let total = 0, count = 0;
@@ -304,7 +309,7 @@ class Browser:
                 raise FetchError('unsupported_format')
             return {'url': final_url, 'title': await page.title(), 'content': markdown,
                     'links': [urljoin(links.base, href) for href in links.targets],
-                    'links_truncated': links.truncated}
+                    'links_truncated': links.truncated, 'coverage': coverage}
         except BrowserTimeout:
             if state['challenge']:
                 raise FetchError('blocked', reason='challenge_timeout',

@@ -96,6 +96,8 @@ def create_app(settings: Settings):
         return {'returned_page_limit': page_limit, 'request_deadline_seconds': options.deadline,
                 'rendered_dom_bytes': options.dom_bytes,
                 'post_acquisition_document_bytes': options.response_bytes,
+                'expansion_actions': options.expansion_actions,
+                'expansion_seconds': options.expansion_timeout,
                 'native_network_resource_bounds': 'operator_memory_disk_egress_limits',
                 'queue_capacity': options.queue_capacity,
                 'queue_wait_seconds': options.queue_wait, 'browser_navigation_seconds': options.request_timeout}
@@ -274,7 +276,9 @@ def main():
                         acquisition_options=AcquisitionOptions(
                             deadline=float(os.environ.get('KAGI_CRAWLER_DEADLINE_SECONDS', '30')),
                             queue_wait=float(os.environ.get('KAGI_CRAWLER_QUEUE_WAIT_SECONDS', '10')),
-                            queue_capacity=int(os.environ.get('KAGI_CRAWLER_QUEUE_CAPACITY', '8'))))
+                            queue_capacity=int(os.environ.get('KAGI_CRAWLER_QUEUE_CAPACITY', '8')),
+                            expansion_actions=int(os.environ.get('KAGI_CRAWLER_EXPANSION_ACTIONS', '8')),
+                            expansion_timeout=float(os.environ.get('KAGI_CRAWLER_EXPANSION_SECONDS', '2'))))
     # Bound graceful HTTP shutdown, including idle SDK SSE sessions; lifespan
     # then cancels MCP work and reaps remaining CLI process groups.
     uvicorn.run(create_app(settings), host=args.host, port=args.port, access_log=False,
