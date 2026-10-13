@@ -50,6 +50,10 @@ class Settings:
     acquisition_options: AcquisitionOptions | None = None
     response_budget_bytes: int = DEFAULT_RESPONSE_BYTES
     cache_directory: Path = Path('/data/cache')
+    # 0b7: defer vector storage; live Kagi discovery, URL cache fetch and evidence
+    # expansion demonstrate no separate retained-corpus search need. The anl pilot
+    # measured only small payloads and immediate synthetic reuse, not natural reuse.
+    # A justified future evaluation starts local/embedded; adoption needs approval.
     # Provisional local limits, not provider parity: 256 MiB/7 days; hard bounds
     # 1 KiB–1 GiB and 0.01 seconds–30 days. JSON bytes include source metadata.
     # Oldest fetched versions evict first; reads never extend archive retention.
