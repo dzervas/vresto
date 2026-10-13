@@ -12,6 +12,7 @@ from mcp import ClientSession, types
 from mcp.client.streamable_http import streamable_http_client
 
 from kagi_crawler.server import Settings, create_app
+from kagi_crawler.transport import AcquisitionOptions
 
 
 @asynccontextmanager
@@ -57,8 +58,12 @@ else:
             await asyncio.gather(watcher, return_exceptions=True)
 
 
+# Observe bounded service responses rather than preempting the canonical 30s
+# deadline with a 5s transport timeout. Native fixture latency reproduced that
+# mismatch on pre/post-optimization code. Timing/cancellation tests retain their
+# independent watchdogs and explicit observer overrides.
 @asynccontextmanager
-async def client(url, token="client-secret", calls=None, timeout=5):
+async def client(url, token="client-secret", calls=None, timeout=AcquisitionOptions.deadline + 5):
     async def observe(request):
         if calls is not None and request.method == "POST":
             data = json.loads(request.content)

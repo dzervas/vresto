@@ -278,9 +278,7 @@ async def test_traversed_pdf_keeps_page_references_and_expands_same_version(tmp_
                 'Version 2 connect_safe requires TLS. Never disable verification.',
                 'Compatibility: legacy mode is not supported.']))
         return web.Response(content_type='text/html', text='<h1>Guide</h1><p>Public technical documentation describes supported behavior and safety constraints.</p><a href="/docs/paper">Paper</a>')
-    # The HTTP observer must outlast the 15s traversal deadline, including
-    # native HTML settling, PDF download and the bounded parser subprocess.
-    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=20) as session:
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
         args = {'urls': [base + '/docs'], 'query': 'connect_safe',
             'traversal': {'origin': base, 'path_prefix': '/docs'}}
         data = body(await session.call_tool('fetch', args))

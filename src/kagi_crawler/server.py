@@ -283,7 +283,9 @@ def main():
                             queue_wait=float(os.environ.get('KAGI_CRAWLER_QUEUE_WAIT_SECONDS', '10')),
                             queue_capacity=int(os.environ.get('KAGI_CRAWLER_QUEUE_CAPACITY', '8')),
                             expansion_actions=int(os.environ.get('KAGI_CRAWLER_EXPANSION_ACTIONS', '8')),
-                            expansion_timeout=float(os.environ.get('KAGI_CRAWLER_EXPANSION_SECONDS', '2'))))
+                            # Ordinary launch shares the canonical acquisition default.
+                            expansion_timeout=float(os.environ.get('KAGI_CRAWLER_EXPANSION_SECONDS',
+                                                                   str(AcquisitionOptions.expansion_timeout)))))
     # Bound graceful HTTP shutdown, including idle SDK SSE sessions; lifespan
     # then cancels MCP work and reaps remaining CLI process groups.
     uvicorn.run(create_app(settings), host=args.host, port=args.port, access_log=False,
