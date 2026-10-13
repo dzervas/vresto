@@ -200,7 +200,9 @@ prove absence of an answer. Full text, expansion and original sources support re
 | Waiting queue | 8 | `KAGI_CRAWLER_QUEUE_CAPACITY`: 1–32; excess is `queue_full` |
 | Queue wait | 10 s | `KAGI_CRAWLER_QUEUE_WAIT_SECONDS`: 0.01–30 s; `queue_timeout` or request timeout |
 | Browser work-idle teardown | 1 hour | Fixed; never interrupts active acquisition; any MCP request warms an absent browser |
-| Browser navigation duration | 10 s | Fixed navigation/network-idle wait, also request deadline |
+| Browser navigation / acquisition duration | 10 s / 20 s | Navigation stays bounded; acquisition includes rendering, expansion and conversion, also the shared request deadline |
+| Initial rendering settle | 1 s idle attempt / 3 s pending-load window | Best-effort network idle, then 400 ms quiet DOM; bounded native fetch/XHR settling, explicit partial coverage if still pending |
+| In-page expansion | 8 actions / 10 s | Native read-only controls and lazy scroll; 400 ms quiet DOM after post-action native fetch/XHR; original acquisition deadline and document limits also apply |
 | Rendered DOM | 10 MiB | Conservative DOM-size estimate (including script/style text) and serialized rendered HTML input; may reject HTML smaller than 10 MiB because of estimation overhead |
 | Post-acquisition document | 2 MiB | Normalized Markdown and downloaded PDF parser input; **not** streamed wire, decompression, header or aggregate native-resource containment |
 | Native resource memory/disk/traffic | Operator enforced | Browser allocations and downloaded resources can exceed document limits before checking |
@@ -208,6 +210,22 @@ prove absence of an answer. Full text, expansion and original sources support re
 | Persistent canonical cache | 256 MiB / 7 days | `KAGI_CRAWLER_CACHE_CAP_BYTES`: 1 KiB–1 GiB; `KAGI_CRAWLER_CACHE_RETENTION_SECONDS`: 0.01 s–30 days |
 | Ordinary freshness | 1 hour | MCP `max_age_seconds`: 0–30 days |
 | Opt-in traversal | 5 pages / depth 1 / 15 s | MCP `traversal`: pages 1–20, depth 0–3, time >0–30 s, frontier 1–128 (default 32), aggregate bytes 1 KiB–32 MiB (default 8 MiB) |
+
+Acquisition opens native `details` and supported read-only in-page text/discussion
+controls in the same ephemeral context. Button labels alone never authorize a
+click: controls need explicit ARIA content association, or a heading-labelled
+public discussion/activity list with existing attributed entries and a contained
+remaining-item count heading referenced by the button. Forms, links and account
+actions remain unsupported. Exact identified repeats are suppressed only when
+their contents match; differing authors, code and qualifications remain ordered.
+Native initial and post-action fetch/XHR are observed, not intercepted; unrelated
+persistent resources can exhaust settling bounds. `coverage.initial_render`
+discloses idle/quiet/pending-load state, and coverage is always non-exhaustive.
+Unsupported controls, no progress and action/duration/content bounds disclose
+partial coverage; cached canonical versions retain that metadata. The public
+CPython issue smoke needed roughly 2.4–7.8 s after one continuation click, which
+motivates the 10 s expansion / 20 s acquisition caps rather than a 2 s allowance.
+These are bounded retrieval, not exhaustive discussion or arbitrary automation.
 
 Traversal requires one URL plus explicit exact `origin` and `path_prefix`; no
 subdomain escape, unrestricted fanout or exhaustive-crawl promise. Attempt/page
@@ -299,7 +317,7 @@ start a daemon or request root just to bypass this gate.
 
 The initial implementation had no authorized live Kagi/Exa comparison. A later
 paired evaluation covered the previous interception-based server, not this
-native-networking revision. The current public Python-docs smoke does not replace
+native-networking revision. The public Python-docs and opt-in CPython discussion HTTP MCP smokes do not replace
 that comparison; repeat it after deploying this revision.
 For authorized evaluation, curate JSON cases with `category`, `url`, `query`, and
 literal `expected` strings across technical docs, identifiers, qualifications,
