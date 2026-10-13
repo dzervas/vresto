@@ -1,6 +1,8 @@
 """Deterministic passage quality at the public HTTP MCP seam, not live Exa parity."""
 import json
 
+import pytest
+
 from aiohttp import web
 from test_fetch import site
 from test_http import running, client, body, cli_response
@@ -108,10 +110,11 @@ async def test_unrelated_parent_warning_does_not_scope_every_child_passage(tmp_p
         assert len(quote['text']) < 1200
 
 
-async def test_long_scoped_section_never_detaches_its_release_heading(tmp_path):
+@pytest.mark.parametrize('heading', ['Python 3.12 only', '<a href="https://docs.python.org/3.12/release" title="Release scope">Python 3.12 only</a>'])
+async def test_long_scoped_section_never_detaches_its_release_heading(tmp_path, heading):
     async def handler(request):
         return web.Response(content_type='text/html', text=(
-            '<h2>Python 3.12 only</h2><p>Reference for this release.</p>' +
+            '<h2>' + heading + '</h2><p>Reference for this release.</p>' +
             ''.join('<p>' + f'Release background {i}. ' * 20 + '</p>' for i in range(8)) +
             '<p>' + CAVEAT + '</p>'))
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
@@ -148,3 +151,103 @@ async def test_window_evidence_survives_refresh_restart_and_reports_eviction(tmp
         async with running(tmp_path, acquisition_options=options, cache_cap_bytes=1024) as (url, _), client(url) as session:
             evicted = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert evicted['error']['code'] == 'evidence_unavailable'
+
+
+async def test_linked_documentation_headings_do_not_turn_url_versions_into_release_scopes(tmp_path):
+    async def handler(request):
+        html = documentation().replace('Asyncio reference</h1>',
+            '<a title="Link to this heading" href="https://docs.python.org/3.12/library/asyncio-task.html">Asyncio reference</a></h1>')
+        html = html.replace('Task Object</h2>',
+            '<a title="Link to this heading" href="https://docs.python.org/3.12/library/asyncio-task.html#task-object">Task Object</a></h2>')
+        return web.Response(content_type='text/html', text=html)
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
+            source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Asyncio', 'rank': 1}]}))) as (url, _), client(url, timeout=60) as session:
+        full = body(await session.call_tool('fetch', {'urls': [base], 'response_budget_bytes': 262144}))['sources'][0]
+        for tool, arguments, key in [('fetch', {'urls': [base], 'freshness': 'cache_only'}, 'sources'),
+                                     ('search', {'num_results': 1}, 'results')]:
+            result = await session.call_tool(tool, {**arguments, 'query': QUERY, 'response_budget_bytes': 65536})
+            source = body(result)[key][0]
+            assert source['highlights'], source
+            assert any(CAVEAT in h['text'] for h in source['highlights'])
+            for h in source['highlights']:
+                assert len(h['text']) < 8000
+                assert 'Task Object' in h['section']
+                assert h['text'] == full['content'][h['start']:h['end']]
+
+
+@pytest.mark.parametrize('heading', ['Warning', '<a href="https://docs.python.org/3.12/warning" title="Link to this heading">Warning</a>'])
+async def test_every_citable_claim_keeps_its_attached_warning(tmp_path, heading):
+    claim = 'TaskGroup cancellation propagates CancelledError to unfinished tasks.'
+    warning = 'Do not swallow CancelledError; if suppressing it, also call uncancel.'
+    async def handler(request):
+        background = ''.join('<p>' + f'Background topic {i}. ' * 30 + '</p>' for i in range(12))
+        return web.Response(content_type='text/html', text=(
+            '<h1>Task reference</h1>' + background + '<p>' + claim + ' Sibling tasks receive the cancellation signal.' * 12 + '</p>' +
+            '<h2>' + heading + '</h2><p>' + 'Important qualification for the preceding claim. ' * 30 + '</p><p>' + warning + '</p><p>' +
+            'This qualification applies to the preceding cancellation claim. ' * 8 + '</p>' +
+            '<h2>Other APIs</h2><p>Unrelated reference.</p>'))
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
+            source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Tasks', 'rank': 1}]}))) as (url, _), client(url, timeout=60) as session:
+        for tool, arguments, key in [('fetch', {'urls': [base]}, 'sources'), ('search', {'num_results': 1}, 'results')]:
+            source = body(await session.call_tool(tool, {**arguments, 'query': QUERY}))[key][0]
+            claims = [h for h in source['highlights'] if claim in h['text']]
+            assert claims
+            assert all(warning in h['text'] for h in claims)
+            full = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+            for h in claims:
+                assert len(h['text']) < 5000
+                assert h['text'] == full['content'][h['start']:h['end']]
+
+
+async def test_shorter_fence_marker_cannot_expose_a_code_heading_as_a_section(tmp_path):
+    async def handler(request):
+        return web.Response(content_type='text/html', text=(
+            '<h1>Code reference</h1><p>Example follows.</p><p>````python<br>'
+            'sample = 1<br>```<br># Misleading section<br>fence_probe = 2<br>````<br></p>'
+            '<h1>Other APIs</h1><p>Unrelated reference.</p>'))
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        full = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
+        assert '````python\nsample = 1\n```\n# Misleading section' in full['content'].replace('  \n', '\n')
+        selected = body(await session.call_tool('fetch', {'urls': [base], 'query': 'fence_probe', 'freshness': 'cache_only'}))['sources'][0]
+        assert selected['highlights']
+        for h in selected['highlights']:
+            assert h['section'] == 'Code reference'
+            assert '````python' in h['text']
+            assert h['text'] == full['content'][h['start']:h['end']]
+
+
+async def test_scoped_reference_windows_do_not_crowd_out_compact_cancellation_caveat(tmp_path):
+    qualified_caveat = CAVEAT.replace('TaskGroup', 'asyncio.TaskGroup').replace('CancelledError', 'asyncio.CancelledError')
+    async def handler(request):
+        reference = ''.join('<p>' + f'Operation {i}: cancellation raises CancelledError; uncancel handles state. ' +
+                            'Ordinary reference details. ' * 16 + '</p>' for i in range(30))
+        return web.Response(content_type='text/html', text=(
+            '<h1>API reference</h1><h2>Task Cancellation</h2><p>' +
+            'Cancellation reference details. ' * 50 + '</p><p>' + qualified_caveat + '</p>' +
+            '<h2>Task Object</h2><p>This object is not thread-safe.</p>' + reference +
+            '<p>TaskGroup uses these operations internally.</p>'))
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
+            source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Tasks', 'rank': 1}]}))) as (url, _), client(url, timeout=60) as session:
+        for tool, arguments, key in [('fetch', {'urls': [base]}, 'sources'), ('search', {'num_results': 1}, 'results')]:
+            source = body(await session.call_tool(tool, {**arguments, 'query': QUERY, 'response_budget_bytes': 65536}))[key][0]
+            assert any(qualified_caveat in h['text'] for h in source['highlights'])
+            full = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+            for h in source['highlights']:
+                assert h['text'] == full['content'][h['start']:h['end']]
+                if h['section'] == 'Task Object':
+                    assert 'not thread-safe' in h['text']
+
+
+async def test_bare_identifier_query_matches_qualified_names_without_dropping_qualification(tmp_path):
+    async def handler(request):
+        return web.Response(content_type='text/html', text=(
+            '<h1>Cancellation</h1><p>asyncio.TaskGroup uses asyncio.CancelledError for cancellation.</p>'
+            '<p>Do not swallow asyncio.CancelledError; also call Task.uncancel when suppressing it.</p>'
+            '<h1>Other APIs</h1><p>other.TaskGroup performs unrelated storage operations.</p>'))
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'query': 'CancelledError'}))['sources'][0]
+        assert source['highlights']
+        assert all('Do not swallow asyncio.CancelledError' in h['text'] for h in source['highlights'])
+        qualified = body(await session.call_tool('fetch', {'urls': [base], 'query': 'asyncio.TaskGroup', 'freshness': 'cache_only'}))['sources'][0]
+        assert qualified['highlights']
+        assert all('other.TaskGroup' not in h['text'] for h in qualified['highlights'])

@@ -20,7 +20,7 @@ from crawl4ai import CrawlerRunConfig
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from .transport import FetchError
-from .content_expansion import expand_content
+from .content_expansion import DOM_WITHIN_LIMIT, expand_content
 from .normalization import main_content_html
 
 _DRIVER_START_LOCK = asyncio.Lock()
@@ -257,6 +257,7 @@ class Browser:
                     raise
                 response = navigation_response
             latest = lambda: navigation_response or response
+            coverage = None
             while True:
                 response = await self._settled_response(page, latest, state)
                 mime = response.headers.get('content-type', '').split(';')[0].lower()
@@ -270,24 +271,18 @@ class Browser:
                         return {'url': response.url, 'pdf': data}
                     raise FetchError('unsupported_format')
                 await page.wait_for_load_state('networkidle', timeout=options.request_timeout * 1000)
+                if await self._settled_response(page, latest, state) is not response:
+                    continue
+                if coverage is None:
+                    # Reserve serialization/cleanup time. Page-controlled native
+                    # expansion can replace the document: validate it again,
+                    # including challenge continuation, HTTP errors and downloads,
+                    # under the original deadline without expanding it again.
+                    coverage = await expand_content(page, options, deadline=state['deadline'] - 0.15)
                 if await self._settled_response(page, latest, state) is response:
                     break
-            # Reserve bounded serialization/conversion/context cleanup time;
-            # optional expansion must not consume the entire useful fetch.
-            coverage = await expand_content(page, options, deadline=state['deadline'] - 0.15)
             # Bound DOM serialization, not browser allocations/resource traffic.
-            within = await page.evaluate('''limit => {
-                let total = 0, count = 0;
-                const walk = document.createTreeWalker(document, NodeFilter.SHOW_ALL);
-                while (walk.nextNode()) {
-                    const node = walk.currentNode;
-                    if (++count > 50000) return false;
-                    total += 32 + (node.nodeValue || '').length * 6;
-                    for (const attr of node.attributes || []) total += (attr.name.length + attr.value.length) * 6 + 8;
-                    if (total > limit) return false;
-                }
-                return true;
-            }''', options.dom_bytes)
+            within = await page.evaluate(DOM_WITHIN_LIMIT, options.dom_bytes)
             if not within:
                 raise FetchError('resource_limit')
             html = await page.content()
