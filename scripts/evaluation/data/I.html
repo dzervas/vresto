@@ -1,0 +1,9 @@
+<title>Cancellation discussion</title>
+        <main><h1>TaskGroup cancellation</h1><details ontoggle="if(this.open && !this.dataset.loaded) { this.dataset.loaded='1'; this.insertAdjacentHTML('beforeend', '<p>Native expanded cancellation caveat.</p>'); }"><summary>Technical caveat</summary>
+        <p>Warning: uncancel does not restore cancelled work.</p><pre><code>TaskGroup._abort()</code></pre></details>
+        <section id="comments"><article data-comment-id="one"><h2>Alice</h2><p>Initial discussion.</p></article></section>
+        <button type="button" aria-controls="comments" onclick="load()">Load more comments</button>
+        <script>function load() { document.querySelector('#comments').insertAdjacentHTML('beforeend',
+        '<article data-comment-id="one"><h2>Alice</h2><p>Initial discussion.</p></article>' +
+        '<article data-comment-id="two"><h2>Bob</h2><p>cancel_called is not reliable before version 3.13.</p></article>');
+        document.querySelector('button').remove(); }</script></main>

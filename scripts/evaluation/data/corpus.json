@@ -1,0 +1,1564 @@
+{
+  "schema_version": 1,
+  "baseline_revision": "c7f1cbca",
+  "fixture_manifest": [
+    {
+      "id": "A",
+      "fixture": "tests/test_passage_specificity.py:test_documentation_fetch_returns_compact_qualified_canonical_passages_at_64k",
+      "parameters": {},
+      "request_path": "/",
+      "html_sha256": "7158b511de500fa67a26982bd7f49132bc85470ea6029994b705fced83be1495"
+    },
+    {
+      "id": "B",
+      "fixture": "tests/test_passage_specificity.py:test_bare_identifier_query_matches_qualified_names_without_dropping_qualification",
+      "parameters": {},
+      "request_path": "/",
+      "html_sha256": "c9ae595d3dfab92432d258ddd6cbbf344fdc164c54db1eb12cc89f521d348bc3"
+    },
+    {
+      "id": "C",
+      "fixture": "tests/test_passage_specificity.py:test_attached_warning_qualifies_claims_across_intervening_explanation",
+      "parameters": {
+        "explanation": "Cleanup scheduling details. "
+      },
+      "request_path": "/",
+      "html_sha256": "0d22e8fe532e1d882747c6df5af64d0c10b4696c460c9bf39a8233ca064ec617"
+    },
+    {
+      "id": "D",
+      "fixture": "tests/test_evidence.py:test_numeric_version_ancestry_survives_selection_ids_and_atomic_budget",
+      "parameters": {
+        "heading": "2.4.1-rc.2"
+      },
+      "request_path": "/",
+      "html_sha256": "10b0fa97d50d97c5a68363c522db578ebda3cdaac2d42dafe1f857e1f74a575c"
+    },
+    {
+      "id": "E",
+      "fixture": "tests/test_main_content.py:test_documentation_budget_spent_on_technical_content_not_navigation",
+      "parameters": {},
+      "request_path": "/",
+      "html_sha256": "3200cb3da0a42ca47e39aae0367541ad4cdbc297b30e00747e0c4d138eb82a68"
+    },
+    {
+      "id": "F",
+      "fixture": "tests/test_main_content.py:test_discussion_preserves_answers_timeline_and_removes_repeated_controls",
+      "parameters": {
+        "kind": "question_answer"
+      },
+      "request_path": "/",
+      "html_sha256": "398d14509531e19fb43ec22de27f6189e5025526ba2ccf79181ace01a3618eb2"
+    },
+    {
+      "id": "G",
+      "fixture": "tests/test_main_content.py:test_heading_poor_page_falls_back_without_erasing_uncertain_qualifications",
+      "parameters": {},
+      "request_path": "/",
+      "html_sha256": "2756a0a1c6ddde95bde1db848be56327ea11ab2ab19247316074b2e0ec3a31f8"
+    },
+    {
+      "id": "H",
+      "fixture": "tests/test_evidence.py:test_default_search_acquires_ten_and_returns_verbatim_qualified_evidence",
+      "parameters": {
+        "visited": []
+      },
+      "request_path": "/1",
+      "html_sha256": "c6f84f244dc25d9c291a668900a9deb7c3e45e4ee3f3adef4d21fd2d25ef2596"
+    },
+    {
+      "id": "I",
+      "fixture": "tests/test_content_expansion.py:test_fetch_expands_collapsed_text_and_lazy_discussion_then_search_reuses_it",
+      "parameters": {},
+      "request_path": "/",
+      "html_sha256": "f612876ad290024ff9829cdf6aa6f42ca17cd05ca4ad3c9f2b5c2299cfd0316b"
+    },
+    {
+      "id": "J",
+      "fixture": "tests/test_evidence.py:test_query_selection_reuses_canonical_versions_and_discloses_absence",
+      "parameters": {
+        "visits": [],
+        "version": "2.4"
+      },
+      "request_path": "/",
+      "html_sha256": "88d2e687b36796638220e506e5458786a923d45206d5db57a1ff33ecd6a28cda"
+    },
+    {
+      "id": "K1",
+      "fixture": "tests/test_evidence.py:test_exact_document_duplicates_keep_attribution_but_different_qualifications_survive",
+      "parameters": {},
+      "request_path": "/one",
+      "html_sha256": "82da7576162d7c9074c7c904dcff1c8e09bd8db66c8794ea53802d63788e6be8"
+    },
+    {
+      "id": "K2",
+      "fixture": "tests/test_evidence.py:test_exact_document_duplicates_keep_attribution_but_different_qualifications_survive",
+      "parameters": {},
+      "request_path": "/two",
+      "html_sha256": "82da7576162d7c9074c7c904dcff1c8e09bd8db66c8794ea53802d63788e6be8"
+    },
+    {
+      "id": "K3",
+      "fixture": "tests/test_evidence.py:test_exact_document_duplicates_keep_attribution_but_different_qualifications_survive",
+      "parameters": {},
+      "request_path": "/qualified",
+      "html_sha256": "cf0002e792848395a0de982a250e731f78774f3220e262f25cb3fd5793dac730"
+    },
+    {
+      "id": "L",
+      "fixture": "scripts/evaluation/data/L.html:predeclared neutral ranking-discrimination fixture",
+      "parameters": {},
+      "request_path": "/L",
+      "html_sha256": "e7dc2d0179188d07e9bea3a4ef0a4507062e38cdce9bb23cf274e856fa0c1cab"
+    }
+  ],
+  "documents": {
+    "A": {
+      "requested_url": "http://127.0.0.1:45329/A",
+      "resolved_url": "http://127.0.0.1:45329/A",
+      "title": "",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:38:56.455699+00:00",
+      "cache_state": "miss",
+      "content_version": "7251e2ad2fa6e1f08841b49621cf748a6176b3344267e746cf158fd2917fa0d8",
+      "content_mode": "full_text",
+      "content": "# Asyncio reference\n## Task Object\nBackground topic 0: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 1: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 2: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 3: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 4: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 5: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 6: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 7: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 8: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 9: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 10: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 11: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 12: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 13: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 14: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 15: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 16: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 17: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 18: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 19: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 20: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 21: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 22: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 23: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 24: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 25: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 26: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 27: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 28: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 29: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nTaskGroup cancellation propagates to unfinished tasks.\nTaskGroup uses cancellation internally. Do not swallow CancelledError: if suppressing it is truly desired, also call uncancel to remove cancellation state.\nChanged in version 3.12: this warning applies to the documented release.\nBackground topic 0: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 1: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 2: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 3: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 4: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 5: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 6: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 7: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 8: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 9: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 10: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 11: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 12: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 13: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 14: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 15: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 16: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 17: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 18: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 19: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 20: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 21: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 22: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 23: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 24: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 25: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 26: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 27: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 28: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \nBackground topic 29: unrelated scheduler implementation details. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. Ordinary scheduling reference material. \n## Other APIs\nStorage reference.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 1,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "no_progress",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "B": {
+      "requested_url": "http://127.0.0.1:45329/B",
+      "resolved_url": "http://127.0.0.1:45329/B",
+      "title": "",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:38:57.708457+00:00",
+      "cache_state": "miss",
+      "content_version": "351adb103a260b63534635bd1a8dd19a87d7fed306c43bbdcf810c2c6a313096",
+      "content_mode": "full_text",
+      "content": "# Cancellation\nasyncio.TaskGroup uses asyncio.CancelledError for cancellation.\nDo not swallow asyncio.CancelledError; also call Task.uncancel when suppressing it.\n# Other APIs\nother.TaskGroup performs unrelated storage operations.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 0,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "C": {
+      "requested_url": "http://127.0.0.1:45329/C",
+      "resolved_url": "http://127.0.0.1:45329/C",
+      "title": "",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:38:59.513841+00:00",
+      "cache_state": "miss",
+      "content_version": "775b35c61343ab27ca4dd413db189b829edff4e4468ee7bb545dbe8093171ee4",
+      "content_mode": "full_text",
+      "content": "# TaskGroup\nBackground scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. \nBackground scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. \nBackground scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. \nBackground scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. Background scheduling. \nTaskGroup cancellation propagates to unfinished tasks. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. TaskGroup cancellation mechanics. \nCleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. Cleanup scheduling details. \n## Warning\nDo not swallow CancelledError; if suppression is desired also call uncancel.\nOther scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. Other scheduling details. \n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 1,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "no_progress",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "D": {
+      "requested_url": "http://127.0.0.1:45329/D",
+      "resolved_url": "http://127.0.0.1:45329/D",
+      "title": "",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:01.320345+00:00",
+      "cache_state": "miss",
+      "content_version": "cc3bbb71ac6f10a48f6e04ea6ee4a62c91bfa61ad18feebbed43ed4d8e2bea17",
+      "content_mode": "full_text",
+      "content": "# 2.4.1-rc.2\nRelease reference for client behavior.\n## Linux only\nNever use this interface on unsupported platforms.\n### Background\nDetailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. Detailed background context. \n### connect_safe\nconnect_safe enables transactions.\n#### Warning\nDo not disable validation.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 1,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "no_progress",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "E": {
+      "requested_url": "http://127.0.0.1:45329/E",
+      "resolved_url": "http://127.0.0.1:45329/E",
+      "title": "Reference",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:03.119625+00:00",
+      "cache_state": "miss",
+      "content_version": "050e8b7c2a5fe4501ebb6491d0916464b58cde3044796c2ebba3b19aa21ee6e2",
+      "content_mode": "full_text",
+      "content": "# connect_safe reference\nOnly version 2.4 supports connect_safe. Warning: do not enable retries in version 2.3.\n\n```\ndef connect_safe():\n    return \"safe\"\n```\n  \n| Option  | Default  |  \n| --- | --- |  \n| retry  | 0  |  \nSee note [1](http://127.0.0.1:45329/E#note).\nVersion constraint: this does not apply to Windows.\n1. Do not use connect_safe with unsupported transports.\nCopyright Example Authors. Licensed under Apache-2.0.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 1,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "no_progress",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "F": {
+      "requested_url": "http://127.0.0.1:45329/F",
+      "resolved_url": "http://127.0.0.1:45329/F",
+      "title": "",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:04.303328+00:00",
+      "cache_state": "miss",
+      "content_version": "a4a916b799004b8b8f9791136e0fe91cdcb69f36ebded627b881a5b3551fd0a8",
+      "content_mode": "full_text",
+      "content": "# Why does connect_safe reject retries?\n## Question by Alice\nDoes connect_safe support retries in 2.3?\n## Accepted answer by Bob\nNo. connect_safe requires 2.4; it does not support retries in 2.3.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 0,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "G": {
+      "requested_url": "http://127.0.0.1:45329/G",
+      "resolved_url": "http://127.0.0.1:45329/G",
+      "title": "Compatibility note",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:05.499173+00:00",
+      "cache_state": "miss",
+      "content_version": "e9fce02fc1a3b13e962d439805541e66278b9b230a978a9264383a28778289d9",
+      "content_mode": "full_text",
+      "content": "connect_safe works on version 2.4 only. It does not support retries.\n\n```\nif ready:\n    connect_safe()\n```\n\nWarning: do not deploy on Windows.\n[Platform constraint](http://127.0.0.1:45329/constraint)\n[Technical appendix](http://127.0.0.1:45329/appendix)[Errata](http://127.0.0.1:45329/errata)\nWritten by Carol. Licensed under MIT.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 0,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "H": {
+      "requested_url": "http://127.0.0.1:45329/H",
+      "resolved_url": "http://127.0.0.1:45329/H",
+      "title": "Guide /1",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:06.858954+00:00",
+      "cache_state": "miss",
+      "content_version": "eebaecd526bffa02b5522475b895d5e3bc20625f9e9cde0307ae5021a90841af",
+      "content_mode": "full_text",
+      "content": "# Client /1\n## connect_safe version 2.4\nconnect_safe supports retries in version 2.4 only.\nWarning: do not enable retries on version 2.3; it is not safe.\n\n```\nconnect_safe(retries=0)\n```\n  \n| Version  | Retries  |  \n| --- | --- |  \n| 2.4  | 0  |  \n## Other topic\nUnrelated storage information.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 0,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "I": {
+      "requested_url": "http://127.0.0.1:45329/I",
+      "resolved_url": "http://127.0.0.1:45329/I",
+      "title": "Cancellation discussion",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:09.236148+00:00",
+      "cache_state": "miss",
+      "content_version": "e824d05ad5f4d8d3f96e7c11e793c454e150824c8c5155143c79132dc0963ffb",
+      "content_mode": "full_text",
+      "content": "# TaskGroup cancellation\nTechnical caveat\nWarning: uncancel does not restore cancelled work.\n\n```\nTaskGroup._abort()\n```\n\nNative expanded cancellation caveat.\n## Alice\nInitial discussion.\n## Bob\ncancel_called is not reliable before version 3.13.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 2,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "J": {
+      "requested_url": "http://127.0.0.1:45329/J",
+      "resolved_url": "http://127.0.0.1:45329/J",
+      "title": "",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:10.439014+00:00",
+      "cache_state": "miss",
+      "content_version": "5e18099663286c367e31bc2b2fb188791bf9e1976fd703c95cddcaf535fd8d88",
+      "content_mode": "full_text",
+      "content": "# Technical manual\n## connect_safe\nconnect_safe works in 2.4 only.\n### Warning\nDo not use it on version 2.3.\n## store_atomic\nstore_atomic writes durable storage.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 0,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "K1": {
+      "requested_url": "http://127.0.0.1:45329/K1",
+      "resolved_url": "http://127.0.0.1:45329/K1",
+      "title": "",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:11.646300+00:00",
+      "cache_state": "miss",
+      "content_version": "f5832449ba1fddb07d7b4b738f31be73ee46551e8d8c9ede1fea58fe184d7bf8",
+      "content_mode": "full_text",
+      "content": "# connect_safe\nconnect_safe is safe in 2.3.\nThis technical reference describes supported client behavior and compatibility constraints.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 0,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "K2": {
+      "requested_url": "http://127.0.0.1:45329/K2",
+      "resolved_url": "http://127.0.0.1:45329/K2",
+      "title": "",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:12.828606+00:00",
+      "cache_state": "miss",
+      "content_version": "f5832449ba1fddb07d7b4b738f31be73ee46551e8d8c9ede1fea58fe184d7bf8",
+      "content_mode": "full_text",
+      "content": "# connect_safe\nconnect_safe is safe in 2.3.\nThis technical reference describes supported client behavior and compatibility constraints.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 0,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "K3": {
+      "requested_url": "http://127.0.0.1:45329/K3",
+      "resolved_url": "http://127.0.0.1:45329/K3",
+      "title": "",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:14.030872+00:00",
+      "cache_state": "miss",
+      "content_version": "0822f7df1b86540ce5675800d925d5b046639141dbb59a1d79ac0ad94e22994c",
+      "content_mode": "full_text",
+      "content": "# connect_safe\nconnect_safe is not safe in 2.3.\nThis technical reference describes supported client behavior and compatibility constraints.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 0,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    },
+    "L": {
+      "requested_url": "http://127.0.0.1:45329/L",
+      "resolved_url": "http://127.0.0.1:45329/L",
+      "title": "Storage choice exercise",
+      "document_type": "html",
+      "fetched_at": "2026-10-13T21:39:15.259372+00:00",
+      "cache_state": "miss",
+      "content_version": "7ba7a7d3c6957bbb6ae78115a4162565757d32928aca7bb3f4cb64cdbd5dc16c",
+      "content_mode": "full_text",
+      "content": "# Storage choice exercise\n## Durable writes dashboard\nPower loss alerts in the durable writes dashboard report previous incidents. The dashboard shows charts; it does not commit user records.\n## Durable writes training\nThe power loss training module explains durable writes terminology. It only prints practice worksheets and never stores data.\n## Power loss simulator\nThe durable writes simulator demonstrates power loss visually. It discards all inputs when closed.\n## Durable writes glossary\nDurable writes and power loss are labels in this glossary. This read-only glossary defines words rather than providing a storage operation.\n## Storage operation\nstore_atomic commits each update to stable storage. Committed records survive an unexpected electrical outage. This operation writes records before returning. Do not use store_atomic on network drives.\n",
+      "coverage": {
+        "exhaustive": false,
+        "partial": false,
+        "actions": 0,
+        "policy": "bounded_read_only_in_page_controls",
+        "stop_reason": "settled",
+        "initial_render": {
+          "network_idle": true,
+          "dom_quiet": true,
+          "pending_native_load": false,
+          "partial": false
+        }
+      },
+      "stale": false
+    }
+  },
+  "cases": [
+    {
+      "id": "01",
+      "documents": [
+        "A"
+      ],
+      "query": "TaskGroup cancellation CancelledError uncancel",
+      "tags": [
+        "technical_wording",
+        "warning",
+        "release"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "A",
+          "role": "claim",
+          "anchor": "TaskGroup cancellation propagates to unfinished tasks."
+        },
+        {
+          "document": "A",
+          "role": "qualification",
+          "anchor": "TaskGroup uses cancellation internally. Do not swallow CancelledError: if suppressing it is truly desired, also call uncancel to remove cancellation state."
+        },
+        {
+          "document": "A",
+          "role": "version",
+          "anchor": "Changed in version 3.12: this warning applies to the documented release."
+        }
+      ],
+      "gold": [
+        {
+          "document": "A",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/A",
+          "content_version": "7251e2ad2fa6e1f08841b49621cf748a6176b3344267e746cf158fd2917fa0d8",
+          "start": 44005,
+          "end": 44059,
+          "text": "TaskGroup cancellation propagates to unfinished tasks.",
+          "sha256": "73fe71c88d9aebb5d6f8dde786bac5a24d5ff3f6bda5ad51ee06e22372540d2f"
+        },
+        {
+          "document": "A",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/A",
+          "content_version": "7251e2ad2fa6e1f08841b49621cf748a6176b3344267e746cf158fd2917fa0d8",
+          "start": 44060,
+          "end": 44215,
+          "text": "TaskGroup uses cancellation internally. Do not swallow CancelledError: if suppressing it is truly desired, also call uncancel to remove cancellation state.",
+          "sha256": "407144356cd484a177cca103bd15842be1881ef0b51df821ffaf3f2b89a9fbcb"
+        },
+        {
+          "document": "A",
+          "role": "version",
+          "requested_url": "http://127.0.0.1:45329/A",
+          "content_version": "7251e2ad2fa6e1f08841b49621cf748a6176b3344267e746cf158fd2917fa0d8",
+          "start": 44216,
+          "end": 44288,
+          "text": "Changed in version 3.12: this warning applies to the documented release.",
+          "sha256": "b61058d07b333fce71c9c29990c5370b81287dc3215d0ce9d2aadcd8ef8b4fac"
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "documents": [
+        "L"
+      ],
+      "query": "Which operation provides durable writes during power loss?",
+      "tags": [
+        "ranking_discrimination",
+        "paraphrase",
+        "warning"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "L",
+          "role": "claim",
+          "anchor": "store_atomic commits each update to stable storage."
+        },
+        {
+          "document": "L",
+          "role": "claim",
+          "anchor": "Committed records survive an unexpected electrical outage."
+        },
+        {
+          "document": "L",
+          "role": "qualification",
+          "anchor": "Do not use store_atomic on network drives."
+        }
+      ],
+      "gold": [
+        {
+          "document": "L",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/L",
+          "content_version": "7ba7a7d3c6957bbb6ae78115a4162565757d32928aca7bb3f4cb64cdbd5dc16c",
+          "start": 656,
+          "end": 707,
+          "text": "store_atomic commits each update to stable storage.",
+          "sha256": "f3a9c09d0d2448978aae9c51a8980fcda3ce08c377ba744a718310e7e7ff807c"
+        },
+        {
+          "document": "L",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/L",
+          "content_version": "7ba7a7d3c6957bbb6ae78115a4162565757d32928aca7bb3f4cb64cdbd5dc16c",
+          "start": 708,
+          "end": 766,
+          "text": "Committed records survive an unexpected electrical outage.",
+          "sha256": "fe4d4ee60d8a3b88a5282d1be3f5cb2c613d1a7a119da27f3e830c618da956eb"
+        },
+        {
+          "document": "L",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/L",
+          "content_version": "7ba7a7d3c6957bbb6ae78115a4162565757d32928aca7bb3f4cb64cdbd5dc16c",
+          "start": 815,
+          "end": 857,
+          "text": "Do not use store_atomic on network drives.",
+          "sha256": "9c49aa2bdaaa9ef1d7627601bab870b7e8a4faf82a0de9b408cd1fc87bafc0ab"
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "documents": [
+        "A"
+      ],
+      "query": "Can I ignore an interrupted coroutine?",
+      "tags": [
+        "paraphrase_low_overlap"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "A",
+          "role": "claim",
+          "anchor": "TaskGroup uses cancellation internally. Do not swallow CancelledError: if suppressing it is truly desired, also call uncancel to remove cancellation state."
+        },
+        {
+          "document": "A",
+          "role": "version",
+          "anchor": "Changed in version 3.12: this warning applies to the documented release."
+        }
+      ],
+      "gold": [
+        {
+          "document": "A",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/A",
+          "content_version": "7251e2ad2fa6e1f08841b49621cf748a6176b3344267e746cf158fd2917fa0d8",
+          "start": 44060,
+          "end": 44215,
+          "text": "TaskGroup uses cancellation internally. Do not swallow CancelledError: if suppressing it is truly desired, also call uncancel to remove cancellation state.",
+          "sha256": "407144356cd484a177cca103bd15842be1881ef0b51df821ffaf3f2b89a9fbcb"
+        },
+        {
+          "document": "A",
+          "role": "version",
+          "requested_url": "http://127.0.0.1:45329/A",
+          "content_version": "7251e2ad2fa6e1f08841b49621cf748a6176b3344267e746cf158fd2917fa0d8",
+          "start": 44216,
+          "end": 44288,
+          "text": "Changed in version 3.12: this warning applies to the documented release.",
+          "sha256": "b61058d07b333fce71c9c29990c5370b81287dc3215d0ce9d2aadcd8ef8b4fac"
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "documents": [
+        "B"
+      ],
+      "query": "asyncio.TaskGroup",
+      "tags": [
+        "qualified_identifier"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "B",
+          "role": "claim",
+          "anchor": "asyncio.TaskGroup uses asyncio.CancelledError for cancellation."
+        },
+        {
+          "document": "B",
+          "role": "qualification",
+          "anchor": "Do not swallow asyncio.CancelledError; also call Task.uncancel when suppressing it."
+        }
+      ],
+      "gold": [
+        {
+          "document": "B",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/B",
+          "content_version": "351adb103a260b63534635bd1a8dd19a87d7fed306c43bbdcf810c2c6a313096",
+          "start": 15,
+          "end": 78,
+          "text": "asyncio.TaskGroup uses asyncio.CancelledError for cancellation.",
+          "sha256": "3a4e4575a7c1f4e43ea08447c2880626325b67873c986893e1ca38bb59d34431"
+        },
+        {
+          "document": "B",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/B",
+          "content_version": "351adb103a260b63534635bd1a8dd19a87d7fed306c43bbdcf810c2c6a313096",
+          "start": 79,
+          "end": 162,
+          "text": "Do not swallow asyncio.CancelledError; also call Task.uncancel when suppressing it.",
+          "sha256": "dcd12dafe25a02e90ea492377713a3d7b201b868eff8ac2db9f9fd3b6e0ea6a4"
+        }
+      ]
+    },
+    {
+      "id": "05",
+      "documents": [
+        "C"
+      ],
+      "query": "TaskGroup cancellation",
+      "tags": [
+        "warning_across_explanation",
+        "overflow"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "C",
+          "role": "claim",
+          "anchor": "TaskGroup cancellation propagates to unfinished tasks."
+        },
+        {
+          "document": "C",
+          "role": "qualification",
+          "anchor": "Do not swallow CancelledError; if suppression is desired also call uncancel."
+        }
+      ],
+      "gold": [
+        {
+          "document": "C",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/C",
+          "content_version": "775b35c61343ab27ca4dd413db189b829edff4e4468ee7bb545dbe8093171ee4",
+          "start": 2776,
+          "end": 2830,
+          "text": "TaskGroup cancellation propagates to unfinished tasks.",
+          "sha256": "73fe71c88d9aebb5d6f8dde786bac5a24d5ff3f6bda5ad51ee06e22372540d2f"
+        },
+        {
+          "document": "C",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/C",
+          "content_version": "775b35c61343ab27ca4dd413db189b829edff4e4468ee7bb545dbe8093171ee4",
+          "start": 4364,
+          "end": 4440,
+          "text": "Do not swallow CancelledError; if suppression is desired also call uncancel.",
+          "sha256": "e2d27ceb032d36f9536547236e7d10e170171f490d1ce78f75192a38a9487227"
+        }
+      ]
+    },
+    {
+      "id": "06",
+      "documents": [
+        "D"
+      ],
+      "query": "connect_safe transactions",
+      "tags": [
+        "numeric_release",
+        "platform",
+        "overflow"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "D",
+          "role": "claim",
+          "anchor": "connect_safe enables transactions."
+        },
+        {
+          "document": "D",
+          "role": "qualification",
+          "anchor": "Never use this interface on unsupported platforms."
+        },
+        {
+          "document": "D",
+          "role": "qualification",
+          "anchor": "Do not disable validation."
+        },
+        {
+          "document": "D",
+          "role": "version",
+          "anchor": "2.4.1-rc.2"
+        },
+        {
+          "document": "D",
+          "role": "version",
+          "anchor": "Linux only"
+        }
+      ],
+      "gold": [
+        {
+          "document": "D",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/D",
+          "content_version": "cc3bbb71ac6f10a48f6e04ea6ee4a62c91bfa61ad18feebbed43ed4d8e2bea17",
+          "start": 3050,
+          "end": 3084,
+          "text": "connect_safe enables transactions.",
+          "sha256": "9baeb8c0ad11d70195431a5027855cac974bb84075bc7aa048abfc1425075228"
+        },
+        {
+          "document": "D",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/D",
+          "content_version": "cc3bbb71ac6f10a48f6e04ea6ee4a62c91bfa61ad18feebbed43ed4d8e2bea17",
+          "start": 66,
+          "end": 116,
+          "text": "Never use this interface on unsupported platforms.",
+          "sha256": "409f0e7a0cc75d0ffadbe01da72d07e98b5730818d75e93565a2ba916f3f4dcd"
+        },
+        {
+          "document": "D",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/D",
+          "content_version": "cc3bbb71ac6f10a48f6e04ea6ee4a62c91bfa61ad18feebbed43ed4d8e2bea17",
+          "start": 3098,
+          "end": 3124,
+          "text": "Do not disable validation.",
+          "sha256": "babc01a773b0a1de08e512168dbd26aa6212d1ee54800097bd838afa8a29c11f"
+        },
+        {
+          "document": "D",
+          "role": "version",
+          "requested_url": "http://127.0.0.1:45329/D",
+          "content_version": "cc3bbb71ac6f10a48f6e04ea6ee4a62c91bfa61ad18feebbed43ed4d8e2bea17",
+          "start": 2,
+          "end": 12,
+          "text": "2.4.1-rc.2",
+          "sha256": "918b7ff809bb3b48c726e22941792f31bf46ef095576b06f8181fe633877f20e"
+        },
+        {
+          "document": "D",
+          "role": "version",
+          "requested_url": "http://127.0.0.1:45329/D",
+          "content_version": "cc3bbb71ac6f10a48f6e04ea6ee4a62c91bfa61ad18feebbed43ed4d8e2bea17",
+          "start": 55,
+          "end": 65,
+          "text": "Linux only",
+          "sha256": "5694f6d9833908ace1ab0c5e9d18d7d1f52ee4505315741e722798136ee8e199"
+        }
+      ]
+    },
+    {
+      "id": "07",
+      "documents": [
+        "E"
+      ],
+      "query": "Which versions support connect_safe, and what retry limitation applies?",
+      "tags": [
+        "main_content",
+        "outside_main_qualification"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "E",
+          "role": "claim",
+          "anchor": "Only version 2.4 supports connect_safe."
+        },
+        {
+          "document": "E",
+          "role": "qualification",
+          "anchor": "Warning: do not enable retries in version 2.3."
+        },
+        {
+          "document": "E",
+          "role": "qualification",
+          "anchor": "Version constraint: this does not apply to Windows."
+        },
+        {
+          "document": "E",
+          "role": "qualification",
+          "anchor": "1. Do not use connect_safe with unsupported transports."
+        }
+      ],
+      "gold": [
+        {
+          "document": "E",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/E",
+          "content_version": "050e8b7c2a5fe4501ebb6491d0916464b58cde3044796c2ebba3b19aa21ee6e2",
+          "start": 25,
+          "end": 64,
+          "text": "Only version 2.4 supports connect_safe.",
+          "sha256": "f6c4a9ae60436f01367c76efa3e6f520c863888022615acd91545ff69737a617"
+        },
+        {
+          "document": "E",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/E",
+          "content_version": "050e8b7c2a5fe4501ebb6491d0916464b58cde3044796c2ebba3b19aa21ee6e2",
+          "start": 65,
+          "end": 111,
+          "text": "Warning: do not enable retries in version 2.3.",
+          "sha256": "14ac50ab7907accc89079e4872b8bcba2b2f54f7a5e2e9d55421d11bdd1a2483"
+        },
+        {
+          "document": "E",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/E",
+          "content_version": "050e8b7c2a5fe4501ebb6491d0916464b58cde3044796c2ebba3b19aa21ee6e2",
+          "start": 266,
+          "end": 317,
+          "text": "Version constraint: this does not apply to Windows.",
+          "sha256": "8e4f68d8fd02593263bc1346e4737a04712564b098bffff924d40668e48da5a2"
+        },
+        {
+          "document": "E",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/E",
+          "content_version": "050e8b7c2a5fe4501ebb6491d0916464b58cde3044796c2ebba3b19aa21ee6e2",
+          "start": 318,
+          "end": 373,
+          "text": "1. Do not use connect_safe with unsupported transports.",
+          "sha256": "3c544351097e4d9f01d6eff88e00ed70e3f9da0f1b42056a802d93dcaf1e942a"
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "documents": [
+        "F"
+      ],
+      "query": "Does connect_safe support retries in 2.3?",
+      "tags": [
+        "negative_answer",
+        "attribution"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "F",
+          "role": "claim",
+          "anchor": "No. connect_safe requires 2.4; it does not support retries in 2.3."
+        },
+        {
+          "document": "F",
+          "role": "attribution",
+          "anchor": "Accepted answer by Bob"
+        }
+      ],
+      "gold": [
+        {
+          "document": "F",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/F",
+          "content_version": "a4a916b799004b8b8f9791136e0fe91cdcb69f36ebded627b881a5b3551fd0a8",
+          "start": 129,
+          "end": 195,
+          "text": "No. connect_safe requires 2.4; it does not support retries in 2.3.",
+          "sha256": "37aa02a49add4a2d7a83a8f6c7561041e463a04741f7aacb0df8ca92b96e65a6"
+        },
+        {
+          "document": "F",
+          "role": "attribution",
+          "requested_url": "http://127.0.0.1:45329/F",
+          "content_version": "a4a916b799004b8b8f9791136e0fe91cdcb69f36ebded627b881a5b3551fd0a8",
+          "start": 106,
+          "end": 128,
+          "text": "Accepted answer by Bob",
+          "sha256": "0917bf3254d36416f91c2d7a1e38acda71ec1089fa35ac452dc4bf5564544a4e"
+        }
+      ]
+    },
+    {
+      "id": "09",
+      "documents": [
+        "G"
+      ],
+      "query": "Can connect_safe be deployed on Windows?",
+      "tags": [
+        "heading_poor",
+        "negative_answer"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "G",
+          "role": "claim",
+          "anchor": "Warning: do not deploy on Windows."
+        },
+        {
+          "document": "G",
+          "role": "qualification",
+          "anchor": "connect_safe works on version 2.4 only. It does not support retries."
+        }
+      ],
+      "gold": [
+        {
+          "document": "G",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/G",
+          "content_version": "e9fce02fc1a3b13e962d439805541e66278b9b230a978a9264383a28778289d9",
+          "start": 108,
+          "end": 142,
+          "text": "Warning: do not deploy on Windows.",
+          "sha256": "8c187a1adfc16b572ad86957ee1555c3bd29c14cf9d0f9557b3bb51c60be5b0c"
+        },
+        {
+          "document": "G",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/G",
+          "content_version": "e9fce02fc1a3b13e962d439805541e66278b9b230a978a9264383a28778289d9",
+          "start": 0,
+          "end": 68,
+          "text": "connect_safe works on version 2.4 only. It does not support retries.",
+          "sha256": "7f470ba2b3def7116926de2b402def51a82538e3c152911a28462c5695eae923"
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "documents": [
+        "H"
+      ],
+      "query": "connect_safe(retries=0)",
+      "tags": [
+        "code_identifier",
+        "table",
+        "version_negation"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "H",
+          "role": "claim",
+          "anchor": "connect_safe(retries=0)"
+        },
+        {
+          "document": "H",
+          "role": "qualification",
+          "anchor": "connect_safe supports retries in version 2.4 only."
+        },
+        {
+          "document": "H",
+          "role": "qualification",
+          "anchor": "Warning: do not enable retries on version 2.3; it is not safe."
+        },
+        {
+          "document": "H",
+          "role": "version",
+          "anchor": "connect_safe version 2.4"
+        },
+        {
+          "document": "H",
+          "role": "structural",
+          "anchor": "``` connect_safe(retries=0) ```"
+        },
+        {
+          "document": "H",
+          "role": "structural",
+          "anchor": "| Version | Retries | | --- | --- | | 2.4 | 0 |"
+        }
+      ],
+      "gold": [
+        {
+          "document": "H",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/H",
+          "content_version": "eebaecd526bffa02b5522475b895d5e3bc20625f9e9cde0307ae5021a90841af",
+          "start": 159,
+          "end": 182,
+          "text": "connect_safe(retries=0)",
+          "sha256": "3c83db5fd396b70aae103b91c7ac0597e25242792af3596ab712309c47b3c716"
+        },
+        {
+          "document": "H",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/H",
+          "content_version": "eebaecd526bffa02b5522475b895d5e3bc20625f9e9cde0307ae5021a90841af",
+          "start": 40,
+          "end": 90,
+          "text": "connect_safe supports retries in version 2.4 only.",
+          "sha256": "f7ee2de087338e813508fa6e8933439d66b288651945b57e113333aa543762ae"
+        },
+        {
+          "document": "H",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/H",
+          "content_version": "eebaecd526bffa02b5522475b895d5e3bc20625f9e9cde0307ae5021a90841af",
+          "start": 91,
+          "end": 153,
+          "text": "Warning: do not enable retries on version 2.3; it is not safe.",
+          "sha256": "ec9ff7e8e2c7813187020ef31441568715f6e2a4e54c13fc1ae619ff22f38a5c"
+        },
+        {
+          "document": "H",
+          "role": "version",
+          "requested_url": "http://127.0.0.1:45329/H",
+          "content_version": "eebaecd526bffa02b5522475b895d5e3bc20625f9e9cde0307ae5021a90841af",
+          "start": 15,
+          "end": 39,
+          "text": "connect_safe version 2.4",
+          "sha256": "36294b096291435a0313f5987605d595db2a25485be3743303e3a0a181490c88"
+        },
+        {
+          "document": "H",
+          "role": "structural",
+          "requested_url": "http://127.0.0.1:45329/H",
+          "content_version": "eebaecd526bffa02b5522475b895d5e3bc20625f9e9cde0307ae5021a90841af",
+          "start": 155,
+          "end": 186,
+          "text": "```\nconnect_safe(retries=0)\n```",
+          "sha256": "e468ddc5e10e4f05c35acdafb75ba4e821cf653b5d27a91827c41b4db814f93a"
+        },
+        {
+          "document": "H",
+          "role": "structural",
+          "requested_url": "http://127.0.0.1:45329/H",
+          "content_version": "eebaecd526bffa02b5522475b895d5e3bc20625f9e9cde0307ae5021a90841af",
+          "start": 190,
+          "end": 245,
+          "text": "| Version  | Retries  |  \n| --- | --- |  \n| 2.4  | 0  |",
+          "sha256": "67eae1df1229daccfe53094689820f6f6c265b91e6b014809ff3c19348d0f6ed"
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "documents": [
+        "I"
+      ],
+      "query": "TaskGroup._abort() uncancel",
+      "tags": [
+        "expanded_code",
+        "caveat"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "I",
+          "role": "claim",
+          "anchor": "TaskGroup._abort()"
+        },
+        {
+          "document": "I",
+          "role": "qualification",
+          "anchor": "Warning: uncancel does not restore cancelled work."
+        }
+      ],
+      "gold": [
+        {
+          "document": "I",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/I",
+          "content_version": "e824d05ad5f4d8d3f96e7c11e793c454e150824c8c5155143c79132dc0963ffb",
+          "start": 98,
+          "end": 116,
+          "text": "TaskGroup._abort()",
+          "sha256": "12a94ade0ce661aab00470eb1957891e7cf427d8c992f1c34aa4e6ba689a7c93"
+        },
+        {
+          "document": "I",
+          "role": "qualification",
+          "requested_url": "http://127.0.0.1:45329/I",
+          "content_version": "e824d05ad5f4d8d3f96e7c11e793c454e150824c8c5155143c79132dc0963ffb",
+          "start": 42,
+          "end": 92,
+          "text": "Warning: uncancel does not restore cancelled work.",
+          "sha256": "9b1de11a2bcc7282db8e266ad052103e023f8dfa79f9314407e50bb7f3ebd2ef"
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "documents": [
+        "I"
+      ],
+      "query": "Is cancel_called reliable before version 3.13?",
+      "tags": [
+        "loaded_reply",
+        "negative_answer",
+        "release",
+        "author"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "I",
+          "role": "claim",
+          "anchor": "cancel_called is not reliable before version 3.13."
+        },
+        {
+          "document": "I",
+          "role": "attribution",
+          "anchor": "Bob"
+        }
+      ],
+      "gold": [
+        {
+          "document": "I",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/I",
+          "content_version": "e824d05ad5f4d8d3f96e7c11e793c454e150824c8c5155143c79132dc0963ffb",
+          "start": 195,
+          "end": 245,
+          "text": "cancel_called is not reliable before version 3.13.",
+          "sha256": "0f476f34f5bacb8e5f8b6900221ca526473af46629486996148baf2972f6a3c8"
+        },
+        {
+          "document": "I",
+          "role": "attribution",
+          "requested_url": "http://127.0.0.1:45329/I",
+          "content_version": "e824d05ad5f4d8d3f96e7c11e793c454e150824c8c5155143c79132dc0963ffb",
+          "start": 191,
+          "end": 194,
+          "text": "Bob",
+          "sha256": "cd9fb1e148ccd8442e5aa74904cc73bf6fb54d1d54d333bd596aa9bb4bb4e961"
+        }
+      ]
+    },
+    {
+      "id": "13",
+      "documents": [
+        "K1",
+        "K2",
+        "K3"
+      ],
+      "query": "What do these sources say about connect_safe safety in 2.3?",
+      "tags": [
+        "multiple_sources",
+        "conflicting_qualification",
+        "exact_duplicate"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "K1",
+          "role": "claim",
+          "anchor": "connect_safe is safe in 2.3."
+        },
+        {
+          "document": "K3",
+          "role": "claim",
+          "anchor": "connect_safe is not safe in 2.3."
+        }
+      ],
+      "required_attributed_documents": [
+        "K1",
+        "K2",
+        "K3"
+      ],
+      "gold": [
+        {
+          "document": "K1",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/K1",
+          "content_version": "f5832449ba1fddb07d7b4b738f31be73ee46551e8d8c9ede1fea58fe184d7bf8",
+          "start": 15,
+          "end": 43,
+          "text": "connect_safe is safe in 2.3.",
+          "sha256": "0c086a87f528d4f5e94d0854aaea9f82213e22ffc5a6da0dfa61407680f1b59e"
+        },
+        {
+          "document": "K3",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/K3",
+          "content_version": "0822f7df1b86540ce5675800d925d5b046639141dbb59a1d79ac0ad94e22994c",
+          "start": 15,
+          "end": 47,
+          "text": "connect_safe is not safe in 2.3.",
+          "sha256": "b345df48770012a062f608cb8296ba1ee20591f01bdb5c5c9657bf17d157f29f"
+        }
+      ]
+    },
+    {
+      "id": "14",
+      "documents": [
+        "J"
+      ],
+      "query": "Which operation writes durable storage?",
+      "tags": [
+        "paraphrase",
+        "non_cancellation"
+      ],
+      "answerable": true,
+      "anchors": [
+        {
+          "document": "J",
+          "role": "claim",
+          "anchor": "store_atomic writes durable storage."
+        }
+      ],
+      "gold": [
+        {
+          "document": "J",
+          "role": "claim",
+          "requested_url": "http://127.0.0.1:45329/J",
+          "content_version": "5e18099663286c367e31bc2b2fb188791bf9e1976fd703c95cddcaf535fd8d88",
+          "start": 125,
+          "end": 161,
+          "text": "store_atomic writes durable storage.",
+          "sha256": "d231fd60da2e58765261a397b30892af23edf34820fcf87813d807ccd8a75475"
+        }
+      ]
+    },
+    {
+      "id": "15",
+      "documents": [
+        "A"
+      ],
+      "query": "xyzzymissing",
+      "tags": [
+        "absent_no_overlap"
+      ],
+      "answerable": false,
+      "anchors": [],
+      "gold": []
+    },
+    {
+      "id": "16",
+      "documents": [
+        "A"
+      ],
+      "query": "Does TaskGroup cancellation guarantee rollback of database writes?",
+      "tags": [
+        "absent_with_overlap"
+      ],
+      "answerable": false,
+      "anchors": [],
+      "gold": []
+    }
+  ],
+  "acquisition_limits": {
+    "returned_page_limit": 10,
+    "request_deadline_seconds": 30,
+    "rendered_dom_bytes": 10485760,
+    "post_acquisition_document_bytes": 2097152,
+    "expansion_actions": 8,
+    "expansion_seconds": 10,
+    "native_network_resource_bounds": "operator_memory_disk_egress_limits",
+    "queue_capacity": 8,
+    "queue_wait_seconds": 10,
+    "browser_navigation_seconds": 10,
+    "browser_acquisition_seconds": 20
+  },
+  "production_snapshots": [
+    {
+      "id": "01",
+      "budget": 65536,
+      "production_sha256": "6991ac978e7eb74991db20724d103d6f5cc81e17c443694aaa4ffba0f8599b4c"
+    },
+    {
+      "id": "01",
+      "budget": 16384,
+      "production_sha256": "1fde75953f8f49182d4a55f1f8744873e45d0db3d4cbbbb43448da6342265c63"
+    },
+    {
+      "id": "01",
+      "budget": 4096,
+      "production_sha256": "3ac323c916364a25a0c3c3e1af80b291126ea1bd60443f91f8dc1d7ff3505466"
+    },
+    {
+      "id": "02",
+      "budget": 65536,
+      "production_sha256": "8923a42140f215c258b7eb62fbd4432673f8a80698a9ff4486ebf2de1df71a69"
+    },
+    {
+      "id": "02",
+      "budget": 16384,
+      "production_sha256": "1cece59431c3d2b70a311ecd93ddd886b33ef61ae91d758ab7d552729ed824d5"
+    },
+    {
+      "id": "02",
+      "budget": 4096,
+      "production_sha256": "4d537847a57f3b8f4a6bf2289bbc53d5a599d4f3193418c5b2791faef7684790"
+    },
+    {
+      "id": "03",
+      "budget": 65536,
+      "production_sha256": "ebe0d9c15278b113264d622c158be2ab72a1b6c39bfae40c87c139f3c445c079"
+    },
+    {
+      "id": "03",
+      "budget": 16384,
+      "production_sha256": "7c2425a447c869c015fdd3ebbb20362b62d861562b4036b27d101266c0fca878"
+    },
+    {
+      "id": "03",
+      "budget": 4096,
+      "production_sha256": "0f14be141fb698553196a425ef151e66169ccd2a0aa0900556e7b8f1cdacdec6"
+    },
+    {
+      "id": "04",
+      "budget": 65536,
+      "production_sha256": "7a0dc499981239848736b09bc9ecf5efffa27701e7ebc6be1a37cc82a5aa5137"
+    },
+    {
+      "id": "04",
+      "budget": 16384,
+      "production_sha256": "12cb593dea84c9bc6988bd7e1091009aa1118d31314de595761e6f9fd888d6c8"
+    },
+    {
+      "id": "04",
+      "budget": 4096,
+      "production_sha256": "a589372bc78557eb613d9dc71057354aa24eb2dd12508b027b6904b3b96df897"
+    },
+    {
+      "id": "05",
+      "budget": 65536,
+      "production_sha256": "2355b3607e37a3a3f37da05a7f242a1f5a8d3d85c3e7f7b55d9b8a819e4151bf"
+    },
+    {
+      "id": "05",
+      "budget": 16384,
+      "production_sha256": "17ea9ff83aa6c4d86b8f16ed6de74ee52470400016fe7ec55bd747b87298c2d0"
+    },
+    {
+      "id": "05",
+      "budget": 4096,
+      "production_sha256": "4e2a8d544f58dc8248ab8fe6a38c28abbc31ad48506570b3f026ed1d8436a641"
+    },
+    {
+      "id": "06",
+      "budget": 65536,
+      "production_sha256": "500776da115d2138b4f910f16ce44d99dcecd6dd742aeb4748ebb1740ef0320a"
+    },
+    {
+      "id": "06",
+      "budget": 16384,
+      "production_sha256": "3e23661018ee192507ea1ebf0c72c1cab9868537c20c9f95aa4103f8d15d1f47"
+    },
+    {
+      "id": "06",
+      "budget": 4096,
+      "production_sha256": "d0580cc2d727912d8a89037a36ebbd896f9b52342c4a661afc483b6ad6bfa4cf"
+    },
+    {
+      "id": "07",
+      "budget": 65536,
+      "production_sha256": "4c8ecb337e912361c055b8a8b29b456268d2dd3ade3c9fd9e8c8964957722638"
+    },
+    {
+      "id": "07",
+      "budget": 16384,
+      "production_sha256": "3f7c55dbb8f80a181468641e94d2e7178b342518c8cda42b5849f65718f791a7"
+    },
+    {
+      "id": "07",
+      "budget": 4096,
+      "production_sha256": "376d5cc0aea2ceec520cda06e03cb1d16ed70cafa3edf79e406e5c54d41f6522"
+    },
+    {
+      "id": "08",
+      "budget": 65536,
+      "production_sha256": "d849181e6e9c5b3de6fa0ef232d56d0c0e11f419d98bad14efebeee6c2a414f4"
+    },
+    {
+      "id": "08",
+      "budget": 16384,
+      "production_sha256": "9429e08fb238778b9c9666193eb7d1eb81ad9bdc6b1bcdf9ca772804db1b9406"
+    },
+    {
+      "id": "08",
+      "budget": 4096,
+      "production_sha256": "43bea1b5d875b0e384e55d3682ec530ea7d1758543cebb9d4f4ba3159669c0d2"
+    },
+    {
+      "id": "09",
+      "budget": 65536,
+      "production_sha256": "45a93c3b8787f26378f4555a8028463a99f4e08742da0aaf9903ea37e3cc1eda"
+    },
+    {
+      "id": "09",
+      "budget": 16384,
+      "production_sha256": "f11ac06883cc766447a7b8cdf2920d904f53630514052fda2f8231989d933f77"
+    },
+    {
+      "id": "09",
+      "budget": 4096,
+      "production_sha256": "ddd0db4c8fd1fafee0a8b6dd8c3f380ca97fec5eb934b38ce8b1303f045326ea"
+    },
+    {
+      "id": "10",
+      "budget": 65536,
+      "production_sha256": "a91df023c62d38e04f70b7c795d16bcabfa50590d3220693c19c216b06bc218c"
+    },
+    {
+      "id": "10",
+      "budget": 16384,
+      "production_sha256": "b3841e6cbfe42edd8836fa9ca24486f37bff22640022b2ec217351209536772c"
+    },
+    {
+      "id": "10",
+      "budget": 4096,
+      "production_sha256": "94630d24c9511b05eb49b5d180668fed7bfc0a76352d243207a9a954e971b0f7"
+    },
+    {
+      "id": "11",
+      "budget": 65536,
+      "production_sha256": "6dc9c88cde17a92cafe1330ae5eb8c0b6070843c2b748ff70b5410f08c83332e"
+    },
+    {
+      "id": "11",
+      "budget": 16384,
+      "production_sha256": "8ad39dbd175c37bfe3074f3d394276fde59ab80dd9df1c2d7d549507bba28324"
+    },
+    {
+      "id": "11",
+      "budget": 4096,
+      "production_sha256": "a49c0064aea98d51bb52d66e3ffc5189315ec66b9a36a3ccdd1d0f61cdbd5aa1"
+    },
+    {
+      "id": "12",
+      "budget": 65536,
+      "production_sha256": "33a0da8a063c5ffda215c753d9eb5c001f5a5cde3c364f26b15ad3e4295df708"
+    },
+    {
+      "id": "12",
+      "budget": 16384,
+      "production_sha256": "069feca49fec685c7119127a5146a7b14f4dc357975d605b821682548213f920"
+    },
+    {
+      "id": "12",
+      "budget": 4096,
+      "production_sha256": "bc0343cdaa1f204dd578ac8c32982d6d971606633f3dba837e21d90d8c986832"
+    },
+    {
+      "id": "13",
+      "budget": 65536,
+      "production_sha256": "bfd231eff3701fded2d2273c2b179fd29c7f253e90ec9ce6e23f641c29178937"
+    },
+    {
+      "id": "13",
+      "budget": 16384,
+      "production_sha256": "eb9eaa496db88b5a5f5827c2a7088e7a98022f6dee07db5378e56f743110e781"
+    },
+    {
+      "id": "13",
+      "budget": 4096,
+      "production_sha256": "919cf6dd53d3f65cbf6a061a7350436e8b43e031c33cfa175ab8cf98ce3f9735"
+    },
+    {
+      "id": "14",
+      "budget": 65536,
+      "production_sha256": "1257c01ce975714390d2828a33671e3b4cf9fc505937b7f594022923e0fe1786"
+    },
+    {
+      "id": "14",
+      "budget": 16384,
+      "production_sha256": "981ade81cfd30c0e56bdd85e64c4c62c3653a61a3ce8e79cc18712a2a6e2ca27"
+    },
+    {
+      "id": "14",
+      "budget": 4096,
+      "production_sha256": "512fb3939b5c624f294a091aa2e02f982321fae9f1123ca77bd140f2689e0ffa"
+    },
+    {
+      "id": "15",
+      "budget": 65536,
+      "production_sha256": "ebe0d9c15278b113264d622c158be2ab72a1b6c39bfae40c87c139f3c445c079"
+    },
+    {
+      "id": "15",
+      "budget": 16384,
+      "production_sha256": "7c2425a447c869c015fdd3ebbb20362b62d861562b4036b27d101266c0fca878"
+    },
+    {
+      "id": "15",
+      "budget": 4096,
+      "production_sha256": "0f14be141fb698553196a425ef151e66169ccd2a0aa0900556e7b8f1cdacdec6"
+    },
+    {
+      "id": "16",
+      "budget": 65536,
+      "production_sha256": "6991ac978e7eb74991db20724d103d6f5cc81e17c443694aaa4ffba0f8599b4c"
+    },
+    {
+      "id": "16",
+      "budget": 16384,
+      "production_sha256": "1fde75953f8f49182d4a55f1f8744873e45d0db3d4cbbbb43448da6342265c63"
+    },
+    {
+      "id": "16",
+      "budget": 4096,
+      "production_sha256": "3ac323c916364a25a0c3c3e1af80b291126ea1bd60443f91f8dc1d7ff3505466"
+    }
+  ],
+  "acquisition_seconds": 22.155582662002416,
+  "contracts": {
+    "http_replay_parity": true,
+    "all_ids_expanded": true,
+    "refresh_retained_version": true,
+    "restart_retained_version": true,
+    "eviction_unavailable": true
+  }
+}

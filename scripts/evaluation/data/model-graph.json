@@ -1,0 +1,18 @@
+{
+  "inspector_version": "1.20.1",
+  "ir_version": 7,
+  "producer_name": "pytorch",
+  "producer_version": "2.6.0",
+  "opsets": [
+    {
+      "domain": "",
+      "version": 14
+    }
+  ],
+  "external_tensor_count": 0,
+  "initializers": 41,
+  "nodes": 305,
+  "checker_passed": true,
+  "model_sha256": "0eac39ee56a3edf98d0beee17fa1bb368a5a1d8c8671b5afd6dd71677f8d8496",
+  "inspection_command": "Isolated onnx==1.20.1: onnx.load(path, load_external_data=False); onnx.checker.check_model(model). Inspector is not a worker dependency."
+}

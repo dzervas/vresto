@@ -1,0 +1,97 @@
+[
+  {
+    "id": "A",
+    "fixture": "tests/test_passage_specificity.py:test_documentation_fetch_returns_compact_qualified_canonical_passages_at_64k",
+    "parameters": {},
+    "request_path": "/"
+  },
+  {
+    "id": "B",
+    "fixture": "tests/test_passage_specificity.py:test_bare_identifier_query_matches_qualified_names_without_dropping_qualification",
+    "parameters": {},
+    "request_path": "/"
+  },
+  {
+    "id": "C",
+    "fixture": "tests/test_passage_specificity.py:test_attached_warning_qualifies_claims_across_intervening_explanation",
+    "parameters": {
+      "explanation": "Cleanup scheduling details. "
+    },
+    "request_path": "/"
+  },
+  {
+    "id": "D",
+    "fixture": "tests/test_evidence.py:test_numeric_version_ancestry_survives_selection_ids_and_atomic_budget",
+    "parameters": {
+      "heading": "2.4.1-rc.2"
+    },
+    "request_path": "/"
+  },
+  {
+    "id": "E",
+    "fixture": "tests/test_main_content.py:test_documentation_budget_spent_on_technical_content_not_navigation",
+    "parameters": {},
+    "request_path": "/"
+  },
+  {
+    "id": "F",
+    "fixture": "tests/test_main_content.py:test_discussion_preserves_answers_timeline_and_removes_repeated_controls",
+    "parameters": {
+      "kind": "question_answer"
+    },
+    "request_path": "/"
+  },
+  {
+    "id": "G",
+    "fixture": "tests/test_main_content.py:test_heading_poor_page_falls_back_without_erasing_uncertain_qualifications",
+    "parameters": {},
+    "request_path": "/"
+  },
+  {
+    "id": "H",
+    "fixture": "tests/test_evidence.py:test_default_search_acquires_ten_and_returns_verbatim_qualified_evidence",
+    "parameters": {
+      "visited": []
+    },
+    "request_path": "/1"
+  },
+  {
+    "id": "I",
+    "fixture": "tests/test_content_expansion.py:test_fetch_expands_collapsed_text_and_lazy_discussion_then_search_reuses_it",
+    "parameters": {},
+    "request_path": "/"
+  },
+  {
+    "id": "J",
+    "fixture": "tests/test_evidence.py:test_query_selection_reuses_canonical_versions_and_discloses_absence",
+    "parameters": {
+      "visits": [],
+      "version": "2.4"
+    },
+    "request_path": "/"
+  },
+  {
+    "id": "K1",
+    "fixture": "tests/test_evidence.py:test_exact_document_duplicates_keep_attribution_but_different_qualifications_survive",
+    "parameters": {},
+    "request_path": "/one"
+  },
+  {
+    "id": "K2",
+    "fixture": "tests/test_evidence.py:test_exact_document_duplicates_keep_attribution_but_different_qualifications_survive",
+    "parameters": {},
+    "request_path": "/two"
+  },
+  {
+    "id": "K3",
+    "fixture": "tests/test_evidence.py:test_exact_document_duplicates_keep_attribution_but_different_qualifications_survive",
+    "parameters": {},
+    "request_path": "/qualified"
+  },
+  {
+    "id": "L",
+    "fixture": "scripts/evaluation/data/L.html:predeclared neutral ranking-discrimination fixture",
+    "parameters": {},
+    "request_path": "/L"
+  }
+]

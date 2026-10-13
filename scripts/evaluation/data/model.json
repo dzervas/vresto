@@ -1,0 +1,44 @@
+{
+  "model": "cross-encoder/ms-marco-TinyBERT-L2-v2",
+  "revision": "15192f12d2403ed1fd7c16a8841379096c5d4a9b",
+  "license": "apache-2.0",
+  "license_basis": "primary pinned README declaration; no standalone LICENSE",
+  "files": [
+    {
+      "path": "onnx/model.onnx",
+      "bytes": 17604619,
+      "sha256": "0eac39ee56a3edf98d0beee17fa1bb368a5a1d8c8671b5afd6dd71677f8d8496",
+      "url": "https://huggingface.co/cross-encoder/ms-marco-TinyBERT-L2-v2/resolve/15192f12d2403ed1fd7c16a8841379096c5d4a9b/onnx/model.onnx"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 711396,
+      "sha256": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+      "url": "https://huggingface.co/cross-encoder/ms-marco-TinyBERT-L2-v2/resolve/15192f12d2403ed1fd7c16a8841379096c5d4a9b/tokenizer.json"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 1330,
+      "sha256": "a5c2e5a7b1a29a0702cd28c08a399b5ecc110c263009d17f7e3b415f25905fd8",
+      "url": "https://huggingface.co/cross-encoder/ms-marco-TinyBERT-L2-v2/resolve/15192f12d2403ed1fd7c16a8841379096c5d4a9b/tokenizer_config.json"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "bytes": 732,
+      "sha256": "5aa43c2f985a25296d5a5ce621c2f77376ca8091a47993c492fd5460b895b140",
+      "url": "https://huggingface.co/cross-encoder/ms-marco-TinyBERT-L2-v2/resolve/15192f12d2403ed1fd7c16a8841379096c5d4a9b/special_tokens_map.json"
+    },
+    {
+      "path": "config.json",
+      "bytes": 843,
+      "sha256": "4d7d66d68c4f673e7fb00de749212d9fcbb7c77c4720f6191974289605e204ae",
+      "url": "https://huggingface.co/cross-encoder/ms-marco-TinyBERT-L2-v2/resolve/15192f12d2403ed1fd7c16a8841379096c5d4a9b/config.json"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3570,
+      "sha256": "7592d46e2c330f1c8358e6be4bf2aafa550afb9cb1ef9cd5ab3dc17e12348323",
+      "url": "https://huggingface.co/cross-encoder/ms-marco-TinyBERT-L2-v2/resolve/15192f12d2403ed1fd7c16a8841379096c5d4a9b/README.md"
+    }
+  ]
+}
