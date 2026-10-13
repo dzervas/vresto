@@ -176,9 +176,12 @@ async def test_expansion_does_not_spend_the_remaining_acquisition_deadline(tmp_p
     async def handler(request):
         return web.Response(content_type='text/html', text='''<main><h1>Useful bounded document</h1>
         <section id="comments"><p>Warning: continuation remains unavailable.</p></section>
-        <button type="button" aria-controls="comments">Load more comments</button></main>''')
+        <button type="button" aria-controls="comments"
+          onclick="setInterval(() => document.querySelector('#comments').append(' Still loading.'), 100)">Load more comments</button></main>''')
+    # Leave room for idle plus quiet-DOM observation, but less than the 10s expansion bound.
+    # Post-click timer mutations force the original deadline, not no-progress, to stop expansion.
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options,
-            request_timeout=1)) as (url, _), client(url) as session:
+            request_timeout=2)) as (url, _), client(url) as session:
         source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
         assert 'error' not in source, source
         assert 'Warning: continuation remains unavailable.' in source['content']
@@ -382,3 +385,38 @@ async def test_initial_substantive_fetch_settles_beside_unrelated_persistent_fet
             assert source['coverage']['partial']
         finally:
             finished.set()
+
+
+@pytest.mark.parametrize('keeps_mutating', [False, True])
+async def test_network_idle_timer_rendering_preserves_warning_and_exact_coverage(tmp_path, keeps_mutating):
+    async def handler(request):
+        return web.Response(content_type='text/html', text=f'''<title>Timer qualification</title>
+        <main><h1>Timer qualification</h1><p id="warning">Loading qualification.</p></main>
+        <script>
+        let ticks = 0;
+        const timer = setInterval(() => {{
+            ticks++;
+            document.querySelector('#warning').textContent = ticks < 12
+                ? 'Rendering qualification ' + ticks
+                : 'Warning: timer_cancel remains unsafe before version 3.13. Revision ' + ticks;
+            if (ticks >= 12 && {str(not keeps_mutating).lower()}) clearInterval(timer);
+        }}, 100);
+        </script>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
+        data = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))
+        source = data['sources'][0]
+        assert 'error' not in source, source
+        assert 'Warning: timer_cancel remains unsafe before version 3.13.' in source['content']
+        assert 'Loading qualification.' not in source['content']
+        assert source['coverage'] == {
+            'exhaustive': False, 'partial': keeps_mutating, 'actions': 0,
+            'policy': 'bounded_read_only_in_page_controls',
+            'stop_reason': 'render_settling_limit' if keeps_mutating else 'settled',
+            'initial_render': {'network_idle': True, 'dom_quiet': not keeps_mutating,
+                               'pending_native_load': False, 'partial': keeps_mutating},
+        }
+        assert data['budget']['partial_coverage'] is keeps_mutating
+        cached = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+        assert cached['content'] == source['content']
+        assert cached['content_version'] == source['content_version']
+        assert cached['coverage'] == source['coverage']

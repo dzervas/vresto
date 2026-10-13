@@ -124,7 +124,8 @@ async def test_hidden_challenge_widgets_in_documentation_are_not_blocked(tmp_pat
             <h1>Verify you are human</h1><p>This is a documentation example.</p>
             <form id='challenge-form' style='{style}'><button>Example widget</button></form>''')
     async with site(handler) as (base, options):
-        options = replace(options, request_timeout=1)
+        # Allow both native idle and the independently observed quiet-DOM window.
+        options = replace(options, request_timeout=2)
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
             assert 'error' not in source, source

@@ -201,7 +201,7 @@ prove absence of an answer. Full text, expansion and original sources support re
 | Queue wait | 10 s | `KAGI_CRAWLER_QUEUE_WAIT_SECONDS`: 0.01–30 s; `queue_timeout` or request timeout |
 | Browser work-idle teardown | 1 hour | Fixed; never interrupts active acquisition; any MCP request warms an absent browser |
 | Browser navigation / acquisition duration | 10 s / 20 s | Navigation stays bounded; acquisition includes rendering, expansion and conversion, also the shared request deadline |
-| Initial rendering settle | 1 s idle attempt / 3 s pending-load window | Best-effort network idle, then 400 ms quiet DOM; bounded native fetch/XHR settling, explicit partial coverage if still pending |
+| Initial rendering settle | 1 s idle attempt / 3 s DOM/load window | Best-effort network idle, then always require 400 ms quiet DOM; bounded native fetch/XHR settling, explicit partial coverage if DOM keeps changing or loads remain pending |
 | In-page expansion | 8 actions / 10 s | Native read-only controls and lazy scroll; 400 ms quiet DOM after post-action native fetch/XHR; original acquisition deadline and document limits also apply |
 | Rendered DOM | 10 MiB | Conservative DOM-size estimate (including script/style text) and serialized rendered HTML input; may reject HTML smaller than 10 MiB because of estimation overhead |
 | Post-acquisition document | 2 MiB | Normalized Markdown and downloaded PDF parser input; **not** streamed wire, decompression, header or aggregate native-resource containment |
