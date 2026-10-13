@@ -372,13 +372,18 @@ async def test_queue_capacity_and_wait_are_bounded_across_clients(tmp_path):
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as first, client(url) as second:
             active = asyncio.create_task(first.call_tool('fetch', {'urls': [base]}))
             await asyncio.wait_for(entered.wait(), 3)
-            queued = asyncio.create_task(second.call_tool('fetch', {'urls': [base]}))
-            await asyncio.sleep(0.03)
-            excess = body(await second.call_tool('fetch', {'urls': [base]}))
-            assert excess['sources'][0]['error']['code'] == 'queue_full'
-            assert body(await queued)['sources'][0]['error']['code'] == 'queue_timeout'
-            release.set()
-            assert body(await active)['sources'][0]['error']['code'] == 'fetch_failed'
+            try:
+                # Submit together: a staggered sleep can outlive the 100ms queue
+                # window under load. Which HTTP request wins admission is immaterial.
+                contenders = await asyncio.gather(
+                    first.call_tool('fetch', {'urls': [base]}),
+                    second.call_tool('fetch', {'urls': [base]}))
+                codes = sorted(body(result)['sources'][0]['error']['code'] for result in contenders)
+                assert codes == ['queue_full', 'queue_timeout']
+            finally:
+                release.set()
+                completed = body(await active)
+            assert completed['sources'][0]['error']['code'] == 'fetch_failed'
 
 
 @pytest.mark.parametrize('arguments', [{'urls': []}, {'urls': ['https://example.org'] * 11},
