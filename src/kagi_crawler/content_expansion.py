@@ -137,7 +137,15 @@ async def expand_content(page, options, *, deadline, revalidate):
                 # A spinner or disappearing button is not loaded discussion.
                 # Wait for post-action native fetch/XHR and a quiet visible DOM;
                 # the enclosing duration/content/deadline caps still apply.
-                previous = None
+                # The pre-action text is already an observation. An identical
+                # first poll is not a DOM change: seeding with None added an
+                # artificial 100ms interval to unchanged clicks/scrolls in the
+                # local HTTP profile. Start the full quiet window after the
+                # action; real text changes or pending native loads still reset
+                # it, with the same revalidation and enclosing bounds. Matched
+                # local-only raw timing/RSS, corpus/version/budget checks and
+                # provenance: scripts/performance/hkq-{before,after}.json.
+                previous = before
                 quiet_since = asyncio.get_running_loop().time()
                 while True:
                     await asyncio.sleep(0.1)

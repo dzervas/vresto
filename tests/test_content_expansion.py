@@ -97,6 +97,31 @@ async def test_scroll_retrieves_delayed_public_discussion(tmp_path):
         assert source['coverage']['exhaustive'] is False
 
 
+async def test_unchanged_expansion_uses_known_text_without_an_extra_quiet_interval(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from test_expansion_timing import PhaseClock
+    clock = PhaseClock(real_sleep=True)
+    clock.install(monkeypatch)
+    async def handler(request):
+        return web.Response(content_type='text/html', text='''<main><h1>Stable discussion</h1>
+        <section id="comments"><p>Warning: no available public continuation in Version 2.</p></section>
+        <button type="button" aria-controls="comments">Load more comments</button></main>''')
+    # Public coverage with test-only expansion phase accounting, not an
+    # aggressive wall-time threshold. Real HTTP/browser calls and real 100ms
+    # sleeps remain; native roundtrips/scheduler stalls do not consume the
+    # virtual .49s bound. An artificial first-poll reset needs five intervals
+    # and deterministically exhausts it; the full real 400ms quiet window fits.
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(
+            options, expansion_timeout=.49)) as (url, _), client(url) as session:
+        data = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))
+        source = data['sources'][0]
+        assert source['coverage']['stop_reason'] == 'no_progress'
+        assert source['coverage']['actions'] == 1
+        assert clock.now == .4  # Four real 100ms observations, not early capture.
+        assert source['coverage']['partial'] and data['budget']['partial_coverage']
+        assert 'Warning: no available public continuation in Version 2.' in source['content']
+
+
 async def test_duration_and_no_progress_bounds_keep_initial_document(tmp_path):
     from dataclasses import replace
     async def handler(request):
