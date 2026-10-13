@@ -129,6 +129,28 @@ def expand_evidence(cache, identifiers):
         'budget_policy': 'omit_context_sections_then_whole_sources_preserve_quote_and_reference'}}
 
 
+_QUALIFICATION = re.compile(r'(?i)(warning|caution|note|limitations?|exceptions?|compatibility)\b')
+
+
+def _heading_title(line):
+    match = re.match(r'^#{1,6}\s+(.+?)\s*#*\s*$', line.rstrip())
+    if match:
+        # Scope and reference labels describe visible heading text, not numeric
+        # releases (or qualification words) in destinations/optional link titles.
+        return re.sub(r'\[([^\]]*)\]\(\S+?(?:\s+["\'][^"\']*["\'])?\)', r'\1', match[1])
+    return None
+
+
+def _fence_transition(line, fence):
+    marker = re.match(r'(`{3,}|~{3,})', line.lstrip())
+    if marker:
+        if fence is None:
+            return marker[1]
+        if marker[1][0] == fence[0] and len(marker[1]) >= len(fence):
+            return None
+    return fence
+
+
 def markdown_blocks(text, start, end):
     """Canonical block offsets, including single-newline rendered prose.
 
@@ -140,13 +162,7 @@ def markdown_blocks(text, start, end):
     fence = None
     heading_pending = False
     for line in text[start:end].splitlines(keepends=True):
-        stripped = line.lstrip()
-        marker = re.match(r'(`{3,}|~{3,})', stripped)
-        if marker:
-            if fence is None:
-                fence = marker[1]
-            elif marker[1][0] == fence[0] and len(marker[1]) >= len(fence):
-                fence = None
+        fence = _fence_transition(line, fence)
         if re.match(r'^#{1,6}\s', line):
             heading_pending = True
         elif line.strip():
@@ -175,8 +191,15 @@ def passage_windows(text, start, end):
         yield start, end
         return
     groups = []
+    attached = False
     for a, b in markdown_blocks(text, start, end):
-        if groups and b - groups[-1][0] <= 400:
+        # Qualification headings are part of this section, not new sections.
+        # Keep their entire body with the preceding claim block: no window
+        # containing that claim may stop halfway through its attached warning.
+        title = _heading_title(text[a:b].lstrip().splitlines()[0])
+        if _QUALIFICATION.match(title or ''):
+            attached = True
+        if groups and (attached or b - groups[-1][0] <= 400):
             groups[-1] = (groups[-1][0], b)
         else:
             groups.append((a, b))
@@ -196,17 +219,9 @@ def sections(text):
     offset = 0
     fence = None
     for line in text.splitlines(keepends=True):
-        stripped = line.lstrip()
-        marker = re.match(r'(`{3,}|~{3,})', stripped)
-        if marker:
-            kind = marker[1][0]
-            if fence is None:
-                fence = kind
-            elif fence == kind:
-                fence = None
-        if fence is None and (match := re.match(r'^#{1,6}\s+(.+?)\s*#*\s*$', line.rstrip())):
-            title = match[1]
-            if not re.match(r'(?i)(warning|caution|note|limitations?|exceptions?|compatibility)\b', title):
+        fence = _fence_transition(line, fence)
+        if fence is None and (title := _heading_title(line)) is not None:
+            if not _QUALIFICATION.match(title):
                 boundaries.append((offset, title, len(line) - len(line.lstrip('#'))))
         offset += len(line)
     ancestors = []
@@ -262,7 +277,16 @@ def select_highlights(data, query):
             if quote in seen:
                 continue
             seen.add(quote)
-            passages.append((index, start, end, section, Counter(tokens(quote))))
+            bag = Counter(tokens(quote))
+            # Bare identifier queries also match qualified API names. Retain
+            # the full token, and index only identifier suffixes (not versions).
+            # Query tokens stay exact: asyncio.TaskGroup must not also match
+            # other.TaskGroup just because the final component is shared.
+            for term, frequency in list(bag.items()):
+                parts = term.split('.')
+                if len(parts) > 1 and all(part.isidentifier() for part in parts):
+                    bag[parts[-1]] += frequency
+            passages.append((index, start, end, section, bag))
     terms = set(tokens(query))
     counts = Counter(term for *_, bag in passages for term in bag)
     average = sum(sum(p[4].values()) for p in passages) / max(1, len(passages))

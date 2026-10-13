@@ -49,7 +49,8 @@ _INSPECT = r'''elements => {
     });
     return {action, unsupported};
 }'''
-_SIZE = '''limits => {
+# Shared with final serialization; expansion additionally bounds visible text.
+DOM_WITHIN_LIMIT = '''limit => {
     let size = 0, nodes = 0;
     const walk = document.createTreeWalker(document, NodeFilter.SHOW_ALL);
     while (walk.nextNode()) {
@@ -57,10 +58,12 @@ _SIZE = '''limits => {
         if (++nodes > 50000) return false;
         size += 32 + (node.nodeValue || '').length * 6;
         for (const attr of node.attributes || []) size += (attr.name.length + attr.value.length) * 6 + 8;
-        if (size > limits.dom) return false;
+        if (size > limit) return false;
     }
-    return (document.body?.innerText.length || 0) * 4 <= limits.content;
+    return true;
 }'''
+_SIZE = ('limits => (' + DOM_WITHIN_LIMIT + ')(limits.dom) && '
+         '(document.body?.innerText.length || 0) * 4 <= limits.content')
 # Suppress only identical repeated *identified* discussion items. Different
 # qualifications, authors, code or warnings under the same ID are never removed.
 _DEDUP = '''() => {

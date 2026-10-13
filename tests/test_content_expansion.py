@@ -201,3 +201,42 @@ async def test_duration_bound_still_suppresses_loaded_exact_repeats(tmp_path):
         source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
         assert source['coverage']['stop_reason'] == 'duration_limit'
         assert source['content'].count('Warning: repeated public qualification.') == 1
+
+
+@pytest.mark.parametrize('replacement, expected', [('challenge', 'blocked'), ('error', 'fetch_failed')])
+async def test_expansion_replacement_is_revalidated_and_never_cached_as_evidence(tmp_path, replacement, expected):
+    from dataclasses import replace
+    async def handler(request):
+        if request.path == '/replacement':
+            return web.Response(status=200 if replacement == 'challenge' else 500,
+                headers={'cf-mitigated': 'challenge'} if replacement == 'challenge' else {},
+                content_type='text/html', text='<main><h1>Replacement interstitial</h1><p>Not source evidence.</p></main>')
+        return web.Response(content_type='text/html', text='''<main><h1>Public discussion</h1>
+        <section id="comments"><p>Initial discussion.</p></section>
+        <button type="button" aria-controls="comments" onclick="location.href='/replacement'">Load more comments</button></main>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options,
+            request_timeout=2)) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+        assert source.get('error', {}).get('code') == expected
+        assert 'content' not in source and not source.get('highlights')
+        cached = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+        assert 'error' in cached and 'content' not in cached
+
+
+async def test_successful_expansion_navigation_does_not_restart_action_budget(tmp_path):
+    from dataclasses import replace
+    visits = []
+    async def handler(request):
+        visits.append(request.path)
+        next_path = '/second' if request.path == '/' else '/third'
+        return web.Response(content_type='text/html', text=f'''<main><h1>Discussion {request.path}</h1>
+        <section id="comments"><p>Public replacement discussion.</p></section>
+        <button type="button" aria-controls="comments" onclick="location.href='{next_path}'">Load more comments</button></main>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options,
+            expansion_actions=1)) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
+        assert 'error' not in source
+        assert source['resolved_url'] == base + '/second'
+        assert visits == ['/', '/second']
+        assert source['coverage']['actions'] == 1
+        assert source['coverage']['partial']
