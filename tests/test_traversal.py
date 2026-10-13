@@ -153,20 +153,26 @@ async def test_frontier_and_total_bytes_are_disclosed(tmp_path):
 
 
 async def test_deadline_keeps_partial_sources_and_stops_next_page(tmp_path):
-    seen = []
+    seen, release = [], asyncio.Event()
     async def handler(request):
         seen.append(request.path)
         if request.path == '/docs/slow':
-            await asyncio.sleep(1)
-        return web.Response(content_type='text/html', text='<h1>Guide</h1><p>Public technical documentation with version constraints and useful guidance.</p><a href="/docs/slow">Next</a>')
+            await release.wait()
+        return web.Response(content_type='text/html', text='<h1>Guide</h1><p>Public technical documentation with version constraints and useful guidance.</p><a href="/docs/slow">Next</a><a href="/docs/after">Later</a>')
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
         await session.call_tool('fetch', {'urls': [base + '/docs']})
-        data = body(await session.call_tool('fetch', {'urls': [base + '/docs'],
-            'traversal': {'origin': base, 'path_prefix': '/docs', 'max_seconds': 0.2}}))
-        assert data['sources'][0]['cache_state'] == 'hit'
-        assert data['sources'][1]['error']['code'] == 'fetch_timeout'
-        assert data['traversal']['omissions']['time_limit'] == 1
-        assert seen == ['/docs', '/docs/slow']
+        # Allow native context/page setup, then hold HTTP until the original
+        # traversal deadline expires; rendering speed must not release the page.
+        try:
+            data = body(await asyncio.wait_for(session.call_tool('fetch', {'urls': [base + '/docs'],
+                'traversal': {'origin': base, 'path_prefix': '/docs', 'max_seconds': 2}}), 4))
+            assert [s['requested_url'] for s in data['sources']] == [base + '/docs', base + '/docs/slow']
+            assert data['sources'][0]['cache_state'] == 'hit'
+            assert data['sources'][1]['error']['code'] == 'fetch_timeout'
+            assert data['traversal']['omissions']['time_limit'] == 1
+            assert seen == ['/docs', '/docs/slow']
+        finally:
+            release.set()
 
 
 async def test_traversal_preserves_meaningful_query_and_blank_parameters(tmp_path):
@@ -272,7 +278,9 @@ async def test_traversed_pdf_keeps_page_references_and_expands_same_version(tmp_
                 'Version 2 connect_safe requires TLS. Never disable verification.',
                 'Compatibility: legacy mode is not supported.']))
         return web.Response(content_type='text/html', text='<h1>Guide</h1><p>Public technical documentation describes supported behavior and safety constraints.</p><a href="/docs/paper">Paper</a>')
-    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+    # The HTTP observer must outlast the 15s traversal deadline, including
+    # native HTML settling, PDF download and the bounded parser subprocess.
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=20) as session:
         args = {'urls': [base + '/docs'], 'query': 'connect_safe',
             'traversal': {'origin': base, 'path_prefix': '/docs'}}
         data = body(await session.call_tool('fetch', args))
