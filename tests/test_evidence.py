@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 
+import pytest
 from aiohttp import web
 from test_fetch import site
 from test_http import running, client, body, cli_response
@@ -77,6 +78,32 @@ async def test_query_selection_reuses_canonical_versions_and_discloses_absence(t
         changed = body(await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe', 'freshness': 'refresh'}))['sources'][0]
         assert changed['content_version'] != first['content_version']
         assert changed['highlights'][0]['evidence_id'] != old_id
+
+
+@pytest.mark.parametrize('heading', ['v2.4', '2.4', '2.4.1-rc.2', 'v2026.10'])
+async def test_numeric_version_ancestry_survives_selection_ids_and_atomic_budget(tmp_path, heading):
+    async def handler(request):
+        return web.Response(content_type='text/html', text=f'''<h1>{heading}</h1>
+        <p>Release reference for client behavior.</p>
+        <h2>Linux only</h2><p>Never use this interface on unsupported platforms.</p>
+        <h3>Background</h3><p>{'Detailed background context. ' * 100}</p>
+        <h3>connect_safe</h3><p>connect_safe enables transactions.</p>
+        <h4>Warning</h4><p>Do not disable validation.</p>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        full = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
+        selected = body(await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe'}))['sources'][0]
+        quote = selected['highlights'][0]
+        assert f'# {heading}' in quote['text']
+        assert 'Linux only' in quote['text'] and 'Never use' in quote['text']
+        assert 'Do not disable validation.' in quote['text']
+        assert quote['text'] == full['content'][quote['start']:quote['end']]
+        expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+        assert expanded['highlights'][0]['text'] == quote['text']
+        small = await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe', 'response_budget_bytes': 4096})
+        data = body(small)
+        assert len(small.model_dump_json(exclude_none=True).encode()) <= 4096
+        assert data['budget']['partial_coverage']
+        assert all(not s.get('highlights') for s in data['sources'])
 
 
 async def test_parent_version_scope_is_not_detached_from_matching_child(tmp_path):

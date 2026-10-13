@@ -117,6 +117,9 @@ prove absence of an answer. Full text, expansion and original sources support re
 | Direct URLs / evidence IDs | 1–10 | 10; mutually exclusive forms |
 | Serialized response bytes | 65,536 | 4,096–262,144; MCP `response_budget_bytes` or `KAGI_CRAWLER_RESPONSE_BUDGET_BYTES` |
 | Acquisition request deadline | 30 s | `KAGI_CRAWLER_DEADLINE_SECONDS`: 0.01–120 s, one deadline across composed pages |
+| Discovery concurrency / waiting | 2 / 8 | Fixed independent CLI pool; excess is `discovery_queue_full` |
+| Discovery admission wait / deadline | 10 s / 30 s | Fixed wait (`discovery_queue_timeout`); request deadline includes admission, version check and search (`discovery_timeout`) |
+| CLI stdout + stderr | 1 MiB | Per invocation, at most two concurrent discovery jobs |
 | Browser concurrency | 1 | Fixed serialized acquisition across clients |
 | Waiting queue | 8 | `KAGI_CRAWLER_QUEUE_CAPACITY`: 1–32; excess is `queue_full` |
 | Queue wait | 10 s | `KAGI_CRAWLER_QUEUE_WAIT_SECONDS`: 0.01–30 s; `queue_timeout` or request timeout |
@@ -139,7 +142,14 @@ metadata, **not tokens**, HTTP headers or the JSON-RPC envelope. Highlights reta
 whole qualified passages; full text can be explicitly truncated. Output bounds
 were fixture-measured beside `budget.py`; queue/time/byte limits are conservative
 containment, not inferred Exa parity. Cache sizing measurements are beside
-`server.py`. Serialized cache bytes exclude filesystem overhead.
+`server.py`. Serialized cache bytes exclude filesystem overhead. Discovery uses
+its own bounded pool, never the browser queue; cancellation removes queued work
+and shutdown rejects waiters/reaps process groups. Provisional 2-active/8-waiting
+limits bound retained CLI output to 2 MiB before decoding/parsing (not total RSS).
+The real multi-client MCP fixture observed only two running executable searches,
+eight waiting without spawning, immediate rejection of the eleventh, and all ten
+admitted calls completing after release. Deployment discovery CPU/RSS and live
+provider latency still need measurement; these are not provider-parity limits.
 
 `ordinary` uses sufficiently recent cache and permits labeled stale fallback when
 refresh fails; `refresh` always acquires but allows that fallback; `fresh_only`
@@ -150,6 +160,13 @@ not query-dependent selections. Evidence expansion refers to the **exact retaine
 version**, survives cache-mounted restarts, and never substitutes current text.
 Oldest fetched versions expire/evict within cache bounds (reads do not renew them);
 evicted evidence returns `evidence_unavailable`. This is not a permanent archive.
+HTML highlights retain numeric/version-heading scopes and whole qualifying
+ancestry. Initial PDF highlights include a bounded previous/current/next-page
+window, even when neighboring warnings have no lexical query overlap. Each is
+one contiguous canonical quote with exact page references/ID; an oversized window
+is omitted atomically, never reduced to an unqualified matching page. Expansion
+keeps that quote and adds the next outside pages; full-text page offsets are unchanged.
+This local window is not a guarantee of document-wide qualification coverage.
 PDF support is basic text parsing with page references, not OCR or robust
 scientific/layout reconstruction. Scanned/unsupported files fail honestly.
 

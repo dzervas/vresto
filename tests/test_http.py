@@ -314,3 +314,131 @@ else:
                                                     "order": order, "personalized": True})
         assert not result.isError
         assert body(result)["results"] == []
+
+
+def held_cli(tmp_path):
+    return f'''import json, os, sys, time
+if "--version" in sys.argv:
+    print("kagi 0.22.0")
+else:
+    from pathlib import Path
+    Path({str(tmp_path)!r}, 'pid-' + sys.argv[-1]).write_text(str(os.getpid()))
+    while not Path({str(tmp_path / 'release')!r}).exists():
+        time.sleep(.01)
+    print(json.dumps({{"data": []}}))
+'''
+
+
+async def wait_for_searches(tmp_path, count):
+    async with asyncio.timeout(3):
+        while len(list(tmp_path.glob('pid-*'))) < count:
+            await asyncio.sleep(.01)
+
+
+async def test_discovery_admission_bounds_clients_and_rejects_excess_without_spawn(tmp_path):
+    source = held_cli(tmp_path)
+    async with running(tmp_path, source=source, timeout=3) as (url, _), client(url) as first, client(url) as second:
+        tasks = []
+        try:
+            for i in range(2):
+                tasks.append(asyncio.create_task(first.call_tool('search', {'query': str(i), 'content_mode': 'discovery'})))
+                async with asyncio.timeout(3):
+                    while not (tmp_path / f'pid-{i}').exists():
+                        await asyncio.sleep(.01)
+            for i in range(2, 10):
+                tasks.append(asyncio.create_task(second.call_tool('search', {'query': str(i), 'content_mode': 'discovery'})))
+            await asyncio.sleep(.2)
+            excess = await first.call_tool('search', {'query': 'excess', 'content_mode': 'discovery'})
+            assert body(excess)['error']['code'] == 'discovery_queue_full'
+            assert len(list(tmp_path.glob('pid-*'))) == 2
+            assert 'stderr' not in excess.model_dump_json()
+            (tmp_path / 'release').touch()
+            results = await asyncio.gather(*tasks)
+            assert all(not r.isError for r in results)
+            assert len(list(tmp_path.glob('pid-*'))) == 10
+        finally:
+            (tmp_path / 'release').touch()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.parametrize('timeout,code', [(0.8, 'discovery_timeout'), (20, 'discovery_queue_timeout')])
+async def test_discovery_wait_has_its_own_limit_and_shares_request_deadline(tmp_path, timeout, code):
+    source = held_cli(tmp_path)
+    calls = []
+    async with running(tmp_path, source=source, timeout=timeout) as (url, _), client(url, timeout=25, calls=calls) as session:
+        active = [asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(2)]
+        await wait_for_searches(tmp_path, 2)
+        started = asyncio.get_running_loop().time()
+        queued = await session.call_tool('search', {'query': 'queued', 'content_mode': 'discovery'})
+        elapsed = asyncio.get_running_loop().time() - started
+        assert body(queued)['error']['code'] == code
+        assert elapsed < (1.6 if timeout < 1 else 11)
+        for identifier in calls[:2]:
+            await session.send_notification(types.ClientNotification(types.CancelledNotification(
+                method='notifications/cancelled', params=types.CancelledNotificationParams(requestId=identifier))))
+        await asyncio.gather(*active, return_exceptions=True)
+
+
+async def test_cancelled_discovery_waiter_releases_capacity_without_running_cli(tmp_path):
+    calls = []
+    source = held_cli(tmp_path)
+    async with running(tmp_path, source=source, timeout=3) as (url, _), client(url, calls=calls) as session:
+        tasks = [asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(2)]
+        try:
+            await wait_for_searches(tmp_path, 2)
+            tasks.extend(asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(2, 10))
+            await asyncio.sleep(.2)
+            await session.send_notification(types.ClientNotification(types.CancelledNotification(
+                method='notifications/cancelled', params=types.CancelledNotificationParams(requestId=calls[-1]))))
+            await asyncio.gather(tasks[-1], return_exceptions=True)
+            replacement = asyncio.create_task(session.call_tool('search', {'query': 'replacement'}))
+            await asyncio.sleep(.1)
+            excess = await session.call_tool('search', {'query': 'excess'})
+            assert body(excess)['error']['code'] == 'discovery_queue_full'
+            assert not replacement.done()
+            assert len(list(tmp_path.glob('pid-*'))) == 2
+            assert not (tmp_path / 'pid-9').exists()
+            tasks.append(replacement)
+        finally:
+            for identifier in calls:
+                await session.send_notification(types.ClientNotification(types.CancelledNotification(
+                    method='notifications/cancelled', params=types.CancelledNotificationParams(requestId=identifier))))
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def test_shutdown_reaps_admitted_discovery_and_never_spawns_waiters(tmp_path):
+    stop = asyncio.Event()
+    tasks = []
+    async with running(tmp_path, source=held_cli(tmp_path), timeout=30, stop=stop) as (url, _):
+        try:
+            async with client(url) as session:
+                tasks = [asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(10)]
+                await wait_for_searches(tmp_path, 2)
+                await asyncio.sleep(.2)
+                pids = [int(p.read_text()) for p in tmp_path.glob('pid-*')]
+                stop.set()
+                async with asyncio.timeout(3):
+                    while any(alive(pid) for pid in pids):
+                        await asyncio.sleep(.01)
+                await asyncio.gather(*tasks, return_exceptions=True)
+        except* httpx.HTTPStatusError as errors:
+            # Expected: Uvicorn ends in-flight responses before SDK shutdown.
+            assert all(e.response.status_code == 500 for e in errors.exceptions)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+    assert len(list(tmp_path.glob('pid-*'))) == 2
+    assert not any(alive(pid) for pid in pids)
+
+
+@pytest.mark.parametrize("token", ["client-secret", "subscriber-secret", "subscriber%2Dsecret"])
+async def test_search_rejects_credentials_before_any_cli_or_upstream_work(tmp_path, caplog, token):
+    marker = tmp_path / 'invoked'
+    source = f"from pathlib import Path\nPath({str(marker)!r}).touch()\nprint('kagi 0.22.0')\n"
+    async with running(tmp_path, source=source) as (url, _), client(url) as session:
+        result = await session.call_tool('search', {'query': 'lookup ' + token, 'content_mode': 'discovery'})
+        assert result.isError
+        assert body(result)['error']['code'] == 'invalid_input'
+        assert not marker.exists()  # External executable never receives client input.
+        assert token not in result.model_dump_json() + caplog.text

@@ -82,6 +82,11 @@ def page_references(source, start, end):
         if p['start'] < end and p['end'] > start]}
 
 
+def pdf_section(source, start, end):
+    pages = page_references(source, start, end)['pages']
+    return f'PDF page {pages[0]}' if len(pages) == 1 else f'PDF pages {pages[0]}–{pages[-1]}'
+
+
 def expand_evidence(cache, identifiers):
     """Resolve all references before returning anything; malformed IDs fail the request.
 
@@ -103,7 +108,8 @@ def expand_evidence(cache, identifiers):
             continue
         text = canonical['content']
         passages = list(document_passages(canonical))
-        section = next((title for a, b, title in passages if a == start and b == end), None)
+        section = (pdf_section(canonical, start, end) if canonical.get('document_type') == 'pdf' else
+                   next((title for a, b, title in passages if a == start and b == end), None))
         reference = {'url': canonical['resolved_url'], 'section': section,
                      'start': start, 'end': end, 'evidence_id': identifier,
                      **page_references(canonical, start, end)}
@@ -157,7 +163,12 @@ def sections(text):
         passage_start = min([start, *scoped])
         if text[start:end].strip():
             yield passage_start, end, title
-        qualified = bool(re.search(r'(?i)\b(version|only|not|never|warning|caution|experimental|deprecated|except|requires?)\b', text[start:end]))
+        # Conventional numeric/release headings are scopes even without the
+        # word "version" (v2, 2.4, 2.4.1-rc.2, calendar releases). Recognize
+        # tokens in headings, not arbitrary numeric prose; retain all qualifying
+        # ancestry as one verbatim atomic range, including intervening sections.
+        qualified = bool(re.search(r'(?i)\b(version|only|not|never|warning|caution|experimental|deprecated|except|requires?)\b', text[start:end]) or
+            (title and re.search(r'(?i)(?<!\w)v?\d+(?:\.\d+)*(?:[-+][\w.]+)?(?!\w)', title)))
         ancestors.append((level, start, qualified))
 
 
@@ -210,8 +221,23 @@ def select_highlights(data, query):
     # gate removes atomic quotes fairly, exposing omissions. No page-count cap.
     selected = Counter()
     duplicates = {}
+    windows = set()
     for score, index, start, end, section in ranked:
         source = sources[index]
+        if source.get('document_type') == 'pdf':
+            # Rank the matching page, but quote previous/current/next canonical
+            # pages regardless of lexical overlap: warnings/negation on either
+            # side must not disappear. Trusted parser offsets only; full text
+            # and expansion's page passages remain unchanged. The shared budget
+            # drops this contiguous window atomically, never its qualifications.
+            references = source['pdf']['references']
+            position = next(i for i, p in enumerate(references) if p['start'] == start)
+            start = references[max(0, position - 1)]['start']
+            end = references[min(len(references) - 1, position + 1)]['end']
+            section = pdf_section(source, start, end)
+            if (index, start, end) in windows:
+                continue
+            windows.add((index, start, end))
         source['relevance'] = 'lexical_match'  # Not a claim the query is answered.
         if selected[index] < 3:
             identifier = evidence_id(source, start, end)

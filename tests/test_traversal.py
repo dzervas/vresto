@@ -278,7 +278,8 @@ async def test_traversed_pdf_keeps_page_references_and_expands_same_version(tmp_
         source = data['sources'][1]
         assert source['document_type'] == 'pdf'
         quote = source['highlights'][0]
-        assert quote['pages'] == [1]
+        assert quote['pages'] == [1, 2]
+        assert 'legacy mode is not supported.' in quote['text']
         expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']], 'response_budget_bytes': 4096}))
         assert expanded['sources'][0]['highlights'] == [quote]
         assert expanded['sources'][0]['pdf'] == source['pdf']

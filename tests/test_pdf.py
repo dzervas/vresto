@@ -47,7 +47,8 @@ async def test_pdf_full_text_page_citations_highlights_and_cache(tmp_path):
         assert source['pdf']['total_pages'] == 2
         selected = body(await session.call_tool('fetch', {'urls': [base + '/redirect'], 'query': 'connect_safe'}))['sources'][0]
         quote = selected['highlights'][0]
-        assert quote['pages'] == [1]
+        assert quote['pages'] == [1, 2]
+        assert 'legacy mode is not supported.' in quote['text']
         assert quote['text'] == source['content'][quote['start']:quote['end']]
         assert quote['evidence_id'].startswith('p1.')
         assert selected['cache_state'] == 'hit'

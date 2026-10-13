@@ -45,6 +45,14 @@ class Discovery:
         self.processes = Processes(settings)
 
     async def search(self, request):
+        try:
+            with anyio.fail_after(self.settings.timeout):
+                async with self.processes.admission():
+                    return await self._search(request)
+        except TimeoutError:
+            raise DiscoveryError('discovery_timeout') from None
+
+    async def _search(self, request):
         args = ["--error-format", "json", "search", "--format", "json",
                 "--limit", str(request.num_results)]
         for name in ("region", "lens", "time", "from_date", "to_date", "order"):
@@ -59,17 +67,13 @@ class Discovery:
         with TemporaryDirectory(prefix="kagi-discovery-") as home:
             env = {"PATH": os.defpath, "HOME": home, "KAGI_CONFIG": home + "/config.toml",
                    "KAGI_SESSION_TOKEN": self.settings.session_token, "RUST_LOG": "off"}
-            try:
-                with anyio.fail_after(self.settings.timeout):
-                    # Exact source revision is installed by scripts/install_kagi.py;
-                    # reject a different release rather than trusting changing flags.
-                    version_env = {k: v for k, v in env.items() if k != "KAGI_SESSION_TOKEN"}
-                    status, version, _ = await self.processes.run(["--version"], version_env)
-                    if status or version.strip() != b"kagi 0.22.0":
-                        raise DiscoveryError("discovery_cli_version")
-                    returncode, stdout, stderr = await self.processes.run(args, env)
-            except TimeoutError:
-                raise DiscoveryError("discovery_timeout") from None
+            # Exact source revision is installed by scripts/install_kagi.py;
+            # reject a different release rather than trusting changing flags.
+            version_env = {k: v for k, v in env.items() if k != "KAGI_SESSION_TOKEN"}
+            status, version, _ = await self.processes.run(["--version"], version_env)
+            if status or version.strip() != b"kagi 0.22.0":
+                raise DiscoveryError("discovery_cli_version")
+            returncode, stdout, stderr = await self.processes.run(args, env)
         if returncode:
             try:
                 error = json.loads(stderr)
@@ -103,5 +107,10 @@ class Discovery:
         if any(r["provider_rank"] is None for r in results):
             warnings.append("provider_rank_unavailable")
         return {"content_mode": "discovery", "postfilters": ["result_limit"],
+                "discovery_limits": {"concurrency": self.processes.CONCURRENCY,
+                    "queue_capacity": self.processes.QUEUE_CAPACITY,
+                    "queue_wait_seconds": self.processes.QUEUE_WAIT,
+                    "request_deadline_seconds": self.settings.timeout,
+                    "invocation_output_bytes": self.settings.max_output_bytes},
                 "date_semantics": "provider_update_date_not_verified_publication",
                 "warnings": warnings, "results": results}

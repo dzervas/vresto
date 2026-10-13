@@ -19,7 +19,7 @@ from starlette.routing import Route
 import uvicorn
 
 from .contract import SearchInput, FetchInput
-from .budget import (apply_budget, result as budget_result, DEFAULT_RESPONSE_BYTES,
+from .budget import (apply_budget, result as tool_result, DEFAULT_RESPONSE_BYTES,
                      MIN_RESPONSE_BYTES, MAX_RESPONSE_BYTES)
 from .acquisition import Acquisition
 from .cache import DocumentCache, CachedAcquisition
@@ -71,10 +71,6 @@ class Settings:
             raise ValueError('cache cap must be 1 KiB–1 GiB')
         if not 0.01 <= self.cache_retention_seconds <= 2_592_000:
             raise ValueError('cache retention must be 0.01 seconds–30 days')
-
-
-def tool_result(data, *, error=False):
-    return budget_result(data, error=error)
 
 
 def create_app(settings: Settings):
@@ -152,14 +148,22 @@ def create_app(settings: Settings):
                 name if name in ('search', 'fetch') else 'unsupported', outcome,
                 (time.monotonic() - started) * 1000)
 
+    def finalize(data, request):
+        for source in data.get('sources', data.get('results', [])):
+            source.pop('link_targets', None)
+            source.pop('links_truncated', None)
+        data = apply_budget(safe_sources(data, (settings.access_token, settings.session_token)),
+                            request.response_budget_bytes)
+        return tool_result(data, error='error' in data)
+
     async def retrieve(name, arguments):
         # SDK JSON-schema validation echoes inputs in errors. Validate here instead
         # and never serialize ValidationError (which may contain client secrets).
         try:
+            if contains_secret(arguments, (settings.access_token, settings.session_token)):
+                raise ValueError("credential in input")
             if name == "fetch":
                 request = FetchInput.model_validate(arguments)
-                if contains_secret(arguments, (settings.access_token, settings.session_token)):
-                    raise ValueError("credential in input")
                 if request.evidence_ids is not None:
                     data = expand_evidence(cache, request.evidence_ids)
             elif name == "search":
@@ -182,12 +186,7 @@ def create_app(settings: Settings):
                 data['acquisition_limits'] = acquisition_limits(request.traversal.max_pages if request.traversal else 10)
                 if request.content_mode == 'highlights' or (request.content_mode is None and request.query):
                     data = select_highlights(data, request.query)
-            for source in data['sources']:
-                source.pop('link_targets', None)
-                source.pop('links_truncated', None)
-            data = apply_budget(safe_sources(data, (settings.access_token, settings.session_token)),
-                                request.response_budget_bytes)
-            return tool_result(data, error='error' in data)
+            return finalize(data, request)
         try:
             data = await discovery.search(request)
             if request.content_mode != 'discovery':
@@ -198,16 +197,11 @@ def create_app(settings: Settings):
                         freshness=request.freshness, max_age_seconds=request.max_age_seconds)
                 data['results'] = [dict(result, **source) for result, source in
                                    zip(data['results'], acquired['sources'])]
-                for source in data['results']:
-                    source.pop('link_targets', None)
-                    source.pop('links_truncated', None)
                 data['content_mode'] = 'full_text'
                 data['acquisition_limits'] = acquisition_limits(20)
                 if request.content_mode == 'highlights':
                     data = select_highlights(data, request.query)
-            data = apply_budget(safe_sources(data, (settings.access_token, settings.session_token)),
-                                request.response_budget_bytes)
-            return tool_result(data, error='error' in data)
+            return finalize(data, request)
         except DiscoveryError as error:
             messages = {
                 "upstream_authentication": "Kagi subscriber session missing, rejected or expired.",
@@ -216,6 +210,8 @@ def create_app(settings: Settings):
                 "discovery_failed": "Kagi discovery failed; no paid API fallback was attempted.",
                 "discovery_timeout": "Kagi discovery exceeded the service deadline.",
                 "discovery_output_limit": "Kagi CLI output exceeded the service byte limit.",
+                "discovery_queue_full": "Discovery waiting capacity exceeded; retry later.",
+                "discovery_queue_timeout": "Discovery admission wait exceeded the service limit; retry later.",
                 "discovery_cli_version": "Install the pinned Microck Kagi CLI revision; release mismatch.",
             }
             return tool_result({"error": {"code": error.code, "message": messages[error.code]}}, error=True)

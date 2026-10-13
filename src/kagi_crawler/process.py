@@ -1,5 +1,7 @@
 """Bounded CLI process ownership, including its process group (Linux deployment)."""
 import asyncio
+from collections import deque
+from contextlib import asynccontextmanager
 import os
 import signal
 
@@ -17,6 +19,60 @@ class Processes:
         self.settings = settings
         self.active = set()
         self.closing = False
+        self.admitted = 0
+        self.waiters = deque()
+
+    # Separate from browser acquisition: at most two discovery jobs (each owns
+    # version + search sequentially), eight waiting, ten seconds admission wait.
+    # The request's 30s deadline includes admission. Provisional containment, not
+    # provider parity; at most 2 MiB raw CLI payload, excluding join/parse/pipe
+    # overhead and subprocess RSS. Real TCP MCP/executable fixture observed two
+    # running searches + eight non-spawning waiters; eleventh rejected, all ten
+    # completed after release. Ten-second wait and shared shorter deadlines are
+    # exercised separately. Deployment CLI CPU/RSS/latency remain unmeasured.
+    CONCURRENCY = 2
+    QUEUE_CAPACITY = 8
+    QUEUE_WAIT = 10
+
+    def release(self):
+        self.admitted -= 1
+        if self.waiters and not self.closing:
+            waiter = self.waiters.popleft()
+            self.admitted += 1
+            waiter.set_result(True)
+
+    @asynccontextmanager
+    async def admission(self):
+        if self.closing:
+            raise DiscoveryError('discovery_failed')
+        waiter = None
+        acquired = False
+        try:
+            if self.admitted < self.CONCURRENCY:
+                self.admitted += 1
+                acquired = True
+            else:
+                if len(self.waiters) >= self.QUEUE_CAPACITY:
+                    raise DiscoveryError('discovery_queue_full')
+                waiter = asyncio.get_running_loop().create_future()
+                self.waiters.append(waiter)
+                try:
+                    with anyio.fail_after(self.QUEUE_WAIT):
+                        acquired = await asyncio.shield(waiter)
+                except TimeoutError:
+                    raise DiscoveryError('discovery_queue_timeout') from None
+                if not acquired:
+                    raise DiscoveryError('discovery_failed')
+            yield
+        finally:
+            if waiter is not None:
+                if waiter in self.waiters:
+                    self.waiters.remove(waiter)
+                elif waiter.done() and waiter.result():
+                    # Admission may be granted at exactly the cancellation edge.
+                    acquired = True
+            if acquired:
+                self.release()
 
     async def run(self, args, env):
         if self.closing:
@@ -32,6 +88,8 @@ class Processes:
                         stdin=asyncio.subprocess.DEVNULL,
                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
                     self.active.add(process)
+                if self.closing:
+                    raise DiscoveryError('discovery_failed')
                 consumed = 0
 
                 async def read(stream):
@@ -91,5 +149,8 @@ class Processes:
 
     async def close(self):
         self.closing = True
+        for waiter in self.waiters:
+            waiter.set_result(False)
+        self.waiters.clear()
         with anyio.CancelScope(shield=True):
             await asyncio.gather(*(self.stop(p) for p in tuple(self.active)))
