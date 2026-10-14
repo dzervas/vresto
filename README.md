@@ -41,9 +41,11 @@ managed secure-DoH policy is installed under
 No desktop, VNC, GPU or additional exposed port is required. X11 has no TCP
 listener; do not share its Unix sockets or `/tmp` with other containers.
 Xvfb receives no service/discovery secrets and is reaped after service shutdown.
-No custom UA, headers or stealth launch switches are added. Acquisition cookies
-still do not survive another document: this intentionally does not reuse a
-persistent clearance session.
+No custom UA or headers are added; Patchright defaults are retained, with images
+disabled and the shared disk cache capped at 256 MiB via Chrome launch switches.
+Cookies, storage, service workers and challenge clearance are shared across
+acquisition tabs for one browser lifetime. Retirement deletes the temporary profile;
+a restarted browser starts clean. No user profile or supplied cookies are used.
 
 Headed mode does **not** guarantee challenge acceptance. Use `fresh_only` for
 comparisons so retained cache entries do not hide browser behavior. Recognized
@@ -130,8 +132,9 @@ and PDF workers receive allowlisted environments. **User-approved departure from
 the original historical `spec.md`: all request interception, Python acquisition,
 DNS pinning and the deny-all proxy are removed.** Chromium owns native navigation,
 resources, POST/XHR, cookies, redirects, service workers and WebSockets. Each
-acquisition has an isolated ephemeral context; no caller headers, private profile
-or cookies from previous acquisitions are forwarded. `extraction.py` converts rendered
+acquisition opens a new tab in the shared temporary persistent context; cookies
+and other native state survive acquisitions until browser retirement. No caller
+headers or private user profile are forwarded. `extraction.py` converts rendered
 HTML locally; PDF downloads use the browser, not its separate APIRequestContext.
 
 The browser uses Cloudflare **`https://1.1.1.1/dns-query` DoH in `secure` mode**,
@@ -200,7 +203,7 @@ remain. Existing cached canonical text and historical evidence IDs are unchanged
 | Discovery concurrency / waiting | 2 / 8 | Fixed independent CLI pool; excess is `discovery_queue_full` |
 | Discovery admission wait / deadline | 10 s / 30 s | Fixed wait (`discovery_queue_timeout`); request deadline includes admission, version check and search (`discovery_timeout`) |
 | CLI stdout + stderr | 1 MiB | Per invocation, at most two concurrent discovery jobs |
-| Browser concurrency | 1 | Fixed serialized acquisition across clients |
+| Browser concurrency | 4 | `KAGI_CRAWLER_BROWSER_CONCURRENCY`: 1–8 tabs; one active page per (scheme, host, port), shared across clients |
 | Waiting queue | 8 | `KAGI_CRAWLER_QUEUE_CAPACITY`: 1–32; excess is `queue_full` |
 | Queue wait | 10 s | `KAGI_CRAWLER_QUEUE_WAIT_SECONDS`: 0.01–30 s; `queue_timeout` or request timeout |
 | Browser work-idle teardown | 1 hour | Fixed; never interrupts active acquisition; any MCP request warms an absent browser |
@@ -210,13 +213,13 @@ remain. Existing cached canonical text and historical evidence IDs are unchanged
 | Rendered DOM | 10 MiB | Conservative DOM-size estimate (including script/style text) and serialized rendered HTML input; may reject HTML smaller than 10 MiB because of estimation overhead |
 | Post-acquisition document | 2 MiB | Normalized Markdown and downloaded PDF parser input; **not** streamed wire, decompression, header or aggregate native-resource containment |
 | Native resource memory/disk/traffic | Operator enforced | Browser allocations and downloaded resources can exceed document limits before checking |
-| PDF parse | 100 pages / 10 s | Fixed isolated parser, 1.5 GiB worker address-space ceiling, also acquisition deadline |
+| PDF parse | 100 pages / 10 s | One isolated parser at a time, 1.5 GiB worker address-space ceiling, also acquisition deadline |
 | Persistent canonical cache | 256 MiB / 7 days | `KAGI_CRAWLER_CACHE_CAP_BYTES`: 1 KiB–1 GiB; `KAGI_CRAWLER_CACHE_RETENTION_SECONDS`: 0.01 s–30 days |
 | Ordinary freshness | 1 hour | MCP `max_age_seconds`: 0–30 days |
 | Opt-in traversal | 5 pages / depth 1 / 15 s | MCP `traversal`: pages 1–20, depth 0–3, time >0–30 s, frontier 1–128 (default 32), aggregate bytes 1 KiB–32 MiB (default 8 MiB) |
 
 Acquisition opens native `details` and supported read-only in-page text/discussion
-controls in the same ephemeral context. Button labels alone never authorize a
+controls in its acquisition tab. Button labels alone never authorize a
 click: controls need explicit ARIA content association, or a heading-labelled
 public discussion/activity list with existing attributed entries and a contained
 remaining-item count heading referenced by the button. A site adapter may also
@@ -225,8 +228,12 @@ comments") inside the same guards. Forms, navigating links and account actions
 remain unsupported. Exact identified repeats are suppressed only when
 their contents match; differing authors, code and qualifications remain ordered.
 Native initial and post-action fetch/XHR are observed, not intercepted; unrelated
-persistent resources can exhaust settling bounds. `coverage.initial_render`
-discloses idle/quiet/pending-load state, and coverage is always non-exhaustive.
+persistent resources need not delay a quiet DOM. Network-idle observation overlaps
+the ≥400 ms unchanged-text window, which also requires no pending tracked fetch/XHR.
+`coverage.initial_render.network_idle` reports whether idle was reached before that
+window completed; false alone does not mean partial coverage. Not-quiet or pending
+tracked loads at the 3 s settle cap do imply partial coverage. Both waits share the
+acquisition deadline, and coverage is always non-exhaustive.
 Unsupported controls, no progress and action/duration/content bounds disclose
 partial coverage; cached canonical versions retain that metadata. The public
 CPython issue smoke needed roughly 2.4–7.8 s after one continuation click, which
@@ -290,7 +297,7 @@ uv run --python 3.12 python scripts/native_dns_check.py
 ```
 
 The real TCP MCP harness covers composed search/fetch, rendered technical content,
-access rejection, warm/cache latency, serialized multi-client queue pressure,
+access rejection, warm/cache latency, bounded multi-client queue pressure,
 accelerated one-hour teardown, same-session recreation, external browser crash,
 process cleanup and cache/evidence persistence in a fresh process/container.
 Historical host-native (not native-networking) facts and methodology live

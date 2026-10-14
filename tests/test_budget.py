@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 from test_http import running, client, body, cli_response
 from test_fetch import site
@@ -29,25 +30,28 @@ async def test_full_text_budget_preserves_ten_source_outcomes_and_reports_trunca
             return web.Response(status=404)
         return web.Response(content_type='text/html', text='<title>Technical guide</title><h1>Warning</h1><p>'
                             + 'Version 2: do not enable legacy mode. 漢字 \\"quoted\\". ' * 300 + '</p>')
-    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
-        result = await session.call_tool('fetch', {'urls': [base + f'/{i}' for i in range(9)] + [base + '/missing'],
-                                                 'response_budget_bytes': limit})
-        assert not result.isError
-        data = body(result)
-        assert data == result.structuredContent
-        size = len(result.model_dump_json(exclude_none=True).encode())
-        print(f'full_text requested={limit} wire_bytes={size} returned={len(data["sources"])}')
-        assert size <= limit
-        if limit >= 16384:
-            assert len(data['sources']) == 10
-        assert data['sources'][-1]['error']['code'] == 'fetch_failed'
-        assert all('error' not in s for s in data['sources'][:-1]), data
-        if limit < 262144:
-            assert all('content' in s['truncated_fields'] for s in data['sources'][:-1])
-        assert data['budget']['partial_coverage']
-        if limit >= 16384:
-            assert data['budget']['omitted_source_indices'] == []
-        assert data['budget']['failed_source_count'] == 1
+    async with site(handler) as (base, options):
+        # Ten same-origin pages are intentional budget inputs, not a queue-load test.
+        options = replace(options, queue_capacity=10, queue_wait=30)
+        async with running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
+            result = await session.call_tool('fetch', {'urls': [base + f'/{i}' for i in range(9)] + [base + '/missing'],
+                                                     'response_budget_bytes': limit})
+            assert not result.isError
+            data = body(result)
+            assert data == result.structuredContent
+            size = len(result.model_dump_json(exclude_none=True).encode())
+            print(f'full_text requested={limit} wire_bytes={size} returned={len(data["sources"])}')
+            assert size <= limit
+            if limit >= 16384:
+                assert len(data['sources']) == 10
+            assert data['sources'][-1]['error']['code'] == 'fetch_failed'
+            assert all('error' not in s for s in data['sources'][:-1]), data
+            if limit < 262144:
+                assert all('content' in s['truncated_fields'] for s in data['sources'][:-1])
+            assert data['budget']['partial_coverage']
+            if limit >= 16384:
+                assert data['budget']['omitted_source_indices'] == []
+            assert data['budget']['failed_source_count'] == 1
 
 
 @pytest.mark.parametrize('limit', [4095, 262145, True, '4096'])

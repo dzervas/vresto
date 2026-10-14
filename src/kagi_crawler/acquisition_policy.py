@@ -29,6 +29,7 @@ class AcquisitionOptions:
     request_timeout: float = 20
     queue_wait: float = 10
     queue_capacity: int = 8
+    browser_concurrency: int = 4
     # Conservative rendered-DOM estimate and serialized HTML input limit.
     # Separate from normalized Markdown/downloaded PDF parser input below.
     dom_bytes: int = 10 * 1024 * 1024
@@ -46,6 +47,8 @@ class AcquisitionOptions:
     fixture_destinations: tuple[tuple[str, int, str], ...] = ()
 
     def __post_init__(self) -> None:
+        if type(self.browser_concurrency) is not int or not 1 <= self.browser_concurrency <= 8:
+            raise ValueError('browser concurrency must be 1–8')
         if not 0.01 <= self.expansion_timeout <= 10:
             raise ValueError('expansion duration must be 0.01–10 seconds')
         if type(self.expansion_actions) is not int or not 0 <= self.expansion_actions <= 32:

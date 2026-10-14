@@ -5,7 +5,7 @@
 Paths below are relative to `src/kagi_crawler/`.
 
 - `retrieval.py`: search/fetch workflow, evidence selection, redaction and final budget; `Retrieval.search(SearchInput)` / `.fetch(FetchInput)` return tool data.
-- `acquisition.py`: browser lifecycle, serialized queue and shared deadline; `Acquisition.fetch_many(urls, scope=...)`, request/warmup/close lifecycle.
+- `acquisition.py`: browser lifecycle, bounded origin-aware concurrent queue and shared deadline; `Acquisition.fetch_many(urls, scope=...)`, request/warmup/close lifecycle.
 - `acquisition_policy.py`: acquisition limits, literal URL screening and classified failures; `AcquisitionOptions`, `DestinationPolicy.url`, `FetchError` (not network isolation).
 - `browser.py`: native navigation, challenge continuation, render settling and serialization; `BrowserAdapter` exposes start/acquire/close/is_connected, returning `BrowserResult`.
 - `chromium.py`: Chrome-only bootstrap, DoH preferences/policy verification and owned driver/profile cleanup; `Chromium.start/close` supplies the native browser.

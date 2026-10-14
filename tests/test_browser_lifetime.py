@@ -66,7 +66,7 @@ os.execv({node!r}, [{node!r}, *sys.argv[1:]])
     await eventually(lambda: browser_pids() == before)
 
 
-async def test_cancelled_startup_acquisition_reaps_driver_and_recovers_same_session(tmp_path, monkeypatch):
+async def test_cancelled_startup_acquisition_preserves_shared_driver_and_recovers_same_session(tmp_path, monkeypatch):
     from mcp import types
     node = os.environ['PLAYWRIGHT_NODEJS_PATH']
     marker = tmp_path / 'driver-pid'
@@ -99,7 +99,7 @@ os.execv({node!r}, [{node!r}, *sys.argv[1:]])
             await task
         except Exception as exc:
             assert 'cancel' in str(exc).lower()
-        await eventually(lambda: not psutil.pid_exists(pid))
+        assert psutil.pid_exists(pid)  # Shared warmup belongs to the service, not this request.
         release.touch()
         recovered = body(await session.call_tool('fetch', {'urls': [base]}))
         assert 'Recovered startup' in recovered['sources'][0]['content']

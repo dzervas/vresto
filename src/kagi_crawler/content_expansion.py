@@ -181,6 +181,9 @@ async def expand_content(page: Page, options: AcquisitionOptions, *, deadline: f
                 # Seed with pre-action text so an unchanged first poll does not
                 # restart the quiet window; text changes or pending loads do.
                 previous = before
+                # Performance follow-up: compare documentElement.scrollHeight before/after
+                # the test scroll; if nothing grew, consider skipping the full 400 ms
+                # quiet wait (live one-action no_progress expansions: ~0.77 s median).
                 quiet_since = asyncio.get_running_loop().time()
                 while True:
                     await asyncio.sleep(0.1)

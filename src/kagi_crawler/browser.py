@@ -97,8 +97,8 @@ class Browser:
         except FetchError:
             raise
         except Error as error:
-            # Context creation is outside _acquire's conversion handler; keep
-            # its existing propagation, but identify the native type here too.
+            # Tab creation is outside _acquire's conversion handler; preserve
+            # its native propagation and identify the type here too.
             if not state['diagnosed']:
                 reason = 'native_timeout' if isinstance(error, BrowserTimeout) else 'native_error'
                 self._diagnostic(error, state['stage'], reason)
@@ -117,6 +117,13 @@ class Browser:
         if response.status >= 400:
             raise FetchError('fetch_failed')
 
+    @staticmethod
+    def _replaced(error: Exception) -> bool:
+        # Probes run right after DOMContentLoaded, so a native replacement (e.g.
+        # challenge continuation) can destroy the probed document. Callers loop
+        # and revalidate the new response under the same deadline.
+        return isinstance(error, Error) and 'Execution context was destroyed' in str(error)
+
     async def _settled_response(self, page, latest, state):
         while True:
             response = latest()
@@ -134,7 +141,13 @@ class Browser:
             challenged = response.headers.get('cf-mitigated') == 'challenge'
             if not challenged and mime in ('text/html', 'application/xhtml+xml'):
                 await page.wait_for_load_state('domcontentloaded')
-                challenged = await page.evaluate(_CHALLENGE_PAGE)
+                try:
+                    challenged = await page.evaluate(_CHALLENGE_PAGE)
+                except Error as error:
+                    if not self._replaced(error):
+                        raise
+                    await asyncio.sleep(0.1)
+                    continue
                 # A native navigation may have replaced this response during
                 # the DOM probe. Inspect the new one before accepting evidence.
                 if latest() is not response:
@@ -148,32 +161,55 @@ class Browser:
             await asyncio.sleep(0.1)
 
     async def _settle_rendered(self, page, latest, state, options, response, pending):
-        # Long-lived native resources need not prevent reading public text. Give
-        # normal rendering its network-idle window, then always observe a quiet
-        # DOM window: timers can render without requests even after network idle.
-        # Neither wait extends the original acquisition deadline.
-        idle = True
-        try:
-            await page.wait_for_load_state('networkidle', timeout=min(1000, options.request_timeout * 1000))
-        except BrowserTimeout:
-            idle = False
+        # Observe network idle concurrently: it is informational, not a prerequisite
+        # for a quiet DOM with no tracked fetch/XHR. Only not-quiet/pending loads
+        # at the 3 s cap imply partial coverage; the acquisition deadline still wins.
+        idle = False
+        async def observe_idle():
+            nonlocal idle
+            try:
+                await page.wait_for_load_state('networkidle', timeout=min(1000, options.request_timeout * 1000))
+                idle = True
+            except Error:
+                # Informational only: a timeout or a replaced document must not
+                # replace the settling outcome.
+                pass
+        idle_task = asyncio.create_task(observe_idle())
         started = asyncio.get_running_loop().time()
         changed = started
         previous = None
-        while True:
-            if await self._settled_response(page, latest, state) is not response:
-                return False, idle, False, bool(pending)
-            if not await page.evaluate(DOM_WITHIN_LIMIT, options.dom_bytes):
-                raise FetchError('resource_limit')
-            text = await page.evaluate('() => document.body?.innerText || ""')
-            now = asyncio.get_running_loop().time()
-            if text != previous:
-                previous, changed = text, now
-            if not pending and now - changed >= 0.4:
-                return True, idle, True, False
-            if now - started >= 3:
-                return True, idle, now - changed >= 0.4, bool(pending)
-            await asyncio.sleep(0.1)
+        try:
+            # Performance follow-up: an in-page MutationObserver could avoid polling
+            # innerText (layout on large pages) every 100 ms and react sooner. Measure
+            # whether a 200–250 ms quiet window preserves identical content.
+            while True:
+                if await self._settled_response(page, latest, state) is not response:
+                    return False, idle, False, bool(pending)
+                try:
+                    within = await page.evaluate(DOM_WITHIN_LIMIT, options.dom_bytes)
+                    text = await page.evaluate('() => document.body?.innerText || ""')
+                except Error as error:
+                    if not self._replaced(error):
+                        raise
+                    await asyncio.sleep(0.1)
+                    continue
+                if not within:
+                    raise FetchError('resource_limit')
+                now = asyncio.get_running_loop().time()
+                if text != previous:
+                    previous, changed = text, now
+                if not pending and now - changed >= 0.4:
+                    return True, idle, True, False
+                if now - started >= 3:
+                    return True, idle, now - changed >= 0.4, bool(pending)
+                await asyncio.sleep(0.1)
+        finally:
+            idle_task.cancel()
+            # Drain on success, revalidation, errors and caller cancellation.
+            with anyio.CancelScope(shield=True):
+                await asyncio.gather(idle_task, return_exceptions=True)
+            if not idle_task.cancelled():
+                idle_task.result()
 
     @staticmethod
     async def _download(download, options) -> BrowserResult:
@@ -246,7 +282,7 @@ class Browser:
                 continue
             if coverage is None:
                 coverage = await self._expand(page, latest, state, options, response, idle, quiet, pending_load)
-            if not idle or not quiet or pending_load:
+            if not quiet or pending_load:
                 coverage['partial'] = True
                 if coverage['stop_reason'] in ('settled', 'no_progress'):
                     coverage['stop_reason'] = 'render_settling_limit'
@@ -267,7 +303,7 @@ class Browser:
                                         revalidate=revalidate)
         coverage['initial_render'] = {'network_idle': idle, 'dom_quiet': quiet,
                                       'pending_native_load': pending_load,
-                                      'partial': not idle or not quiet or pending_load}
+                                      'partial': not quiet or pending_load}
         return coverage
 
     async def _serialize_document(self, page, options, state, coverage) -> BrowserResult:
@@ -294,13 +330,10 @@ class Browser:
 
     async def _acquire(self, url, options, state) -> BrowserResult:
         browser = cast(NativeBrowser, self.runtime.browser)  # acquire() awaits successful start().
-        # One ephemeral context per document. Cookies, workers, POST/XHR and
-        # redirects work natively inside it, but never survive another acquisition.
-        context = await browser.new_context(accept_downloads=True, ignore_https_errors=False,
-                                            no_viewport=self.runtime.headful)
+        # Each acquisition owns only its page/window; shared state survives until retirement.
+        page = await self.runtime.new_page()
         native_loads = None
         try:
-            page = await context.new_page()
             native_loads = NativeLoadObservation(page)
             latest, download_ready = await self._navigate(page, url, options, state)
             if latest is None:
@@ -325,7 +358,7 @@ class Browser:
                 if native_loads is not None:
                     native_loads.close()
                 with anyio.CancelScope(shield=True):
-                    await context.close()
+                    await page.close()
             except Exception as error:
                 self._diagnostic(error, 'cleanup', 'cleanup_failure')
                 state['diagnosed'] = True

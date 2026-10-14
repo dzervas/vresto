@@ -211,7 +211,7 @@ async def test_traversal_queue_pressure_uses_existing_shared_permit(tmp_path):
             assert body(await active)['sources'][0]['error']['code'] == 'fetch_failed'
 
 
-async def test_cancelled_traversal_releases_browser_and_retains_cached_seed(tmp_path):
+async def test_cancelled_traversal_releases_tab_and_retains_cached_seed(tmp_path):
     from mcp import types
     entered, disconnected = asyncio.Event(), asyncio.Event()
     async def handler(request):
@@ -239,10 +239,8 @@ async def test_cancelled_traversal_releases_browser_and_retains_cached_seed(tmp_
             await task
         except Exception as exc:
             assert 'cancel' in str(exc).lower()
-        async with asyncio.timeout(5):
-            await disconnected.wait()
-            while browser_pids() != before:
-                await asyncio.sleep(0.02)
+        await asyncio.wait_for(disconnected.wait(), 5)
+        assert len(browser_pids() - before) == 1
         cached = body(await session.call_tool('fetch', {'urls': [base + '/docs'], 'freshness': 'cache_only'}))
         assert cached['sources'][0]['cache_state'] == 'hit'
     assert browser_pids() == before

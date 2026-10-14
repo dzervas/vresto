@@ -1,9 +1,9 @@
-"""Bounded breadth-first traversal over the serialized cached acquisition.
+"""Bounded breadth-first traversal over cached acquisition.
 
 Bounds attempts (including seed, failures and cache hits), depth, frontier,
 wall time and canonical bytes. Pages are visited one at a time; no parallel
-browser work is created here. Exa-style related-document ergonomics, not
-discovery/index parity; no authorized live Exa comparison was available.
+browser work is created here, preserving attempt/byte bounds and BFS order.
+Exa-style related-document ergonomics, not discovery/index parity; no authorized live Exa comparison was available.
 """
 from typing import TYPE_CHECKING
 import asyncio

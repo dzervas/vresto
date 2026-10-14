@@ -148,3 +148,13 @@ async def test_operational_diagnostics_exclude_query_and_credentials(tmp_path, c
     assert 'tool=search outcome=completed elapsed_ms=' in caplog.text
     for sensitive in [query, 'client-secret', 'subscriber-secret', 'Provider summary']:
         assert sensitive not in caplog.text
+
+
+@pytest.mark.parametrize('value', ['0', '9', '1.5', 'invalid'])
+def test_main_rejects_invalid_browser_concurrency(monkeypatch, tmp_path, value):
+    from kagi_crawler import server
+    monkeypatch.setattr(os, 'environ', startup_environment(tmp_path))
+    monkeypatch.setenv('KAGI_CRAWLER_BROWSER_CONCURRENCY', value)
+    monkeypatch.setattr(sys, 'argv', ['kagi-crawler'])
+    with pytest.raises(ValueError):
+        server.main()

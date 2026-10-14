@@ -62,12 +62,13 @@ def native(monkeypatch):
         evaluate=AsyncMock(return_value=True),
         content=AsyncMock(return_value='<main>Public text</main>'),
         title=AsyncMock(return_value='Public title'), url=URL,
-        on=lambda *args: None)
+        on=lambda *args: None, close=AsyncMock())
     context = SimpleNamespace(new_page=AsyncMock(return_value=page), close=AsyncMock())
-    driver = SimpleNamespace(is_connected=lambda: driver.connected, connected=True,
-                             new_context=AsyncMock(return_value=context))
+    driver = SimpleNamespace(is_connected=lambda: driver.connected, connected=True)
     browser = Browser()
     browser.runtime.browser = driver
+    browser.runtime.context = context
+    browser.runtime.new_page = context.new_page
     browser.start = AsyncMock()
     browser._settled_response = AsyncMock(return_value=response)
     browser._settle_rendered = AsyncMock(return_value=(True, True, True, False))
@@ -114,7 +115,10 @@ async def test_adapter_failure_and_pre_retirement_state(fake_browser, caplog, co
     try:
         with pytest.raises(FetchError) as raised:
             await manager._acquire(URL, URL)
-        assert raised.value.code == 'browser_unavailable'
+        assert raised.value.code == ('fetch_failed' if connected else 'browser_unavailable')
+        if connected:
+            fake_browser.close.assert_not_awaited()
+            return
         messages = safe_records(caplog)
         assert f'browser_retire reason=unexpected_exception type=ConversionFailure connected={connected} stage=acquisition' in close_observation
         assert messages.count('browser_stop=completed') == 1
@@ -143,14 +147,15 @@ async def test_raw_native_type_before_public_wrapping(native, caplog, error_type
     messages = safe_records(caplog)
     assert messages == [f'acquisition_failure stage=dom_serialization type={error_type.__name__} connected={connected} reason={reason}']
     assert state['stage'] == 'dom_serialization'
-    assert native.context.close.await_count == 1
+    native.context.close.assert_not_awaited()
+    assert native.page.close.await_count == 1
 
 
 @pytest.mark.parametrize('primary', [False, True])
 async def test_cleanup_failure_overrides_primary_as_before(native, monkeypatch, caplog, primary):
     if primary:
         monkeypatch.setattr(browser_module, 'extract_document', fail(ConversionFailure(URL, SECRET)))
-    native.context.close.side_effect = CleanupFailure(URL + SECRET)
+    native.page.close.side_effect = CleanupFailure(URL + SECRET)
     with pytest.raises(CleanupFailure):
         await native.browser.acquire(URL, AcquisitionOptions())
     assert safe_records(caplog) == [
@@ -178,14 +183,16 @@ async def test_cancellation_still_propagates_and_closes_without_failure_log(nati
     native.page.content.side_effect = asyncio.CancelledError(URL + SECRET)
     with pytest.raises(asyncio.CancelledError):
         await native.browser.acquire(URL, AcquisitionOptions())
-    assert native.context.close.await_count == 1
+    native.context.close.assert_not_awaited()
+    assert native.page.close.await_count == 1
     assert not [r for r in caplog.records if r.name == 'kagi_crawler']
 
 
 async def test_success_has_no_failure_log(native, caplog):
     result = await native.browser.acquire(URL, AcquisitionOptions())
     assert result['content'] == 'Public text'
-    assert native.context.close.await_count == 1
+    native.context.close.assert_not_awaited()
+    assert native.page.close.await_count == 1
     assert not [r for r in caplog.records if r.name == 'kagi_crawler']
 
 
@@ -212,7 +219,7 @@ async def test_startup_failure_logs_before_close_and_remains_unavailable(fake_br
 async def test_fixed_stage_boundaries(native, monkeypatch, caplog, stage):
     error = ConversionFailure(URL, SECRET)
     if stage == 'context':
-        native.driver.new_context.side_effect = error
+        native.context.new_page.side_effect = error
     elif stage == 'navigation':
         native.page.goto.side_effect = error
     elif stage == 'response_validation':
@@ -231,18 +238,18 @@ async def test_fixed_stage_boundaries(native, monkeypatch, caplog, stage):
         await native.browser.acquire(URL, AcquisitionOptions())
     assert safe_records(caplog) == [
         f'acquisition_failure stage={stage} type=ConversionFailure connected=True reason=unexpected_exception']
-    assert native.context.close.await_count == (0 if stage == 'context' else 1)
+    assert native.page.close.await_count == (0 if stage == 'context' else 1)
 
 
 @pytest.mark.parametrize('error_type', [Error, BrowserTimeout])
-async def test_native_context_creation_keeps_original_unwrapped_exception(native, caplog, error_type):
-    native.driver.new_context.side_effect = error_type(URL + SECRET)
+async def test_native_tab_creation_keeps_original_unwrapped_exception(native, caplog, error_type):
+    native.context.new_page.side_effect = error_type(URL + SECRET)
     with pytest.raises(error_type):
         await native.browser.acquire(URL, AcquisitionOptions())
     reason = 'native_timeout' if error_type is BrowserTimeout else 'native_error'
     assert safe_records(caplog) == [
         f'acquisition_failure stage=context type={error_type.__name__} connected=True reason={reason}']
-    assert native.context.close.await_count == 0
+    assert native.page.close.await_count == 0
 
 
 async def test_controlled_retire_logs_connection_before_close(fake_browser, caplog):
@@ -317,12 +324,12 @@ async def test_failed_diagnostics_do_not_skip_manager_startup_cleanup(fake_brows
 
 
 @pytest.mark.parametrize('cleanup', [False, True])
-async def test_failed_diagnostics_preserve_original_exception_and_context_cleanup(
+async def test_failed_diagnostics_preserve_original_exception_and_page_cleanup(
         native, monkeypatch, broken_diagnostics, cleanup):
     broken_diagnostics(native.driver)
     original = CleanupFailure(URL, SECRET) if cleanup else ConversionFailure(URL, SECRET)
     if cleanup:
-        native.context.close.side_effect = original
+        native.page.close.side_effect = original
         # Cleanup must still replace a primary error, not a logging failure.
         monkeypatch.setattr(browser_module, 'extract_document', fail(ConversionFailure(URL, SECRET)))
     else:
@@ -330,7 +337,7 @@ async def test_failed_diagnostics_preserve_original_exception_and_context_cleanu
     with pytest.raises(type(original)) as raised:
         await native.browser.acquire(URL, AcquisitionOptions())
     assert raised.value is original
-    native.context.close.assert_awaited_once()
+    native.page.close.assert_awaited_once()
 
 
 @pytest.mark.parametrize('error_type', [CleanupFailure, ConversionFailure])
@@ -338,6 +345,7 @@ async def test_failed_diagnostics_preserve_manager_mapping_and_retire_owned_brow
         fake_browser, broken_diagnostics, error_type):
     broken_diagnostics(fake_browser)
     fake_browser.acquire.side_effect = error_type(URL, SECRET)
+    fake_browser.connected = False
     manager = Acquisition(browser_factory=lambda: fake_browser)
     manager.browser = fake_browser
     manager.startup = asyncio.get_running_loop().create_future()
@@ -393,7 +401,7 @@ async def test_shared_warmup_and_success_reuse_adapter(fake_browser):
             assert result['sources'][0]['content'] == 'Public text'
         fake_browser.start.assert_awaited_once()
         assert fake_browser.acquire.await_count == 2
-        assert manager.waiting == 0 and not manager.lock.locked()
+        assert manager.waiting == 0 and manager.active == 0
     finally:
         await manager.close()
     fake_browser.close.assert_awaited_once()
@@ -410,7 +418,7 @@ async def test_queue_capacity_and_wait_with_fake_adapter(fake_browser):
         return document
 
     fake_browser.acquire.side_effect = acquire
-    manager = Acquisition(AcquisitionOptions(queue_capacity=1, queue_wait=0.05),
+    manager = Acquisition(AcquisitionOptions(browser_concurrency=1, queue_capacity=1, queue_wait=0.05),
                           browser_factory=lambda: fake_browser)
     active = asyncio.create_task(manager.fetch_many([URL]))
     queued = None
@@ -426,7 +434,7 @@ async def test_queue_capacity_and_wait_with_fake_adapter(fake_browser):
         assert manager.waiting == 0
         release.set()
         assert (await active)['sources'][0]['content'] == 'Public text'
-        assert not manager.lock.locked()
+        assert manager.active == 0
         fake_browser.acquire.assert_awaited_once()
     finally:
         release.set()
@@ -435,7 +443,7 @@ async def test_queue_capacity_and_wait_with_fake_adapter(fake_browser):
 
 
 @pytest.mark.parametrize('during_startup', [False, True])
-async def test_cancellation_retires_fake_adapter_and_releases_permit(fake_browser, during_startup):
+async def test_cancellation_preserves_shared_adapter_and_releases_permit(fake_browser, during_startup):
     entered = asyncio.Event()
 
     async def blocked(*args):
@@ -451,9 +459,9 @@ async def test_cancellation_retires_fake_adapter_and_releases_permit(fake_browse
         active.cancel()
         with pytest.raises(asyncio.CancelledError):
             await active
-        assert manager.browser is None
-        assert manager.waiting == 0 and not manager.lock.locked()
-        fake_browser.close.assert_awaited_once()
+        assert (manager.browser is None) == during_startup
+        assert manager.waiting == 0 and manager.active == 0
+        fake_browser.close.assert_not_awaited()
     finally:
         await manager.close()
 

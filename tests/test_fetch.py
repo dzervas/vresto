@@ -39,7 +39,7 @@ async def test_fetch_screens_unsafe_url_inputs_without_network_guarantee(tmp_pat
         assert 'pass@' not in result.model_dump_json()
 
 
-async def test_native_post_redirects_and_cookies_are_acquisition_local(tmp_path):
+async def test_native_post_redirects_and_cookies_survive_until_browser_retirement(tmp_path):
     received = []
     async def handler(request):
         received.append((request.path, request.method, dict(request.headers)))
@@ -55,17 +55,24 @@ async def test_native_post_redirects_and_cookies_are_acquisition_local(tmp_path)
             assert 'visit' not in request.cookies
             response.set_cookie('visit', 'local')
         else:
-            assert 'visit' not in request.cookies
+            assert request.cookies.get('visit') == 'local'
         return response
-    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
-        source = body(await session.call_tool('fetch', {'urls': [base + '/first']}))['sources'][0]
-        assert 'error' not in source, source
-        assert 'Cookie-backed native evidence' in source['content']
-        second = body(await session.call_tool('fetch', {'urls': [base + '/second']}))['sources'][0]
-        assert 'error' not in second, second
-        telemetry = [headers for path, method, headers in received if path == '/telemetry' and method == 'POST']
-        assert len(telemetry) == 2
-        assert all('Chrome/' in headers['User-Agent'] and headers['Sec-Fetch-Site'] == 'same-origin' for headers in telemetry)
+    async with site(handler) as (base, options):
+        async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+            source = body(await session.call_tool('fetch', {'urls': [base + '/first']}))['sources'][0]
+            assert 'error' not in source, source
+            assert 'Cookie-backed native evidence' in source['content']
+            second = body(await session.call_tool('fetch', {'urls': [base + '/second']}))['sources'][0]
+            assert 'error' not in second, second
+            assert 'Cookie-backed native evidence' in second['content']
+            telemetry = [headers for path, method, headers in received if path == '/telemetry' and method == 'POST']
+            assert len(telemetry) == 2
+            assert all('Chrome/' in headers['User-Agent'] and headers['Sec-Fetch-Site'] == 'same-origin' for headers in telemetry)
+        # Retirement destroys the temporary profile, not just the acquisition tab.
+        async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+            restarted = body(await session.call_tool('fetch', {'urls': [base + '/first'], 'freshness': 'fresh_only'}))['sources'][0]
+            assert 'error' not in restarted, restarted
+            assert 'Cookie-backed native evidence' in restarted['content']
 
 
 async def test_rendered_technical_markdown_and_source_metadata(tmp_path, caplog):
@@ -301,7 +308,7 @@ async def test_mixed_success_failure_preserves_document(tmp_path):
         assert sources[1]['requested_url'] == base + '/missing'
 
 
-async def test_cancelled_render_closes_downloads_browser_and_keeps_mcp_usable(tmp_path):
+async def test_cancelled_render_closes_only_tab_downloads_and_keeps_mcp_usable(tmp_path):
     from mcp import types
     entered = asyncio.Event()
     disconnected = asyncio.Event()
@@ -331,10 +338,8 @@ async def test_cancelled_render_closes_downloads_browser_and_keeps_mcp_usable(tm
             await task
         except Exception as exc:
             assert 'cancel' in str(exc).lower()
-        async with asyncio.timeout(5):
-            await disconnected.wait()
-            while browser_pids() != before:
-                await asyncio.sleep(0.02)
+        await asyncio.wait_for(disconnected.wait(), 5)
+        assert len(browser_pids() - before) == 1
         recovered = body(await session.call_tool('fetch', {'urls': [base + '/ok']}))
         assert 'Recovered' in recovered['sources'][0]['content']
     assert browser_pids() == before
@@ -368,7 +373,7 @@ async def test_queue_capacity_and_wait_are_bounded_across_clients(tmp_path):
         await release.wait()
         return web.Response(status=404)
     async with site(handler) as (base, options):
-        options = replace(options, queue_capacity=1, queue_wait=0.1)
+        options = replace(options, browser_concurrency=1, queue_capacity=1, queue_wait=0.1)
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as first, client(url) as second:
             active = asyncio.create_task(first.call_tool('fetch', {'urls': [base]}))
             await asyncio.wait_for(entered.wait(), 3)

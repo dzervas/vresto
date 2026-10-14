@@ -28,9 +28,15 @@ class Acquisition:
         self.policy = DestinationPolicy(self.options)
         self.browser: BrowserAdapter | None = None
         self.browser_factory = browser_factory
-        self.lock = asyncio.Lock()
+        # Admit origin and tab capacity atomically: origin waiters consume no tab.
+        self.admission = asyncio.Condition()
+        self.origins: set[tuple[str, str | None, int]] = set()
+        self.active = 0
+        self.retiring = False
+        self.tasks: set[asyncio.Task[Any]] = set()
+        self.pdf_lock = asyncio.Lock()
+        self.browser_failed = asyncio.Event()
         self.waiting = 0
-        self.active = set()
         self.closed = False
         self.backoff = {}
         self.clock = clock
@@ -45,7 +51,8 @@ class Acquisition:
     def request(self) -> Iterator[None]:
         # Cache/composed requests may call fetch_many one URL at a time. Share
         # the acquisition deadline without making cache hits join its queue.
-        token = self.request_deadline.set(asyncio.get_running_loop().time() + self.options.deadline)
+        token = self.request_deadline.set(self.request_deadline.get() or
+                                          asyncio.get_running_loop().time() + self.options.deadline)
         try:
             yield
         finally:
@@ -81,6 +88,7 @@ class Acquisition:
                 logging.getLogger('kagi_crawler').info('browser_start=failed')
                 return False
             logging.getLogger('kagi_crawler').info('browser_start=ready')
+            self.browser_failed = asyncio.Event()
             self.browser = browser
             self.last_work = self.clock()
             if self.idle_task is None or self.idle_task.done():
@@ -91,12 +99,25 @@ class Acquisition:
         assert self.last_work is not None  # _warm starts idle tracking only after startup.
         while not self.closed:
             await self.sleep(max(0, 3600 - (self.clock() - self.last_work)))
-            # Taking the acquisition permit protects *all* active work, including
-            # native navigation and PDF parsing, from teardown. Recheck after queued work.
-            async with self.lock:
-                if self.clock() - self.last_work >= 3600:
-                    await self._retire()
-                    return
+            async with self.admission:
+                await self.admission.wait_for(lambda: self.active == 0)
+                if self.clock() - self.last_work < 3600:
+                    continue
+                # Pause admission, but keep waiters counted/timed during teardown.
+                # Warmup also uses the lifecycle lock; a replacement gets its
+                # own idle watcher, never inherits this expired interval.
+                self.retiring = True
+                self.idle_task = None
+                browser = self.browser
+            try:
+                if browser is not None:
+                    await self._retire(expected=browser)
+            finally:
+                with anyio.CancelScope(shield=True):
+                    async with self.admission:
+                        self.retiring = False
+                        self.admission.notify_all()
+            return
 
     @staticmethod
     def _lifecycle_diagnostic(browser: BrowserAdapter, reason, error, stage):
@@ -110,94 +131,125 @@ class Acquisition:
             # A failed probe/handler must not strand a detached owned browser.
             pass
 
-    async def _retire(self, reason='controlled', error=None):
+    async def _retire(self, reason='controlled', error=None, *, expected: BrowserAdapter | None = None):
         async with self.lifecycle_lock:
+            if expected is not None and self.browser is not expected:
+                return  # A peer already retired this generation, never its replacement.
             browser, self.browser = self.browser, None
             if browser is not None:
+                self.browser_failed.set()
                 self._lifecycle_diagnostic(browser, reason, error, 'acquisition')
                 with anyio.CancelScope(shield=True):
                     await browser.close()
                 logging.getLogger('kagi_crawler').info('browser_stop=completed')
 
     async def fetch_many(self, urls: list[str], *, scope: Callable[[str], str] | None = None) -> AcquisitionResult:
-        task = asyncio.current_task()
-        self.active.add(task)
-        try:
-            return await self._fetch_many(urls, scope=scope)
-        finally:
-            self.active.discard(task)
-
-    async def _fetch_many(self, urls: list[str], *, scope: Callable[[str], str] | None = None) -> AcquisitionResult:
-        sources: list[Source] = []
+        # TaskGroup drains every owned page on cancellation, including callers
+        # using AnyIO cancellation scopes. Results remain in input order.
         deadline = self.request_deadline.get() or asyncio.get_running_loop().time() + self.options.deadline
-        for url in urls:
-            normalized = None
-            try:
-                normalized = self.policy.url(url)
-                if self.closed:
-                    raise FetchError('fetch_failed')
+        async with asyncio.TaskGroup() as group:
+            tasks = [group.create_task(self._fetch(url, deadline, scope=scope)) for url in urls]
+        return {'sources': [task.result() for task in tasks], 'content_mode': 'full_text'}
+
+    @staticmethod
+    def _origin(url: str) -> tuple[str, str | None, int]:
+        parts = urlsplit(url)
+        return parts.scheme, parts.hostname, parts.port or (443 if parts.scheme == 'https' else 80)
+
+    async def _admit(self, origin: tuple[str, str | None, int], deadline: float) -> None:
+        async with self.admission:
+            if self.closed:
+                raise FetchError('fetch_failed')
+            if asyncio.get_running_loop().time() >= deadline:
+                raise FetchError('fetch_timeout')
+            def available():
+                return (not self.retiring and self.active < self.options.browser_concurrency
+                        and origin not in self.origins)
+            if not available():
                 if self.waiting >= self.options.queue_capacity:
                     logging.getLogger('kagi_crawler').info('acquisition_queue=full')
                     raise FetchError('queue_full')
                 self.waiting += 1
                 try:
                     remaining = deadline - asyncio.get_running_loop().time()
-                    if remaining <= 0:
-                        raise FetchError('fetch_timeout')
                     async with asyncio.timeout(min(self.options.queue_wait, remaining)):
-                        await self.lock.acquire()
+                        await self.admission.wait_for(lambda: self.closed or available())
                 except TimeoutError:
                     code: ErrorCode = 'fetch_timeout' if asyncio.get_running_loop().time() >= deadline else 'queue_timeout'
                     logging.getLogger('kagi_crawler').info('acquisition_queue=%s', code)
                     raise FetchError(code) from None
                 finally:
                     self.waiting -= 1
-                try:
-                    if self.closed:
-                        raise FetchError('fetch_failed')
-                    async with asyncio.timeout_at(deadline):
-                        source = await self._acquire(url, normalized, scope=scope)
-                    sources.append(source)
-                except asyncio.CancelledError:
-                    # This permit owns cancellation cleanup, even when abandoned
-                    # during native navigation or while joining shared startup.
-                    with anyio.CancelScope(shield=True):
-                        if self.startup is not None and not self.startup.done():
-                            self.startup.cancel()
-                            await asyncio.gather(self.startup, return_exceptions=True)
-                        await self._retire()
-                    raise
-                finally:
-                    # Completion includes PDF parsing, not just native download.
-                    # Start a full idle interval before releasing ownership.
-                    if self.browser is not None:
-                        self.last_work = self.clock()
-                    self.lock.release()
-            except FetchError as error:
-                failure: SourceFailure = {'error': {'code': error.code, **error.details}}
-                if normalized is not None:
-                    failure['requested_url'] = normalized
-                sources.append(failure)
-            except TimeoutError:
-                sources.append({'requested_url': normalized, 'error': {'code': 'fetch_timeout'}})
-            except (OSError, ValueError):
-                sources.append({'requested_url': normalized, 'error': {'code': 'fetch_failed'}})
-        return {'sources': sources, 'content_mode': 'full_text'}
+            if self.closed:
+                raise FetchError('fetch_failed')
+            self.active += 1
+            self.origins.add(origin)
+
+    async def _fetch(self, url: str, deadline: float, *, scope: Callable[[str], str] | None) -> Source:
+        task = asyncio.current_task()
+        assert task is not None
+        self.tasks.add(task)
+        normalized = None
+        try:
+            normalized = self.policy.url(url)
+            origin = self._origin(normalized)
+            await self._admit(origin, deadline)
+            try:
+                async with asyncio.timeout_at(deadline):
+                    return await self._acquire(url, normalized, scope=scope)
+            finally:
+                with anyio.CancelScope(shield=True):
+                    async with self.admission:
+                        # Completion includes PDF parsing, not just the download.
+                        if self.browser is not None:
+                            self.last_work = self.clock()
+                        self.active -= 1
+                        self.origins.remove(origin)
+                        self.admission.notify_all()
+        except FetchError as error:
+            failure: SourceFailure = {'error': {'code': error.code, **error.details}}
+            if normalized is not None:
+                failure['requested_url'] = normalized
+            return failure
+        except TimeoutError:
+            return {'requested_url': normalized, 'error': {'code': 'fetch_timeout'}}
+        except (OSError, ValueError):
+            return {'requested_url': normalized, 'error': {'code': 'fetch_failed'}}
+        finally:
+            self.tasks.discard(task)
+
+    async def _connected_acquire(self, browser: BrowserAdapter, failed: asyncio.Event,
+                                 requested: str, normalized: str, scope: Callable[[str], str] | None):
+        # The generation owns all in-flight work, including queued/active PDF
+        # parsing. A crash drains these too, not only native navigation.
+        work = asyncio.create_task(self._document(browser, requested, normalized, scope))
+        failure = asyncio.create_task(failed.wait())
+        try:
+            await asyncio.wait((work, failure), return_when=asyncio.FIRST_COMPLETED)
+            if failed.is_set():
+                raise FetchError('browser_unavailable')
+            return work.result()
+        finally:
+            work.cancel()
+            failure.cancel()
+            with anyio.CancelScope(shield=True):
+                await asyncio.gather(work, failure, return_exceptions=True)
 
     async def _acquire(self, requested: str, normalized: str, *, scope: Callable[[str], str] | None = None) -> SourceSuccess:
-        parts = urlsplit(normalized)
-        origin = (parts.scheme, parts.hostname, parts.port or (443 if parts.scheme == 'https' else 80))
+        origin = self._origin(normalized)
         if self.backoff.get(origin, 0) > time.monotonic():
             raise FetchError('rate_limited')
+        startup = self.startup
+        if startup is None or (startup.done() and not startup.cancelled() and startup.result() and self.browser is None):
+            startup = self.warmup()
+        if startup is None or not await asyncio.shield(startup):
+            raise FetchError('browser_unavailable')
+        browser = self.browser
+        if browser is None:
+            raise FetchError('browser_unavailable')
+        failed = self.browser_failed
         try:
-            startup = self.startup
-            if startup is None or (startup.done() and not startup.cancelled() and startup.result() and self.browser is None):
-                startup = self.warmup()
-            if startup is None or not await asyncio.shield(startup):
-                raise FetchError('browser_unavailable')
-            self.last_work = self.clock()
-            assert self.browser is not None  # Successful startup owns a live browser.
-            result = await self.browser.acquire(normalized, self.options)
+            return await self._connected_acquire(browser, failed, requested, normalized, scope)
         except FetchError as error:
             if error.code == 'rate_limited':
                 if len(self.backoff) >= 256:
@@ -205,18 +257,32 @@ class Acquisition:
                 if len(self.backoff) < 256:
                     self.backoff[origin] = time.monotonic() + 5
             if error.code == 'browser_unavailable':
-                await self._retire('browser_unavailable', error)
+                failed.set()
+                await self._retire('browser_unavailable', error, expected=browser)
             raise
         except Exception as error:
-            await self._retire('unexpected_exception', error)
+            # Conversion/tab failures must not disrupt connected peer tabs.
+            try:
+                connected = browser.is_connected()
+            except Exception:
+                connected = False
+            if connected:
+                raise FetchError('fetch_failed') from None
+            failed.set()
+            await self._retire('unexpected_exception', error, expected=browser)
             raise FetchError('browser_unavailable') from None
+
+    async def _document(self, browser: BrowserAdapter, requested: str, normalized: str,
+                        scope: Callable[[str], str] | None) -> SourceSuccess:
+        result = await browser.acquire(normalized, self.options)
         # Final URL screening is post-acquisition. Native redirects have already
         # connected: this is evidence/traversal scope, never a socket firewall.
         if scope is not None:
             scope(result['url'])
         fetched = datetime.now(timezone.utc).isoformat()
         if 'pdf' in result:
-            title, content, pdf = await parse_pdf(result['pdf'], self.options)
+            async with self.pdf_lock:
+                title, content, pdf = await parse_pdf(result['pdf'], self.options)
             extras = {'pdf': pdf}
             document_type = 'pdf'
         else:
@@ -231,9 +297,9 @@ class Acquisition:
 
     async def close(self) -> None:
         self.closed = True
-        for task in list(self.active):
+        for task in list(self.tasks):
             task.cancel()
-        await asyncio.gather(*list(self.active), return_exceptions=True)
+        await asyncio.gather(*list(self.tasks), return_exceptions=True)
         tasks: list[asyncio.Task[Any]] = [t for t in (self.startup, self.idle_task) if t is not None]
         for task in tasks:
             task.cancel()

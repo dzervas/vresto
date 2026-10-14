@@ -12,8 +12,10 @@ from pathlib import Path
 import signal
 import sys
 import tempfile
+from typing import cast
 
 import anyio
+from patchright.async_api import Browser, BrowserContext, Page
 import patchright
 
 from .acquisition_policy import FetchError
@@ -30,16 +32,34 @@ class Chromium:
         if self.channel not in ('chromium', 'chrome'):
             raise ValueError('browser channel must be chromium or chrome')
         self.browser = None
+        self.context = None
         self.profile = None
         self.driver_pid = None
         self.driver_context = None
+        self.page_lock = asyncio.Lock()
+
+    async def new_page(self) -> Page:
+        context = cast(BrowserContext, self.context)
+        # Focus emulation does not keep inactive tabs painting after layout
+        # changes (even in headless Chrome). Give each acquisition its own window,
+        # without losing the shared profile's cookies/cache. Serialize creation
+        # only, so expect_page cannot hand concurrent callers the same target;
+        # navigation, rendering and native input still run concurrently.
+        async with self.page_lock:
+            session = await cast(Browser, self.browser).new_browser_cdp_session()
+            try:
+                async with context.expect_page() as opened:
+                    await session.send('Target.createTarget', {'url': 'about:blank', 'newWindow': True})
+                return await opened.value
+            finally:
+                await session.detach()
 
     async def start(self) -> None:
         # Pinned Chrome 153 default_dns_over_https_config_source.cc reads
         # browser-wide Local State, not profile prefs or invented DoH flags.
         # Full Chrome (not headless shell) provides this configuration seam.
-        # Acquisitions use separate incognito contexts, not this fresh,
-        # owned bootstrap profile, deleted when the browser retires.
+        # Acquisition tabs share this owned profile, including cookies, storage,
+        # workers and clearance state; retirement deletes it, never the user profile.
         self.profile = tempfile.TemporaryDirectory(prefix='crawler-chrome-')
         Path(self.profile.name, 'Local State').write_text(json.dumps({
             'dns_over_https': {'mode': 'secure', 'templates': 'https://1.1.1.1/dns-query'}}))
@@ -63,9 +83,22 @@ class Chromium:
                     playwright = await self.driver_context.start()
                     bootstrap = await playwright.chromium.launch_persistent_context(
                         self.profile.name, channel=self.channel, headless=not self.headful,
-                        no_viewport=self.headful, env=safe_env, ignore_https_errors=False)
+                        # Keep Patchright's fixed 1280×720 viewport so responsive
+                        # content and scrolling do not depend on headed window
+                        # decorations or the virtual display's screen size.
+                        env=safe_env, ignore_https_errors=False,
+                        accept_downloads=True,
+                        # Images add traffic/layout work without public text; retain
+                        # Patchright defaults and bound the shared disk cache to 256 MiB.
+                        # Under Xvfb, cold GPU startup can withhold animation frames
+                        # for ~1s even in visible/focused tabs. Native click stability
+                        # needs those frames within 500ms; use software rendering in
+                        # headed mode rather than force clicks or serialize tab focus.
+                        args=['--blink-settings=imagesEnabled=false', '--disk-cache-size=268435456',
+                              *(['--disable-gpu'] if self.headful else [])])
                     # Keep Patchright's own defaults: adding back
                     # --disable-component-update contradicts its patches.
+                    self.context = bootstrap
                     self.browser = bootstrap.browser
                     control = await bootstrap.new_page()
                     await control.goto('chrome://settings/security')
@@ -100,6 +133,7 @@ class Chromium:
 
     async def close(self) -> None:
         browser, self.browser = self.browser, None
+        self.context = None
         try:
             if browser is not None:
                 try:

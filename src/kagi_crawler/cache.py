@@ -5,6 +5,7 @@ JSON record sizes include metadata; eviction is oldest fetched version first,
 not query popularity. Expiry is swept on startup and cache use, not by an idle
 browser timer. No separate index/evidence store can outlive its document.
 """
+import asyncio
 from collections.abc import Callable
 from typing import cast
 from datetime import datetime, timezone
@@ -115,33 +116,35 @@ class CachedAcquisition:
 
     async def fetch_many(self, urls: list[str], *, freshness: str = 'ordinary', max_age_seconds: float = 3600,
                          scope: Callable[[str], str] | None = None) -> AcquisitionResult:
-        sources: list[Source] = []
-        for url in urls:
-            if contains_secret(url, self.secrets):
-                sources.append({'error': {'code': 'fetch_failed'}})
-                continue
-            cached = self.cache.lookup(url)
-            if cached and contains_secret(cached, self.secrets):
-                cached = None
-            if freshness == 'cache_only':
-                sources.append(self._hit(cached, max_age_seconds) if cached else
-                               {'requested_url': url, 'error': {'code': 'cache_miss'}})
-                continue
-            if freshness == 'ordinary' and cached and self._age(cached) <= max_age_seconds:
-                sources.append(self._hit(cached, max_age_seconds))
-                continue
-            # Acquisition owns bounded queueing; never hide it behind an
-            # unbounded cache lock. Concurrent misses may acquire twice.
-            source: Source = (await self.acquisition.fetch_many([url], scope=scope))['sources'][0]
-            if contains_secret(source, self.secrets):
-                source = {'error': {'code': 'fetch_failed'}}
-            if 'error' not in source:
-                self.cache.store(source)
-                source = cast(SourceSuccess, dict(source, cache_state='refresh' if cached else 'miss', stale=False))
-            elif cached and freshness != 'fresh_only' and source['error']['code'] not in ('policy_rejected', 'scope_rejected', 'traversal_byte_limit'):
-                source = cast(SourceSuccess, dict(cached, cache_state='stale', stale=True, refresh_error=source['error']))
-            sources.append(source)
-        return {'sources': sources, 'content_mode': 'full_text'}
+        # One inherited deadline across concurrent misses; cache hits never join
+        # admission. TaskGroup owns cancellation/draining of every miss.
+        with self.acquisition.request():
+            async with asyncio.TaskGroup() as group:
+                tasks = [group.create_task(self._fetch(url, freshness, max_age_seconds, scope)) for url in urls]
+        return {'sources': [task.result() for task in tasks], 'content_mode': 'full_text'}
+
+    async def _fetch(self, url: str, freshness: str, max_age_seconds: float,
+                     scope: Callable[[str], str] | None) -> Source:
+        if contains_secret(url, self.secrets):
+            return {'error': {'code': 'fetch_failed'}}
+        cached = self.cache.lookup(url)
+        if cached and contains_secret(cached, self.secrets):
+            cached = None
+        if freshness == 'cache_only':
+            return self._hit(cached, max_age_seconds) if cached else {'requested_url': url, 'error': {'code': 'cache_miss'}}
+        if freshness == 'ordinary' and cached and self._age(cached) <= max_age_seconds:
+            return self._hit(cached, max_age_seconds)
+        # Acquisition owns bounded queueing; never hide it behind an
+        # unbounded cache lock. Concurrent misses may acquire twice.
+        source: Source = (await self.acquisition.fetch_many([url], scope=scope))['sources'][0]
+        if contains_secret(source, self.secrets):
+            source = {'error': {'code': 'fetch_failed'}}
+        if 'error' not in source:
+            self.cache.store(source)
+            source = cast(SourceSuccess, dict(source, cache_state='refresh' if cached else 'miss', stale=False))
+        elif cached and freshness != 'fresh_only' and source['error']['code'] not in ('policy_rejected', 'scope_rejected', 'traversal_byte_limit'):
+            source = cast(SourceSuccess, dict(cached, cache_state='stale', stale=True, refresh_error=source['error']))
+        return source
 
     @staticmethod
     def _age(source: SourceSuccess) -> float:
