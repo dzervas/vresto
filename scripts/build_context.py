@@ -12,9 +12,10 @@ import tarfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
 root = parser.parse_args().root
-files = [root / name for name in ('Dockerfile', 'Dockerfile.headful', 'Dockerfile.chrome', '.dockerignore', 'pyproject.toml', 'uv.lock')]
-files += list((root / 'src/kagi_crawler').glob('*.py'))
-# The Dockerfiles no longer copy licenses/: do not require or traverse the
+files = [root / name for name in ('Dockerfile', '.dockerignore', 'pyproject.toml', 'uv.lock')]
+# Recursive: subpackages such as sites/ are runtime code too.
+files += [p for p in (root / 'src/kagi_crawler').rglob('*.py') if '__pycache__' not in p.parts]
+# The Dockerfile does not copy licenses/: do not require or traverse the
 # removed directory. Keep the context aligned with the current image inputs.
 with tarfile.open(fileobj=sys.stdout.buffer, mode='w|') as archive:
     for path in sorted(files):

@@ -1,4 +1,6 @@
 """Lexical evidence over canonical Markdown; never generate or shorten quotations."""
+from collections.abc import Iterator, Iterable
+from typing import cast
 import base64
 from collections import Counter
 import hashlib
@@ -8,12 +10,15 @@ import re
 from urllib.parse import urlsplit
 
 
+from .cache import DocumentCache
+from .types import ToolData, ToolResult, SourceSuccess
+
 def _digest(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
 
-def evidence_id(source, start, end):
-    # Successor .7 API: p1.<base64url compact JSON>, Unicode character offsets,
+def evidence_id(source: SourceSuccess, start: int, end: int) -> str:
+    # Evidence ID format: p1.<base64url compact JSON>, Unicode character offsets,
     # requested URL identity (including query), exact SHA256 canonical version,
     # and quote SHA256. IDs are references, NOT authorization or signed claims.
     # resolve_evidence validates all fields against cache.lookup(url, version);
@@ -25,12 +30,12 @@ def evidence_id(source, start, end):
         separators=(',', ':')).encode()).decode().rstrip('=')
 
 
-def resolve_evidence(cache, identifier):
+def resolve_evidence(cache: DocumentCache, identifier: str) -> tuple[SourceSuccess, int, int]:
     """Return (canonical_source, start, end), or raise ValueError(code).
 
-    .7 should map invalid_evidence_id to validation failure and
-    evidence_unavailable to per-reference unavailable-version outcome. Even a
-    syntactically valid forged/changed offset must match the retained quote hash.
+    invalid_evidence_id denotes malformed references; evidence_unavailable denotes
+    missing versions or mismatched quotes. Even a syntactically valid forged/changed
+    offset must match the retained quote hash.
     This pure lookup never warms/acquires a replacement document.
     """
     try:
@@ -66,28 +71,30 @@ def resolve_evidence(cache, identifier):
     return source, start, end
 
 
-def document_passages(source):
+def document_passages(source: SourceSuccess) -> Iterable[tuple[int, int, str | None]]:
     # PDF text may itself contain Markdown-looking headings. Only trusted
     # processor page offsets define PDF passages, never untrusted text markers.
     if source.get('document_type') == 'pdf':
+        assert 'pdf' in source  # PDF acquisitions always carry parser metadata.
         return ((p['start'], p['end'], f"PDF page {p['page']}")
             for p in source['pdf']['references'] if p['status'] == 'text')
     return sections(source['content'])
 
 
-def page_references(source, start, end):
+def page_references(source: SourceSuccess, start: int, end: int) -> dict[str, list[int]]:
     if source.get('document_type') != 'pdf':
         return {}
+    assert 'pdf' in source  # PDF acquisitions always carry parser metadata.
     return {'pages': [p['page'] for p in source['pdf']['references']
         if p['start'] < end and p['end'] > start]}
 
 
-def pdf_section(source, start, end):
+def pdf_section(source: SourceSuccess, start: int, end: int) -> str:
     pages = page_references(source, start, end)['pages']
     return f'PDF page {pages[0]}' if len(pages) == 1 else f'PDF pages {pages[0]}–{pages[-1]}'
 
 
-def expand_evidence(cache, identifiers):
+def expand_evidence(cache: DocumentCache, identifiers: list[str]) -> ToolResult:
     """Resolve all references before returning anything; malformed IDs fail the request.
 
     Unlike Exa's URL-based follow-up contents workflow, these IDs point to retained
@@ -151,7 +158,7 @@ def _fence_transition(line, fence):
     return fence
 
 
-def markdown_blocks(text, start, end):
+def markdown_blocks(text: str, start: int, end: int) -> Iterator[tuple[int, int]]:
     """Canonical block offsets, including single-newline rendered prose.
 
     Complete sentence-ending prose lines are boundaries, but wrapped/structural
@@ -178,7 +185,7 @@ def markdown_blocks(text, start, end):
         yield block_start, end
 
 
-def passage_windows(text, start, end, *, include_attached_qualification=True):
+def passage_windows(text: str, start: int, end: int, *, include_attached_qualification: bool = True) -> Iterator[tuple[int, int]]:
     """Coherent contiguous windows retaining both neighboring block groups.
 
     Neighbors are included even without query overlap: warnings and release
@@ -222,11 +229,11 @@ def passage_windows(text, start, end, *, include_attached_qualification=True):
             yield window
 
 
-def sections(text):
+def sections(text: str) -> Iterator[tuple[int, int, str | None]]:
     # Small sections and explicitly scoped ancestry remain atomic. Long ordinary
     # sections use coherent block windows rather than almost-whole-page quotes.
     # Separate warning/note headings still attach to their preceding section.
-    boundaries = [(0, None, 0)]
+    boundaries: list[tuple[int, str | None, int]] = [(0, None, 0)]
     offset = 0
     fence = None
     for line in text.splitlines(keepends=True):
@@ -266,15 +273,60 @@ def sections(text):
         ancestors.append((level, start, qualified))
 
 
-def tokens(text):
+def tokens(text: str) -> list[str]:
     # Identifiers and versions stay whole: connect_safe, foo.bar, v2.4, --flag.
     # No stemming/stopword inference that might collapse a technical constraint.
     return re.findall(r'[\w]+(?:[.:-][\w]+)*', text.casefold())
 
 
-def select_highlights(data, query):
+def _passage_bag(quote):
+    bag = Counter(tokens(quote))
+    # Only bare identifier suffixes are aliases. Qualified query tokens remain
+    # exact: other.TaskGroup cannot satisfy asyncio.TaskGroup.
+    for term, frequency in list(bag.items()):
+        parts = term.split('.')
+        if len(parts) > 1 and all(part.isidentifier() for part in parts):
+            bag[parts[-1]] += frequency
+    return bag
+
+
+def _qualifications(quote):
+    # Conservative lexical guard, not interpretation of a claim. Distinct
+    # negations, warnings and release constraints must survive overlap removal.
+    return {part.strip() for part in re.split(r'(?<=[.!?])\s+|\n+', quote.casefold())
+            if re.search(r'\b(not|never|no|neither|cannot|without|only|warning|caution|notes?|'
+                         r'exceptions?|compatibility|except|unless|requires?|must|shall|'
+                         r'mandatory|required|unsupported|limitations?|deprecated|'
+                         r'experimental|version|uncancel)\b|'
+                         r'\b(?:don|doesn|isn|aren|can|won|shouldn|mustn)[\'’]t\b|'
+                         r'(?<!\w)(?:v\d+|\d+\.\d+)', part)}
+
+
+def _redundant(candidate, selected):
+    for previous in selected:
+        # Offsets have meaning only inside this exact source and version.
+        if candidate['index'] != previous['index'] or candidate['version'] != previous['version']:
+            continue
+        overlap = max(0, min(candidate['end'], previous['end']) -
+                      max(candidate['start'], previous['start']))
+        shorter = min(candidate['end'] - candidate['start'], previous['end'] - previous['start'])
+        if (overlap >= 0.8 * shorter and
+                candidate['terms'] <= previous['terms'] and
+                candidate['qualifications'] <= previous['qualifications']):
+            return True
+    return False
+
+
+def select_highlights(data: ToolData, query: str, limit: int | None = None) -> ToolData:
+    from copy import deepcopy
+    from .budget import apply_budget
+
+    # Acquisition/cache dictionaries and canonical text are never changed by
+    # selection, including unsuccessful admission probes.
+    data = deepcopy(data)
     key = 'sources' if 'sources' in data else 'results'
     sources = data[key]
+    terms = set(tokens(query))
     passages = []
     for index, source in enumerate(sources):
         if 'error' in source:
@@ -282,88 +334,153 @@ def select_highlights(data, query):
         text = source['content']
         seen = set()
         for start, end, section in document_passages(source):
+            # Rank the matching page itself, not a neighbor's borrowed match.
+            bag = _passage_bag(text[start:end])
+            if source.get('document_type') == 'pdf':
+                if not terms & bag.keys():
+                    continue
+                # Trusted previous/current/next pages are a single atomic quote.
+                references = source['pdf']['references']
+                position = next(i for i, p in enumerate(references) if p['start'] == start)
+                start = references[max(0, position - 1)]['start']
+                end = references[min(len(references) - 1, position + 1)]['end']
+                section = pdf_section(source, start, end)
             quote = text[start:end]
-            # Exact repeats within one source only. Across sources even identical
-            # text retains useful attribution/diversity; near-duplicate strings
-            # may differ by one critical version or negation, so never collapse.
             if quote in seen:
                 continue
             seen.add(quote)
-            bag = Counter(tokens(quote))
-            # Bare identifier queries also match qualified API names. Retain
-            # the full token, and index only identifier suffixes (not versions).
-            # Query tokens stay exact: asyncio.TaskGroup must not also match
-            # other.TaskGroup just because the final component is shared.
-            for term, frequency in list(bag.items()):
-                parts = term.split('.')
-                if len(parts) > 1 and all(part.isidentifier() for part in parts):
-                    bag[parts[-1]] += frequency
-            passages.append((index, start, end, section, bag))
-    terms = set(tokens(query))
-    counts = Counter(term for *_, bag in passages for term in bag)
-    average = sum(sum(p[4].values()) for p in passages) / max(1, len(passages))
+            passages.append(dict(index=index, start=start, end=end, section=section,
+                bag=bag, matching_terms=terms & bag.keys(),
+                terms=terms & (_passage_bag(quote).keys() if source.get('document_type') == 'pdf' else bag.keys()),
+                version=source['content_version'],
+                qualifications=_qualifications(quote)))
+    counts = Counter(term for p in passages for term in p['bag'])
+    average = sum(sum(p['bag'].values()) for p in passages) / max(1, len(passages))
     ranked = []
-    for index, start, end, section, bag in passages:
-        score = 0.0
+    for passage in passages:
+        bag = passage['bag']
         length = sum(bag.values())
-        for term in terms & bag.keys():
+        score = 0.0
+        for term in sorted(passage['matching_terms']):
             frequency = bag[term]
             inverse = math.log(1 + (len(passages) - counts[term] + 0.5) / (counts[term] + 0.5))
             score += inverse * frequency * 2.2 / (frequency + 1.2 * (0.25 + 0.75 * length / max(1, average)))
+        # A giant background window should not win merely by repeating a name.
+        score /= math.sqrt(max(1, length / 200))
         if score > 0:
-            ranked.append((score, index, start, end, section))
-    ranked.sort(key=lambda p: (-p[0], p[1], p[2]))
-    for source in sources:
+            passage['score'] = score
+            ranked.append(passage)
+    data_original_texts = [s.get('content', '') for s in sources]
+    totals = Counter(p['index'] for p in ranked)
+    for index, source in enumerate(sources):
+        source.pop('content', None)
         if 'error' not in source:
-            source['highlights'] = []
-            source['content_mode'] = 'highlights'
-            source['relevance'] = 'no_lexical_match'
-    # Preserve each source's best passages in global BM25 order. The shared byte
-    # gate removes lowest-ranked extras fairly across sources before the best.
-    # Provisional per-source cap 3 is disclosed; final shared byte
-    # gate removes atomic quotes fairly, exposing omissions. No page-count cap.
-    selected = Counter()
+            source.update(highlights=[], content_mode='highlights',
+                relevance='lexical_match' if totals[index] else 'no_lexical_match')
+            if totals[index]:
+                source['selection_omitted_highlight_count'] = totals[index]
+    data['content_mode'] = 'highlights'
+    data['selection'] = {'method': 'bm25_marginal_query_coverage', 'max_highlights_per_source': 3,
+        'relevance_semantics': 'lexical_overlap_not_answer_verification',
+        'deduplication': 'same_source_version_overlap_and_exact_versions_with_attributed_references',
+        'query_terms': sorted(terms), 'covered_query_terms': [],
+        'uncovered_query_terms': sorted(terms), 'partial_coverage': bool(terms)}
+    selected = []
+    selected_counts = Counter()
+    covered = set()
     duplicates = {}
-    windows = set()
-    for score, index, start, end, section in ranked:
-        source = sources[index]
-        if source.get('document_type') == 'pdf':
-            # Rank the matching page, but quote previous/current/next canonical
-            # pages regardless of lexical overlap: warnings/negation on either
-            # side must not disappear. Trusted parser offsets only; full text
-            # and expansion's page passages remain unchanged. The shared budget
-            # drops this contiguous window atomically, never its qualifications.
-            references = source['pdf']['references']
-            position = next(i for i, p in enumerate(references) if p['start'] == start)
-            start = references[max(0, position - 1)]['start']
-            end = references[min(len(references) - 1, position + 1)]['end']
-            section = pdf_section(source, start, end)
-            if (index, start, end) in windows:
+    maximum = max((p['score'] for p in ranked), default=1)
+
+    def update_selection(output, coverage):
+        output['selection'].update(covered_query_terms=sorted(coverage),
+            uncovered_query_terms=sorted(terms - coverage),
+            partial_coverage=bool(terms - coverage) or any(
+                s.get('selection_omitted_highlight_count') for s in output[key]))
+
+    def fits(output):
+        if limit is None:
+            return True
+        bounded = apply_budget(output, limit)
+        # The final gate may disclose title/snippet reductions or omit sources
+        # without selected evidence. Keep the full internal source list so its
+        # original indices/counts remain truthful at final serialization.
+        if 'error' in bounded:
+            return False
+        omitted = set(bounded['budget']['omitted_source_indices'])
+        retained = iter(bounded[key])
+        for index, source in enumerate(output[key]):
+            if index in omitted:
+                if source.get('highlights') or source.get('duplicate_evidence'):
+                    return False
                 continue
-            windows.add((index, start, end))
-        source['relevance'] = 'lexical_match'  # Not a claim the query is answered.
-        if selected[index] < 3:
-            identifier = evidence_id(source, start, end)
+            returned = next(retained)
+            # Every admitted quote and attributed reference must survive intact;
+            # no allowance for final-gate quote loss or changed qualification.
+            if any(returned.get(field) != value for field, value in source.items()
+                   if field not in ('title', 'provider_snippet', 'truncated_fields')):
+                return False
+        return True
+
+    # First admit one useful fitting candidate from each source, then extras.
+    # A nonfitting best candidate never prevents trying its smaller alternatives.
+    for first_pass in (True, False):
+        cap = 1 if first_pass else 3
+        pending = [p for p in ranked if selected_counts[p['index']] < cap and p not in selected]
+        rerank = True
+        while pending:
+            # Marginal rank changes only when admitted evidence covers new
+            # terms. Reverse sorting permits constant-time best-candidate pops.
+            if rerank:
+                pending = sorted(pending, key=lambda p: (
+                    -(p['score'] / maximum + len(p['terms'] - covered)),
+                    p['index'], p['start'], p['end']), reverse=True)
+                rerank = False
+            candidate = pending.pop()
+            index = candidate['index']
+            if _redundant(candidate, selected):
+                # Only count suppression once, on the final extra pass.
+                if not first_pass:
+                    trial = deepcopy(data)
+                    source = trial[key][index]
+                    source['selection_omitted_highlight_count'] -= 1
+                    source['redundant_highlight_count'] = source.get('redundant_highlight_count', 0) + 1
+                    update_selection(trial, covered)
+                    # Suppression counters can grow after the last admission.
+                    # If their metadata cannot fit without dropping a quote,
+                    # leave this candidate counted as an ordinary omission.
+                    if fits(trial):
+                        data = trial
+                        sources = data[key]
+                continue
+            source = sources[index]
+            start, end = candidate['start'], candidate['end']
+            canonical = cast(SourceSuccess, {**source, 'content': data_original_texts[index]})
+            identifier = evidence_id(canonical, start, end)
+            reference = {'url': source['resolved_url'], 'section': candidate['section'],
+                         'start': start, 'end': end, 'evidence_id': identifier,
+                         **page_references(source, start, end)}
             identity = (source['content_version'], start, end)
-            reference = {'url': source['resolved_url'], 'section': section, 'start': start, 'end': end,
-                         'evidence_id': identifier, **page_references(source, start, end)}
-            # Collapse only identical *whole document versions*, not near-matching
-            # quotes from differently qualified documents. Keep each duplicate's
-            # attribution and independently resolvable ID for successor expansion.
+            trial = deepcopy(data)
+            target = trial[key][index]
             if identity in duplicates:
-                source.setdefault('duplicate_evidence', []).append(dict(reference,
+                target.setdefault('duplicate_evidence', []).append(dict(reference,
                     duplicate_of=duplicates[identity]))
             else:
-                source['highlights'].append(dict(reference, text=source['content'][start:end]))
-                duplicates[identity] = identifier
-            selected[index] += 1
-        else:
-            source['selection_omitted_highlight_count'] = source.get('selection_omitted_highlight_count', 0) + 1
-    for source in sources:
-        source.pop('content', None)
-    data['content_mode'] = 'highlights'
-    data['selection'] = {'method': 'cross_document_bm25', 'max_highlights_per_source': 3,
-        'relevance_semantics': 'lexical_overlap_not_answer_verification',
-        'deduplication': 'exact_canonical_document_versions_with_attributed_references',
-        'partial_coverage': any(s.get('selection_omitted_highlight_count') for s in sources)}
+                target['highlights'].append(dict(reference, text=canonical['content'][start:end]))
+            target['selection_omitted_highlight_count'] -= 1
+            update_selection(trial, covered | candidate['terms'])
+            if not fits(trial):
+                continue
+            data = trial
+            sources = data[key]
+            selected.append(candidate)
+            selected_counts[index] += 1
+            rerank = bool(candidate['terms'] - covered)
+            covered |= candidate['terms']
+            duplicates.setdefault(identity, identifier)
+            if selected_counts[index] == cap:
+                # Capped candidates remain in the original omission count, but
+                # cannot be admitted in this pass and need no more ranking work.
+                pending = [p for p in pending if p['index'] != index]
+    update_selection(data, covered)
     return data

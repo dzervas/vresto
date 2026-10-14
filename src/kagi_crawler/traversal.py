@@ -1,24 +1,25 @@
-"""Supported Crawl4AI BFS, with a serialized application acquisition facade.
+"""Bounded breadth-first traversal over the serialized cached acquisition.
 
-Upstream counts successes, not attempts; the facade separately bounds attempts,
-wall time and bytes (including cache reuse). No dispatcher or parallel browser
-work is created here. Exa-style related-document ergonomics, not discovery/index
-parity; no authorized live Exa comparison was available.
+Bounds attempts (including seed, failures and cache hits), depth, frontier,
+wall time and canonical bytes. Pages are visited one at a time; no parallel
+browser work is created here. Exa-style related-document ergonomics, not
+discovery/index parity; no authorized live Exa comparison was available.
 """
+from typing import TYPE_CHECKING
 import asyncio
 from collections import Counter
-from contextvars import ContextVar
 import posixpath
 from urllib.parse import urlsplit, unquote, urljoin
 
-from crawl4ai import CrawlerRunConfig, CrawlResult
-from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .transport import FetchError
+from .types import AcquisitionResult, Source
 
+if TYPE_CHECKING:
+    from .cache import CachedAcquisition
+    from .contract import FetchInput
 
-active_traversal = ContextVar('active_traversal', default=None)
+from .acquisition_policy import AcquisitionOptions, DestinationPolicy, FetchError
 
 
 class TraversalInput(BaseModel):
@@ -52,12 +53,12 @@ class TraversalInput(BaseModel):
         return self
 
 
-def origin(url):
+def origin(url: str) -> tuple[str, str | None, int]:
     p = urlsplit(url)
     return p.scheme, p.hostname, p.port or (443 if p.scheme == 'https' else 80)
 
 
-def path(url):
+def path(url: str) -> str:
     value = urlsplit(url).path
     # Conservative subtree interpretation across servers with encoded slashes or
     # dot segments: repeatedly decode before comparing, never widen the scope.
@@ -72,22 +73,23 @@ def path(url):
 
 
 class Traversal:
-    def __init__(self, acquisition, request):
+    def __init__(self, acquisition: "CachedAcquisition", request: "FetchInput", options: AcquisitionOptions) -> None:
         self.acquisition = acquisition
+        assert request.traversal is not None  # Only constructed for traversal requests.
         self.input = request.traversal
         self.request = request
-        self.policy = acquisition.acquisition.policy
+        self.policy = DestinationPolicy(options)
         self.scope_origin = origin(self.input.origin)
         self.prefix = path(self.input.path_prefix).rstrip('/')
-        self.sources = []
+        self.sources: list[Source] = []
         self.seen = set()
         self.attempted = 0
         self.omissions = Counter()
         self.bytes = 0
-        self.strategy = None
+        self.stopped = False  # Finish the current level, then stop.
         self.current_url = None
 
-    def check_document(self, url):
+    def check_document(self, url: str) -> str:
         url = self.policy.url(url)
         p = path(url)
         if (origin(url) != self.scope_origin
@@ -95,28 +97,30 @@ class Traversal:
             raise FetchError('scope_rejected')
         return url
 
-    def charge(self, size):
+    def charge(self, size: int) -> None:
         if self.bytes + size > self.input.max_bytes:
             self.omissions['byte_limit'] += 1
             raise FetchError('traversal_byte_limit')
         self.bytes += size
 
-    async def arun_many(self, urls, config):
-        results = []
+    async def _visit(self, urls):
+        """Acquire one BFS level in order; returns (url, source) per attempt."""
+        visited = []
         for url in urls:
             if url in self.seen:
                 continue
             if len(self.sources) >= self.input.max_pages:
                 self.omissions['page_limit'] += 1
-                self.strategy.cancel()
+                self.stopped = True
                 break
             self.seen.add(url)
             self.attempted += 1
             self.current_url = url
+            source: Source
             try:
                 self.check_document(url)
                 source = (await self.acquisition.fetch_many([url], freshness=self.request.freshness,
-                    max_age_seconds=self.request.max_age_seconds))['sources'][0]
+                    max_age_seconds=self.request.max_age_seconds, scope=self.check_document))['sources'][0]
                 if 'error' not in source:
                     self.check_document(source['resolved_url'])
                     self.seen.add(source['resolved_url'])
@@ -128,71 +132,67 @@ class Traversal:
             self.current_url = None
             if source.get('error', {}).get('code') == 'fetch_timeout':
                 self.omissions['time_limit'] += 1
-                self.strategy.cancel()
-            links = source.get('link_targets', [])
+                self.stopped = True
             if 'error' not in source and source.get('document_type') == 'html' and 'link_targets' not in source:
                 self.omissions['link_metadata_unavailable'] += 1
             if source.get('error', {}).get('code') == 'scope_rejected':
                 self.omissions['scope_rejected'] += 1
             if source.get('links_truncated'):
                 self.omissions['link_limit'] += 1
-            results.append(CrawlResult(url=url, html='', success='error' not in source,
-                links={'internal': [{'href': link} for link in links]}, metadata={}))
+            visited.append((url, source))
             if source.get('error', {}).get('code') == 'traversal_byte_limit':
-                self.strategy.cancel()
+                self.stopped = True
                 break
-        return results
+        return visited
 
-    async def run(self, seed):
-        owner = self
-        class ScopedBFS(BFSDeepCrawlStrategy):
-            async def link_discovery(self, result, source_url, current_depth, visited, next_level, depths):
-                # Supported strategy extension hook: upstream 0.9.4's default
-                # discovery drops ref/tracking and blank query parameters. Only
-                # fragments are disposable here; inherited BFS still owns levels,
-                # result depth/parents and scheduling through arun_many.
-                visited.update(owner.seen)
-                for link in result.links.get('internal', []):
-                    try:
-                        url = owner.check_document(urljoin(source_url, link['href']))
-                    except FetchError:
-                        owner.omissions['scope_rejected'] += 1
-                        continue
-                    if url in visited:
-                        continue
-                    if current_depth >= self.max_depth:
-                        owner.omissions['depth_limit'] += 1
-                        continue
-                    if len(owner.sources) + len(next_level) >= owner.input.max_pages:
-                        owner.omissions['page_limit'] += 1
-                        continue
-                    if len(next_level) >= owner.input.max_frontier:
-                        owner.omissions['frontier_limit'] += 1
-                        continue
-                    visited.add(url)
-                    next_level.append((url, source_url))
-                    depths[url] = current_depth + 1
-
-        self.strategy = ScopedBFS(max_depth=self.input.max_depth, max_pages=self.input.max_pages,
-                                 include_external=False)
-        token = active_traversal.set(self)
-        try:
+    def _discover(self, source, source_url, depth, queued, next_level):
+        # Original anchor targets, queries included: ref/tracking parameters
+        # can select different documents. Only fragments are disposable.
+        queued.update(self.seen)
+        for link in source.get('link_targets', []):
             try:
-                self.scope_origin = origin(self.policy.url(self.input.origin))
-                seed = self.check_document(seed)
-                async with asyncio.timeout(self.input.max_seconds):
-                    await self.strategy.arun(seed, self, CrawlerRunConfig(stream=False))
-            except FetchError as error:
-                self.sources.append({'requested_url': seed, 'error': {'code': error.code}})
-            except TimeoutError:
-                self.omissions['time_limit'] += 1
-                if self.current_url is not None:
-                    self.sources.append({'requested_url': self.current_url, 'error': {'code': 'fetch_timeout'}})
-            return {'sources': self.sources, 'content_mode': 'full_text', 'traversal': {
-                'scope': {'origin': self.input.origin, 'path_prefix': self.input.path_prefix},
-                'limits': self.input.model_dump(exclude={'origin', 'path_prefix'}),
-                'attempted_pages': self.attempted, 'accounted_bytes': self.bytes,
-                'omissions': dict(self.omissions), 'exhaustive': False,
-                'network_scope_enforced': False}}
-        finally:
-            active_traversal.reset(token)
+                url = self.check_document(urljoin(source_url, link))
+            except FetchError:
+                self.omissions['scope_rejected'] += 1
+                continue
+            if url in queued:
+                continue
+            if depth >= self.input.max_depth:
+                self.omissions['depth_limit'] += 1
+                continue
+            if len(self.sources) + len(next_level) >= self.input.max_pages:
+                self.omissions['page_limit'] += 1
+                continue
+            if len(next_level) >= self.input.max_frontier:
+                self.omissions['frontier_limit'] += 1
+                continue
+            queued.add(url)
+            next_level.append(url)
+
+    async def _crawl(self, seed):
+        level, depth, queued = [seed], 0, set()
+        while level and not self.stopped:
+            next_level = []
+            for url, source in await self._visit(level):
+                if 'error' not in source:
+                    self._discover(source, url, depth, queued, next_level)
+            level, depth = next_level, depth + 1
+
+    async def run(self, seed: str) -> AcquisitionResult:
+        try:
+            self.scope_origin = origin(self.policy.url(self.input.origin))
+            seed = self.check_document(seed)
+            async with asyncio.timeout(self.input.max_seconds):
+                await self._crawl(seed)
+        except FetchError as error:
+            self.sources.append({'requested_url': seed, 'error': {'code': error.code}})
+        except TimeoutError:
+            self.omissions['time_limit'] += 1
+            if self.current_url is not None:
+                self.sources.append({'requested_url': self.current_url, 'error': {'code': 'fetch_timeout'}})
+        return {'sources': self.sources, 'content_mode': 'full_text', 'traversal': {
+            'scope': {'origin': self.input.origin, 'path_prefix': self.input.path_prefix},
+            'limits': self.input.model_dump(exclude={'origin', 'path_prefix'}),
+            'attempted_pages': self.attempted, 'accounted_bytes': self.bytes,
+            'omissions': dict(self.omissions), 'exhaustive': False,
+            'network_scope_enforced': False}}

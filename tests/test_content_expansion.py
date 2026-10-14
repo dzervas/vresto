@@ -7,6 +7,7 @@ from test_fetch import site
 from test_http import running, client, body, cli_response
 
 
+
 async def test_fetch_expands_collapsed_text_and_lazy_discussion_then_search_reuses_it(tmp_path):
     async def handler(request):
         return web.Response(content_type='text/html', text='''<title>Cancellation discussion</title>
@@ -32,6 +33,18 @@ async def test_fetch_expands_collapsed_text_and_lazy_discussion_then_search_reus
             assert searched['content_version'] == fetched['content_version']
             assert any('cancel_called' in h['text'] for h in searched['highlights'])
 
+
+async def test_duration_bound_still_suppresses_loaded_exact_repeats(tmp_path):
+    from dataclasses import replace
+    async def handler(request):
+        return web.Response(content_type='text/html', text='''<main><h1>Repeated discussion</h1>
+        <section id="comments"><article data-comment-id="one"><p>Warning: repeated public qualification.</p></article></section>
+        <button type="button" aria-controls="comments" onclick="document.querySelector('#comments').insertAdjacentHTML('beforeend', document.querySelector('article').outerHTML)">Load more comments</button></main>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options,
+            expansion_timeout=0.2)) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
+        assert source['coverage']['stop_reason'] == 'duration_limit'
+        assert source['content'].count('Warning: repeated public qualification.') == 1
 
 async def test_unsupported_account_controls_are_not_clicked_and_coverage_is_disclosed(tmp_path):
     async def handler(request):
@@ -227,18 +240,6 @@ async def test_unsupported_form_and_link_pagination_are_disclosed_without_visiti
         assert data['sources'][0]['coverage']['partial']
         assert data['sources'][0]['coverage']['stop_reason'] == 'unsupported_controls'
 
-
-async def test_duration_bound_still_suppresses_loaded_exact_repeats(tmp_path):
-    from dataclasses import replace
-    async def handler(request):
-        return web.Response(content_type='text/html', text='''<main><h1>Repeated discussion</h1>
-        <section id="comments"><article data-comment-id="one"><p>Warning: repeated public qualification.</p></article></section>
-        <button type="button" aria-controls="comments" onclick="document.querySelector('#comments').insertAdjacentHTML('beforeend', document.querySelector('article').outerHTML)">Load more comments</button></main>''')
-    async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options,
-            expansion_timeout=0.2)) as (url, _), client(url) as session:
-        source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
-        assert source['coverage']['stop_reason'] == 'duration_limit'
-        assert source['content'].count('Warning: repeated public qualification.') == 1
 
 
 @pytest.mark.parametrize('replacement, expected', [('challenge', 'blocked'), ('error', 'fetch_failed')])
@@ -445,3 +446,39 @@ async def test_network_idle_timer_rendering_preserves_warning_and_exact_coverage
         assert cached['content'] == source['content']
         assert cached['content_version'] == source['content_version']
         assert cached['coverage'] == source['coverage']
+
+
+async def test_adapter_authorization_cannot_bypass_generic_guards(tmp_path, monkeypatch):
+    from kagi_crawler import sites
+    # Deliberately overbroad authorization: the shared loop, not the adapter,
+    # must enforce every read-only restriction.
+    monkeypatch.setattr(sites, 'ADAPTERS', (sites.SiteAdapter('broad', lambda url: True,
+        expansion=lambda: sites.Expansion(authorize_selector='*')),))
+    bad = "document.querySelector('#content').append(' UNSAFE_CLICK');return false"
+    anchor = f'<a href="#" aria-controls="content" onclick="{bad}">Show 1 more comment</a>'
+    forbidden = ''.join(f'<{tag}>{anchor}</{tag}>' for tag in ('form', 'nav', 'dialog'))
+    forbidden += f'<div role="dialog">{anchor}</div><div role="navigation">{anchor}</div>'
+    forbidden += anchor.replace('href="#"', 'href="/navigation"')
+    forbidden += anchor.replace('href="#"', 'href="javascript:void(0)"')
+    forbidden += anchor.replace('href="#"', 'href="https://example.org/#fragment"')
+    forbidden += anchor.replace('aria-controls="content"', 'aria-controls="missing"')
+    forbidden += anchor.replace('aria-controls="content"', 'aria-controls="outside"')
+    forbidden += f'<div hidden>{anchor}</div>'
+    forbidden += f'<button type="submit" aria-controls="content" onclick="{bad}">Show more</button>'
+    forbidden += f'<button type="button" form="missing" aria-controls="content" onclick="{bad}">Show more</button>'
+    forbidden += anchor.replace('aria-controls="content"', 'aria-controls="content" aria-busy="true"')
+    async def handler(request):
+        return web.Response(content_type='text/html', text=f'''<div id="outside">Outside scope.</div>
+        {anchor}<main><h1>Bounded discussion</h1><section id="content">Initial content.</section>
+        {forbidden}
+        <a href="#comments" aria-controls="content" onclick="document.querySelector('#content').append(' Authorized comment.');this.remove();return false">Show 1 more comment</a>
+        <a href="" aria-controls="content" onclick="document.querySelector('#content').append(' Empty href comment.');this.remove();return false">Show 1 more comment</a>
+        </main>''')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
+        assert 'error' not in source, source
+        assert 'UNSAFE_CLICK' not in source['content']
+        assert 'Authorized comment.' in source['content']
+        assert 'Empty href comment.' in source['content']
+        assert source['coverage']['actions'] == 2
+        assert source['coverage']['partial'] is True

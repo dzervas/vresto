@@ -14,9 +14,11 @@ import os
 
 from patchright.async_api import Error
 
+from .types import ToolData
+
 from .browser import Browser
 from .headful import virtual_display
-from .transport import FetchError
+from .acquisition_policy import FetchError
 
 
 _PROBE = '''() => {
@@ -36,18 +38,19 @@ _PROBE = '''() => {
 }'''
 
 
-async def check():
+async def check() -> ToolData:
     owner = Browser()
     try:
         async with asyncio.timeout(30):
             await owner.start()
-            report = {'channel': owner.channel, 'headful': owner.headful,
-                      'browser_version': owner.browser.version, 'secure_doh_verified': True}
+            assert owner.runtime.browser is not None  # Successful startup owns the browser.
+            report: ToolData = {'channel': owner.runtime.channel, 'headful': owner.runtime.headful,
+                      'browser_version': owner.runtime.browser.version, 'secure_doh_verified': True}
             # Compare the fresh persistent recipe with the service's isolated
             # acquisition contexts, without weakening production cookie isolation.
-            persistent = owner.browser.contexts[0]
-            ephemeral = await owner.browser.new_context(accept_downloads=True,
-                ignore_https_errors=False, no_viewport=owner.headful)
+            persistent = owner.runtime.browser.contexts[0]
+            ephemeral = await owner.runtime.browser.new_context(accept_downloads=True,
+                ignore_https_errors=False, no_viewport=owner.runtime.headful)
             try:
                 for name, context in (('persistent_profile', persistent),
                                       ('ephemeral_context', ephemeral)):
@@ -63,7 +66,7 @@ async def check():
         await owner.close()
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--channel', choices=('chromium', 'chrome'))
     parser.add_argument('--headful', action='store_true')

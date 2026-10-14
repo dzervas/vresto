@@ -37,7 +37,7 @@ class FetchInput(BudgetInput):
         if self.evidence_ids is not None and self.model_fields_set & {
                 'urls', 'query', 'content_mode', 'freshness', 'max_age_seconds', 'traversal'}:
             raise ValueError('expansion excludes URL/relevance/freshness/traversal controls')
-        if self.traversal is not None and len(self.urls) != 1:
+        if self.traversal is not None and (self.urls is None or len(self.urls) != 1):
             raise ValueError('traversal requires one URL seed')
         if self.query is not None and not self.query.strip():
             raise ValueError('empty query')
@@ -50,13 +50,8 @@ class SearchInput(BudgetInput):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     query: str = Field(min_length=1, max_length=4096)
-    # Exa comparison: exa-labs/exa-mcp-server e9c3b0126a3373eb1aeaca162e84d0791ff4c7f7,
-    # src/tools/webSearch.ts: query + numResults, default 10, contents.highlights=true;
-    # text output labels Title/URL/Published/Author/Highlights. Here snake_case inputs
-    # and structured source records deliberately distinguish provider_snippet from
-    # acquired evidence. No Exa category/type, generated highlights, or date claims.
-    # This source-shape comparison is not a live Exa response/budget comparison:
-    # no authorized Exa gateway was available; quality/parity remains unverified.
+    # Structured sources distinguish provider snippets from acquired evidence;
+    # no generated highlights or inferred publication dates/provider parity.
     num_results: int = Field(default=10, ge=1, le=20)
     content_mode: Literal["discovery", "highlights", "full_text"] = "highlights"
     freshness: Literal['ordinary', 'refresh', 'fresh_only', 'cache_only'] = 'ordinary'

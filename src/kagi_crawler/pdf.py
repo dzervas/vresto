@@ -8,11 +8,14 @@ import tempfile
 
 import anyio
 
+from .types import PDFMetadata, PDFReference
+from .acquisition_policy import AcquisitionOptions
+
 from .process import Processes
-from .transport import FetchError
+from .acquisition_policy import FetchError
 
 
-async def parse_pdf(body, options):
+async def parse_pdf(body: bytes, options: AcquisitionOptions) -> tuple[str, str, PDFMetadata]:
     process = None
     reader = None
     # Only service-generated files; callers cannot select paths. Private HOME
@@ -32,10 +35,12 @@ async def parse_pdf(body, options):
                         env=env, cwd=directory, start_new_session=True,
                         stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.DEVNULL)
+                assert process is not None and process.stdout is not None  # PIPE was requested.
+                stream = process.stdout
                 async def read():
                     chunks = []
                     consumed = 0
-                    while chunk := await process.stdout.read(8192):
+                    while chunk := await stream.read(8192):
                         consumed += len(chunk)
                         if consumed > options.response_bytes:
                             raise FetchError('resource_limit')
@@ -44,6 +49,7 @@ async def parse_pdf(body, options):
                 reader = asyncio.create_task(read())
                 raw = await reader
                 await process.wait()
+                assert process is not None  # Shielded spawn completed.
                 if process.returncode:
                     raise FetchError('resource_limit' if process.returncode < 0 else 'pdf_parse_failed')
                 result = json.loads(raw)
@@ -62,13 +68,13 @@ async def parse_pdf(body, options):
                     # Reader may have hit its cap; drain without storing to let
                     # asyncio reap a killed process with a full pipe buffer.
                     async def drain():
-                        while await process.stdout.read(8192):
+                        while await stream.read(8192):
                             pass
                     discard = asyncio.create_task(drain())
                     await Processes.stop(process)
                     await discard
     content = ''
-    references = []
+    references: list[PDFReference] = []
     empty = []
     for number, raw_text in result['pages']:
         text = raw_text.replace('\r\n', '\n').replace('\r', '\n').strip()
@@ -86,5 +92,5 @@ async def parse_pdf(body, options):
     return result['title'], content, {'total_pages': result['total_pages'],
         'processed_pages': len(references), 'omitted_pages': omitted,
         'unsupported_pages': empty, 'partial': bool(omitted or empty),
-        'references': references, 'parser': 'crawl4ai_basic_text_no_ocr',
+        'references': references, 'parser': 'pypdf_basic_text_no_ocr',
         'layout': 'not_reconstructed'}

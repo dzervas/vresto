@@ -4,7 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from aiohttp import web
-from kagi_crawler.transport import AcquisitionOptions
+from kagi_crawler.acquisition_policy import AcquisitionOptions
 
 
 @asynccontextmanager

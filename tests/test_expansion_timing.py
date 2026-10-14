@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from kagi_crawler import content_expansion
-from kagi_crawler.transport import AcquisitionOptions
+from kagi_crawler.acquisition_policy import AcquisitionOptions
 
 
 class PhaseClock:
@@ -63,7 +63,7 @@ class NativePage:
     def locator(self, selector):
         return self
 
-    async def evaluate_all(self, script):
+    async def evaluate_all(self, script, argument=None):
         return {'action': 0, 'unsupported': False}
 
     def nth(self, index):

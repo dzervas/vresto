@@ -15,7 +15,9 @@ and positive BM25 candidates; no support threshold or tuned labels. Three/source
 selection and original wire budgets/finalizer. Experimental envelope declares
 semantic-candidate (NOT verified support); exact metadata overhead is measured.
 Frozen ncn corpus, gold and results are inputs only. Baseline latency is frozen,
-not contemporaneously measured reranker latency; lexical is timed paired here.
+not contemporaneously measured reranker latency; the historical lexical selector
+(selection.py candidates/select_order, NOT current production) is timed paired
+here. Frozen baseline evidence digests remain hard checks, never refreshed.
 Three cold processes (OS page cache not flushed), ten warm repetitions/case for
 both explicit no-reuse and reuse conditions, plus query and passage component
 costs. Acquisition excluded; previous measured acquisition retained separately.
@@ -37,7 +39,6 @@ import signal
 import time
 
 from kagi_crawler.budget import wire_bytes
-from kagi_crawler.evidence import select_highlights
 from run import (DATA, Worker, digest, finalize, load_corpus, measure, pool_output,
                  percentile)
 from selection import candidates, embedding_order, select_order
@@ -96,7 +97,7 @@ def evaluate_request(worker, case, canonical, repetition, reuse):
     candidate_ms = (time.perf_counter()-started)*1000
     response = worker.score(case['query'], texts, identities=metadata, clear_cache=not reuse)
     started = time.perf_counter()
-    lexical_selected = select_highlights(deepcopy(canonical), case['query'])
+    lexical_selected = select_order(deepcopy(canonical), candidates(canonical, case['query'])[0])
     lexical_ms = (time.perf_counter()-started)*1000
     started = time.perf_counter()
     orders = embedding_order(replay_lexical, replay_windows, response)
@@ -148,8 +149,7 @@ def main():
             for d in case['documents']], content_mode='full_text', acquisition_limits=corpus['acquisition_limits'])
         lexical, windows = candidates(canonical, case['query'])
         pools[case['id']] = canonical, lexical, windows
-        selected = select_highlights(deepcopy(canonical), case['query'])
-        assert selected == select_order(deepcopy(canonical), lexical)
+        selected = select_order(deepcopy(canonical), lexical)
         for budget in (65536, 16384, 4096):
             final = finalize(deepcopy(selected), budget)
             frozen = next(c for c in baseline['cases'] if c['arm']=='lexical' and c['id']==case['id'] and c['budget']==budget)
@@ -206,7 +206,7 @@ def main():
             canonical,lexical,windows = probe_pools[case['id']]
             response = probe_responses[case['id']]
             probe_rows.extend(compare(case,canonical,lexical,windows,response,documents))
-            selected = select_highlights(deepcopy(canonical),case['query'])
+            selected = select_order(deepcopy(canonical), lexical)
             for budget in (65536,16384,4096):
                 final = finalize(deepcopy(selected),budget)
                 probe_rows.append(dict(id=case['id'],arm='supplemental_lexical',budget=budget,answerable=case['answerable'],
@@ -256,7 +256,7 @@ def main():
         frozen_baseline_provenance=dict(ticket_revision='f5192bc073f2914ea9a6bd29c42fb3986960fa3d',
             integrated_revision='485181add1e46bfd9455e00a6cf6a2f50122013a',
             historical_runner_hashes=baseline['runner_hashes'],
-            scope='ncn corpus/gold/results unchanged; historical hashes refer to pinned ncn code, NOT current evolved experiment files; reranker latency frozen, lexical latency paired current'),
+            scope='ncn corpus/gold/results unchanged; historical hashes refer to pinned ncn code, NOT current evolved experiment files; reranker latency frozen, historical lexical selector latency paired in current runner'),
         runner_hashes={name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
             for name in ('embedding_run.py','run.py','worker.py','selection.py','acquire_model.py')},
         host=dict(platform=platform.platform(),python=platform.python_version(),cpu_affinity=sorted(os.sched_getaffinity(0))),

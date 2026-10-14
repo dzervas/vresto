@@ -157,3 +157,24 @@ async def test_link_only_footer_keeps_explicit_author_and_license_attribution(tm
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
         content = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]['content']
         assert 'Alice Example' in content and 'MIT' in content
+
+
+async def test_health_reports_coarse_state_without_warming_or_leaking(tmp_path):
+    import httpx
+    async def handler(request):
+        return web.Response(content_type='text/html', text='<h1>Health fixture</h1><p>Public text.</p>')
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _):
+        health_url = url.removesuffix('/mcp') + '/health'
+        async with httpx.AsyncClient(trust_env=False) as http:
+            assert (await http.get(health_url)).status_code == 401
+            before = (await http.get(health_url, headers={'Authorization': 'Bearer client-secret'})).json()
+        assert before['status'] == 'ok' and before['browser'] == 'stopped'
+        assert before['cache']['entries'] == 0
+        async with client(url) as session:
+            assert 'error' not in body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
+        async with httpx.AsyncClient(trust_env=False) as http:
+            response = await http.get(health_url, headers={'Authorization': 'Bearer client-secret'})
+        after = response.json()
+        assert after['browser'] == 'running' and after['cache']['entries'] == 1
+        assert after['acquisition'] == {'active': False, 'waiting': 0, 'queue_capacity': options.queue_capacity}
+        assert base not in response.text and 'secret' not in response.text

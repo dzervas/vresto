@@ -62,7 +62,10 @@ async def test_traversal_excludes_out_of_scope_redirect_after_contact(tmp_path, 
         data = body(await session.call_tool('fetch', {'urls': [base + '/docs/seed'],
             'traversal': {'origin': base, 'path_prefix': '/docs'}}))
         assert data['sources'][0]['error']['code'] == 'scope_rejected'
+        assert data['traversal']['omissions']['scope_rejected'] == 1
         assert seen[0] == '/docs/seed' and len(seen) == 2
+        cached = body(await session.call_tool('fetch', {'urls': [base + '/docs/seed'], 'freshness': 'cache_only'}))
+        assert cached['sources'][0]['error']['code'] == 'cache_miss'
 
 
 async def test_failed_pages_count_toward_attempt_limit_and_share_highlight_budget(tmp_path):

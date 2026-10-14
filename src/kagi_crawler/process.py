@@ -1,4 +1,6 @@
 """Bounded CLI process ownership, including its process group (Linux deployment)."""
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 import asyncio
 from collections import deque
 from contextlib import asynccontextmanager
@@ -8,33 +10,28 @@ import signal
 import anyio
 
 
-class DiscoveryError(Exception):
-    def __init__(self, code):
-        self.code = code
-        super().__init__(code)
+from .discovery import DiscoveryError
+
+if TYPE_CHECKING:
+    from .server import Settings
+
 
 
 class Processes:
-    def __init__(self, settings):
+    def __init__(self, settings: "Settings") -> None:
         self.settings = settings
         self.active = set()
         self.closing = False
         self.admitted = 0
-        self.waiters = deque()
+        self.waiters: deque[asyncio.Future[bool]] = deque()
 
-    # Separate from browser acquisition: at most two discovery jobs (each owns
-    # version + search sequentially), eight waiting, ten seconds admission wait.
-    # The request's 30s deadline includes admission. Provisional containment, not
-    # provider parity; at most 2 MiB raw CLI payload, excluding join/parse/pipe
-    # overhead and subprocess RSS. Real TCP MCP/executable fixture observed two
-    # running searches + eight non-spawning waiters; eleventh rejected, all ten
-    # completed after release. Ten-second wait and shared shorter deadlines are
-    # exercised separately. Deployment CLI CPU/RSS/latency remain unmeasured.
+    # Bound CLI spawning separately from browsers; admission shares the request
+    # deadline. Two 1 MiB output caps bound raw payloads, not subprocess RSS.
     CONCURRENCY = 2
     QUEUE_CAPACITY = 8
     QUEUE_WAIT = 10
 
-    def release(self):
+    def release(self) -> None:
         self.admitted -= 1
         if self.waiters and not self.closing:
             waiter = self.waiters.popleft()
@@ -42,7 +39,7 @@ class Processes:
             waiter.set_result(True)
 
     @asynccontextmanager
-    async def admission(self):
+    async def admission(self) -> AsyncIterator[None]:
         if self.closing:
             raise DiscoveryError('discovery_failed')
         waiter = None
@@ -74,7 +71,7 @@ class Processes:
             if acquired:
                 self.release()
 
-    async def run(self, args, env):
+    async def run(self, args: list[str], env: dict[str, str]) -> tuple[int, bytes, bytes]:
         if self.closing:
             raise DiscoveryError("discovery_failed")
         process = None
@@ -90,6 +87,7 @@ class Processes:
                     self.active.add(process)
                 if self.closing:
                     raise DiscoveryError('discovery_failed')
+                assert process is not None  # Shielded spawn completed.
                 consumed = 0
 
                 async def read(stream):
@@ -106,6 +104,7 @@ class Processes:
                            asyncio.create_task(read(process.stderr))]
                 stdout, stderr = await asyncio.gather(*readers)
                 await process.wait()
+                assert process.returncode is not None  # wait() reaped the child.
                 return process.returncode, stdout, stderr
         except TimeoutError:
             raise DiscoveryError("discovery_timeout") from None
@@ -131,7 +130,7 @@ class Processes:
                     self.active.discard(process)
 
     @staticmethod
-    async def stop(process):
+    async def stop(process: asyncio.subprocess.Process) -> None:
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
@@ -147,7 +146,7 @@ class Processes:
             pass
         await process.wait()
 
-    async def close(self):
+    async def close(self) -> None:
         self.closing = True
         for waiter in self.waiters:
             waiter.set_result(False)

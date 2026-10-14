@@ -1,9 +1,11 @@
 """Isolated HTML-only rescore prototype, frozen from evidence.py at c7f1cbca.
 
 No production hooks. All positive BM25 windows (no top32 cutoff) are paired;
-only their ordering changes. Real-HTTP/replay and model-free production parity
-are hard checks. Keep this copy explicit so a later baseline change cannot
-silently change this experiment. PDF evaluation is outside this workload.
+only their ordering changes. Model-free replay checks the archived historical
+HTTP snapshot digests, NOT parity with the evolved production selector. Keep
+this copy explicit so a later baseline change cannot silently change this
+experiment. Shared token/segmentation helpers must retain the historical recipe;
+snapshot digests fail closed on drift. PDF evaluation is outside this workload.
 """
 from collections import Counter
 import math

@@ -33,8 +33,8 @@ infer stage causality by end-to-end subtraction. Cold startup is distinct from
 warm Browser.start ensure-ready no-ops. Queue contention means nine paired
 capacity=1/wait=150ms episodes, not 18 simultaneous/default-capacity contenders.
 Per-call fixture visit deltas overlap in queue episodes; paired outcomes, not
-those deltas, establish admission. Nine samples have weak tails (p95=max). Normalization covers isolation,
-Crawl4AI scraping and Markdown conversion separately, not DOM serialization.
+those deltas, establish admission. Nine samples have weak tails (p95=max). Extraction covers semantic
+normalization and Markdown conversion together, not DOM serialization.
 RSS includes this Python client/server/fixture process and recursive descendants,
 double-counts shared pages, excludes the coordinator, samples every 20ms, can miss
 short peaks, and is not PSS, cgroup memory or a deployment resource bound.
@@ -96,8 +96,6 @@ if not args.worker:
 from aiohttp import web
 import psutil
 from patchright.async_api import Page, BrowserContext, Browser as NativeBrowser
-from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 import release_check as gate
 import kagi_crawler.browser as browser_module
 import kagi_crawler.server as server_module
@@ -170,9 +168,7 @@ for owner, name, phase in [
     (browser_module.Browser, '_settled_response', 'challenge_revalidation'),
     (browser_module.Browser, '_settle_rendered', 'render_quiet'),
     (browser_module, 'expand_content', 'native_expansion'),
-    (browser_module, 'main_content_html', 'normalization_isolation'),
-    (LXMLWebScrapingStrategy, 'scrap', 'normalization_scraping'),
-    (DefaultMarkdownGenerator, 'generate_markdown', 'normalization_markdown'),
+    (browser_module, 'extract', 'extraction'),
     (server_module, 'select_highlights', 'selection'),
     (server_module, 'expand_evidence', 'evidence_expansion'),
     (server_module, 'safe_sources', 'serialization_redaction'),
@@ -250,7 +246,7 @@ async def run():
              'python': sys.version.split()[0], 'sample_interval_ms': 20,
              'logical_cpus_not_entitlement': psutil.cpu_count(), 'calls': calls,
              'dependencies': {name: importlib.metadata.version(name) for name in
-                              ('crawl4ai', 'patchright', 'mcp', 'pypdf')},
+                              ('markdownify', 'lxml', 'patchright', 'mcp', 'pypdf')},
              'corpus_sha256': {kind: hashlib.sha256(gate.pdf_fixture() if kind == 'document.pdf'
                                 else fixture_html(kind).encode()).hexdigest() for kind in CORPUS},
              'fixture_cli_release': 'kagi 0.22.0 (synthetic, not upstream discovery)'}

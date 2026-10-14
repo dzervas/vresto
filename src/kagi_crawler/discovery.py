@@ -1,4 +1,5 @@
 """Subscriber-only Microck discovery, isolated from service access credentials."""
+from typing import TYPE_CHECKING
 import json
 import os
 from tempfile import TemporaryDirectory
@@ -8,7 +9,17 @@ import anyio
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
-from .process import DiscoveryError, Processes
+from .contract import SearchInput
+from .types import ErrorCode, ToolResult
+
+if TYPE_CHECKING:
+    from .server import Settings
+
+class DiscoveryError(Exception):
+    def __init__(self, code: ErrorCode) -> None:
+        self.code: ErrorCode = code
+        super().__init__(code)
+
 
 
 class SearchRow(BaseModel):
@@ -20,7 +31,7 @@ class SearchRow(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def http_url(cls, value):
+    def http_url(cls, value: str) -> str:
         parsed = urlsplit(value)
         if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError("invalid discovery URL")
@@ -40,11 +51,13 @@ class SearchResponse(BaseModel):
 
 
 class Discovery:
-    def __init__(self, settings):
+    def __init__(self, settings: "Settings") -> None:
         self.settings = settings
+        from .process import Processes
+
         self.processes = Processes(settings)
 
-    async def search(self, request):
+    async def search(self, request: SearchInput) -> ToolResult:
         try:
             with anyio.fail_after(self.settings.timeout):
                 async with self.processes.admission():
@@ -52,7 +65,7 @@ class Discovery:
         except TimeoutError:
             raise DiscoveryError('discovery_timeout') from None
 
-    async def _search(self, request):
+    async def _search(self, request: SearchInput) -> ToolResult:
         args = ["--error-format", "json", "search", "--format", "json",
                 "--limit", str(request.num_results)]
         for name in ("region", "lens", "time", "from_date", "to_date", "order"):
@@ -81,7 +94,7 @@ class Discovery:
                     error = {}
             except (ValueError, UnicodeDecodeError):
                 error = {}
-            code = "discovery_failed"
+            code: ErrorCode = "discovery_failed"
             if error.get("http_status") == 429:
                 code = "rate_limited"
             elif error.get("code") in ("authentication_error", "missing_credentials"):

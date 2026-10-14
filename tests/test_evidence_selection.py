@@ -1,0 +1,340 @@
+"""Deterministic selection, canonical fidelity and actual MCP wire budgets."""
+from copy import deepcopy
+import hashlib
+
+from kagi_crawler import evidence
+from kagi_crawler.budget import apply_budget, wire_bytes
+
+
+def source(text, url='https://example.test/docs'):
+    return {'content': text, 'requested_url': url, 'resolved_url': url,
+            'content_version': hashlib.sha256(text.encode()).hexdigest(),
+            'title': 'Technical reference', 'cache_state': 'hit'}
+
+
+def slices(monkeypatch, intervals):
+    monkeypatch.setattr(evidence, 'document_passages', lambda s: iter(intervals))
+
+
+def test_marginal_identifiers_displace_overlapping_cancel_called(monkeypatch):
+    text = 'cancel_called ' * 60 + 'ordinary implementation.\n'
+    boundary = len(text)
+    text += 'TaskGroup._abort cancels sibling tasks.\n'
+    slices(monkeypatch, [(0, boundary, 'Repeated'), (0, boundary - 5, 'Repeated'),
+                         (0, boundary - 10, 'Repeated'), (boundary, len(text), 'Abort')])
+    data = evidence.select_highlights({'sources': [source(text)]}, 'cancel_called TaskGroup._abort')
+    selected = data['sources'][0]['highlights']
+    assert len(selected) == 2
+    assert any('cancel_called' in h['text'] for h in selected)
+    assert any('TaskGroup._abort' in h['text'] for h in selected)
+    assert data['sources'][0]['redundant_highlight_count'] == 2
+    assert data['selection']['uncovered_query_terms'] == []
+    assert data == evidence.select_highlights({'sources': [source(text)]}, 'cancel_called TaskGroup._abort')
+
+
+def test_compact_relevance_beats_giant_ballast(monkeypatch):
+    text = 'cancel_called ' * 3000 + 'irrelevant background. ' * 3000
+    boundary = len(text)
+    text += 'cancel_called reports cancellation.\n'
+    slices(monkeypatch, [(0, boundary, 'Ballast'), (boundary, len(text), 'Compact')])
+    data = evidence.select_highlights({'sources': [source(text)]}, 'cancel_called', 4096)
+    assert data['sources'][0]['highlights'][0]['section'] == 'Compact'
+    assert data['sources'][0]['selection_omitted_highlight_count'] == 1
+    assert wire_bytes(apply_budget(data, 4096)) <= 4096
+
+
+def test_oversized_top_candidate_is_skipped_for_fitting_alternative(monkeypatch):
+    from kagi_crawler import budget
+    text = 'api config ' + 'ordinary ballast. ' * 500
+    boundary = len(text)
+    text += 'api supports retries. Warning: do not swallow CancelledError; call uncancel.\n'
+    slices(monkeypatch, [(0, boundary, 'Large'), (boundary, len(text), 'Qualified')])
+    attempts = []
+    def probe(data, limit):
+        attempts.append(data['sources'][0]['highlights'][-1]['section'])
+        return apply_budget(data, limit)
+    monkeypatch.setattr(budget, 'apply_budget', probe)
+    data = evidence.select_highlights({'sources': [source(text)]}, 'api config', 4096)
+    assert attempts[0] == 'Large'
+    assert data['sources'][0]['highlights'][0]['section'] == 'Qualified'
+    assert data['selection']['uncovered_query_terms'] == ['config']
+    assert data['selection']['partial_coverage']
+
+
+def test_budget_fallback_preserves_metadata_duplicates_and_exact_ids(monkeypatch):
+    text = 'api api api ' + '界\\\" ' * 2000 + '\n'
+    boundary = len(text)
+    text += 'api supports retries. Warning: do not swallow CancelledError; call uncancel.\n'
+    slices(monkeypatch, [(0, boundary, 'Large'), (boundary, len(text), 'Qualified')])
+    original = {'sources': [source(text), source(text, 'https://other.test/docs')],
+                'acquisition_limits': {'description': 'Bounded shared request'}, 'traversal': {'omissions': []}}
+    before = deepcopy(original)
+    data = evidence.select_highlights(original, 'api', 6144)
+    assert original == before
+    bounded = apply_budget(data, 6144)
+    assert bounded['budget']['returned_source_count'] == 2
+    assert bounded['budget']['omitted_source_indices'] == []
+    assert wire_bytes(bounded) <= 6144
+    assert all(s['title'] == original['sources'][i]['title'] for i, s in enumerate(data['sources']))
+    quote = data['sources'][0]['highlights'][0]
+    assert data['sources'][1]['duplicate_evidence'][0]['duplicate_of'] == quote['evidence_id']
+    assert quote['text'] == text[quote['start']:quote['end']]
+    assert 'Warning' in quote['text'] and 'uncancel' in quote['text']
+    class Cache:
+        def lookup(self, url, version):
+            return next((s for s in original['sources'] if s['requested_url'] == url and s['content_version'] == version), None)
+    for s in data['sources']:
+        reference = (s['highlights'] or s['duplicate_evidence'])[0]
+        canonical, start, end = evidence.resolve_evidence(Cache(), reference['evidence_id'])
+        assert canonical['content'][start:end] == quote['text']
+
+
+def test_overlap_distinct_negation_and_qualification_survive(monkeypatch):
+    text = 'api supports retries.\n' + 'Background. ' * 80
+    boundary = len(text)
+    text += 'Warning: api must not retry in version 2.3.\n'
+    slices(monkeypatch, [(0, boundary, 'Claim'), (0, len(text), 'Warning')])
+    data = evidence.select_highlights({'sources': [source(text)]}, 'api')
+    assert any('must not retry' in h['text'] for h in data['sources'][0]['highlights'])
+    small = {'index': 0, 'version': 'v', 'start': 0, 'end': 100, 'terms': {'api'}, 'qualifications': set()}
+    qualified = {**small, 'end': 110, 'qualifications': {'must not retry'}}
+    assert not evidence._redundant(qualified, [small])
+    assert not evidence._redundant({**small, 'index': 1}, [small])
+    assert not evidence._redundant({**small, 'version': 'other'}, [small])
+
+
+def test_suffix_exact_semantics_and_absent_query():
+    text = '# APIs\nother.TaskGroup is available.\n'
+    data = evidence.select_highlights({'sources': [source(text)]}, 'asyncio.TaskGroup')
+    assert data['sources'][0]['relevance'] == 'no_lexical_match'
+    assert data['selection']['uncovered_query_terms'] == ['asyncio.taskgroup']
+    assert data['selection']['partial_coverage']
+    assert evidence.select_highlights({'sources': [source(text)]}, 'TaskGroup')['sources'][0]['highlights']
+
+
+def test_source_fairness_before_extras(monkeypatch):
+    text = 'api works.\napi retries.\napi schedules.\n'
+    slices(monkeypatch, [(0, 11, 'One'), (11, 24, 'Two'), (24, len(text), 'Three')])
+    original = {'sources': [source(text), source(text.replace('works', 'fails'), 'https://other.test')]}
+    data = evidence.select_highlights(original, 'api', 4096)
+    assert all(s['highlights'] for s in data['sources'])
+    assert wire_bytes(apply_budget(data, 4096)) <= 4096
+
+
+def test_pdf_neighbor_window_is_atomic_and_attributed():
+    pages = ['Warning: never swallow errors.\n', 'TaskGroup._abort cancels tasks.\n',
+             'Call uncancel if suppressing cancellation.\n']
+    text = ''.join(pages)
+    document = source(text)
+    document['document_type'] = 'pdf'
+    position = 0
+    references = []
+    for number, page in enumerate(pages, 1):
+        references.append({'page': number, 'start': position, 'end': position + len(page), 'status': 'text'})
+        position += len(page)
+    document['pdf'] = {'references': references}
+    data = evidence.select_highlights({'sources': [document]}, 'TaskGroup._abort', 4096)
+    quote = data['sources'][0]['highlights'][0]
+    assert quote['text'] == text
+    assert quote['pages'] == [1, 2, 3]
+    assert document['content'] == text
+
+
+def test_no_fuzzy_deduplication_across_documents():
+    documents = [source('# api\napi is safe.\n'),
+                 source('# api\napi is not safe.\n', 'https://other.test')]
+    data = evidence.select_highlights({'sources': documents}, 'api')
+    assert all(s['highlights'] for s in data['sources'])
+    assert data['sources'][0]['highlights'][0]['evidence_id'] != data['sources'][1]['highlights'][0]['evidence_id']
+
+
+async def test_public_fetch_and_composed_search_fit_equal_wire_budgets(tmp_path):
+    import json
+    from aiohttp import web
+    from test_fetch import site
+    from test_http import running, client, body, cli_response
+
+    async def handler(request):
+        return web.Response(content_type='text/html', text=(
+            '<title>Escaped "界" reference</title><h1>Reference ' + request.path + '</h1>'
+            '<h2>Ballast</h2><p>cancel_called TaskGroup._abort ' + '界 &quot; \\ ballast ' * 2000 + '</p>'
+            '<h2>Cancellation flag</h2><p>cancel_called indicates that cancellation was requested.</p>'
+            '<h2>Abort interface</h2><p>TaskGroup._abort cancels unfinished sibling tasks.</p>'
+            '<h3>Warning</h3><p>Do not swallow CancelledError; call uncancel if suppression is desired.</p>'))
+
+    async with site(handler) as (base, options):
+        urls = [base + '/one', base + '/two']
+        payload = {'data': [{'url': url, 'title': 'Escaped "界" reference', 'rank': i + 1}
+                            for i, url in enumerate(urls)]}
+        async with running(tmp_path, acquisition_options=options,
+                source=cli_response(json.dumps(payload))) as (url, _), client(url, timeout=60) as session:
+            canonical = body(await session.call_tool('fetch', {
+                'urls': urls, 'response_budget_bytes': 262144}))['sources']
+            assert all('error' not in s and 'truncated_fields' not in s for s in canonical)
+            for tool, arguments, key in [
+                    ('fetch', {'urls': urls, 'freshness': 'cache_only'}, 'sources'),
+                    ('search', {'num_results': 2}, 'results')]:
+                response = await session.call_tool(tool, {**arguments,
+                    'query': 'cancel_called TaskGroup._abort', 'response_budget_bytes': 16384})
+                data = body(response)
+                assert len(response.model_dump_json(exclude_none=True).encode()) <= 16384
+                assert data['budget']['omitted_source_indices'] == []
+                assert data['budget']['returned_source_count'] == 2
+                assert data['budget']['partial_coverage']
+                assert data['selection']['uncovered_query_terms'] == []
+                for index, selected in enumerate(data[key]):
+                    for field in ('requested_url', 'resolved_url', 'content_version', 'title', 'document_type', 'fetched_at'):
+                        assert selected[field] == canonical[index][field]
+                    assert 'truncated_fields' not in selected
+                    quotes = selected['highlights']
+                    assert any('cancel_called' in h['text'] for h in quotes)
+                    assert any('TaskGroup._abort' in h['text'] for h in quotes)
+                    assert any('uncancel' in h['text'] for h in quotes)
+                    assert all(h['section'] != 'Ballast' for h in quotes)
+                    for quote in quotes:
+                        assert quote['text'] == canonical[index]['content'][quote['start']:quote['end']]
+                        expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))
+                        assert expanded['sources'][0]['highlights'][0]['text'] == quote['text']
+
+
+def test_tight_budget_suppression_metadata_cannot_evict_admitted_quote(monkeypatch):
+    from kagi_crawler import budget
+
+    text = 'alpha beta ' * 20 + 'ordinary.\n'
+    slices(monkeypatch, [(0, len(text), 'Full'), (0, len(text) - 1, 'Overlap'),
+                         (0, len(text) - 2, 'Overlap')])
+    original = {'sources': [source(text)], 'fixture_metadata': ''}
+    # Measure the admitted shape before later redundancy counters are added.
+    admitted = evidence.select_highlights(original, 'alpha beta')
+    admitted['sources'][0].pop('redundant_highlight_count')
+    admitted['sources'][0]['selection_omitted_highlight_count'] = 2
+    admitted['selection']['partial_coverage'] = True
+    padding = (4096 - wire_bytes(apply_budget(admitted, 4096))) // 2
+    assert padding > 0
+    original['fixture_metadata'] = admitted['fixture_metadata'] = 'x' * padding
+    assert 4094 <= wire_bytes(apply_budget(admitted, 4096)) <= 4096
+
+    rejected_counter_updates = []
+    def probe(data, limit):
+        bounded = apply_budget(data, limit)
+        if data['sources'][0].get('redundant_highlight_count'):
+            rejected_counter_updates.append(not bounded['sources'][0]['highlights'])
+        return bounded
+    monkeypatch.setattr(budget, 'apply_budget', probe)
+    selected = evidence.select_highlights(original, 'alpha beta', 4096)
+    bounded = apply_budget(selected, 4096)
+    assert rejected_counter_updates and all(rejected_counter_updates)
+    assert wire_bytes(bounded) <= 4096
+    assert bounded['sources'][0]['highlights'] == selected['sources'][0]['highlights']
+    assert len(bounded['sources'][0]['highlights']) == 1
+    assert selected['sources'][0]['selection_omitted_highlight_count'] == 2
+    assert not selected['sources'][0].get('redundant_highlight_count')
+    quoted_terms = set(evidence.tokens(bounded['sources'][0]['highlights'][0]['text']))
+    assert set(bounded['selection']['covered_query_terms']) <= quoted_terms
+    assert bounded['selection']['uncovered_query_terms'] == []
+    assert bounded['budget']['partial_coverage']
+    assert original['sources'][0]['content'] == text
+
+    # With room for the counters, the final partial flag changes to false;
+    # that final metadata shape must also be measured, not appended afterward.
+    monkeypatch.setattr(budget, 'apply_budget', apply_budget)
+    roomy = evidence.select_highlights(original, 'alpha beta', 4352)
+    assert roomy['sources'][0]['redundant_highlight_count'] == 2
+    assert roomy['sources'][0]['selection_omitted_highlight_count'] == 0
+    assert not roomy['selection']['partial_coverage']
+    roomy_bounded = apply_budget(roomy, 4352)
+    roomy_bounded.pop('budget')
+    assert roomy_bounded == roomy
+
+
+def test_mandatory_and_unsupported_constraints_survive_overlap(monkeypatch):
+    for constraint in ('You must call cleanup.', 'This operation is unsupported.',
+                       'Cleanup is mandatory.', 'Cleanup is required.', 'You shall call cleanup.',
+                       'Neither mode supports retries.'):
+        text = 'api supports retries. ' * 40 + '\n'
+        boundary = len(text)
+        text += constraint + '\n'
+        slices(monkeypatch, [(0, boundary, 'Claim'), (0, len(text), 'Constraint')])
+        data = evidence.select_highlights({'sources': [source(text)]}, 'api', 16384)
+        selected = data['sources'][0]
+        assert len(selected['highlights']) == 2
+        assert any(constraint in h['text'] for h in selected['highlights'])
+        assert selected['selection_omitted_highlight_count'] == 0
+        assert not selected.get('redundant_highlight_count')
+        for quote in selected['highlights']:
+            assert quote['text'] == text[quote['start']:quote['end']]
+        bounded = apply_budget(data, 16384)
+        bounded.pop('budget')
+        assert bounded == data
+
+
+def test_ranking_work_is_bounded_when_coverage_and_caps_are_stable(monkeypatch):
+    import builtins
+
+    lines = [f'api operation_{i}.\n' for i in range(800)]
+    text = ''.join(lines)
+    intervals = []
+    position = 0
+    for line in lines:
+        intervals.append((position, position + len(line), 'Operation'))
+        position += len(line)
+    slices(monkeypatch, intervals)
+    ranking_work = []
+    def measured_sorted(values, *, key=None, reverse=False):
+        if key is not None:
+            # Only candidate ranking uses a sort key in this module. Counting
+            # candidates passed to it is deterministic, unlike wall-clock time.
+            ranking_work.append(len(values))
+        return builtins.sorted(values, key=key, reverse=reverse)
+    monkeypatch.setattr(evidence, 'sorted', measured_sorted, raising=False)
+    original = {'sources': [source(text)]}
+    data = evidence.select_highlights(original, 'api', 16384)
+    assert len(ranking_work) == 2
+    assert sum(ranking_work) <= 2 * len(lines)
+    assert [h['text'] for h in data['sources'][0]['highlights']] == lines[:3]
+    assert data['sources'][0]['selection_omitted_highlight_count'] == len(lines) - 3
+    bounded = apply_budget(data, 16384)
+    bounded.pop('budget')
+    assert bounded == data
+    ranking_work.clear()
+    assert evidence.select_highlights(original, 'api', 16384) == data
+    assert len(ranking_work) == 2
+    assert sum(ranking_work) <= 2 * len(lines)
+
+
+def test_allowed_snippet_and_title_reductions_do_not_prevent_exact_evidence_admission():
+    for field in ('provider_snippet', 'title'):
+        document = source('# api\napi works.\n')
+        document[field] = 'x' * 4000
+        original = {'sources': [document]}
+        before = deepcopy(original)
+        selected = evidence.select_highlights(original, 'api', 4096)
+        bounded = apply_budget(selected, 4096)
+        assert original == before
+        assert bounded['sources'][0]['highlights'] == selected['sources'][0]['highlights']
+        assert bounded['sources'][0]['highlights'][0]['text'] == document['content']
+        assert bounded['sources'][0]['truncated_fields'] == [field]
+        assert len(bounded['sources'][0][field]) < 4000
+        assert bounded['selection']['covered_query_terms'] == ['api']
+        assert bounded['budget']['partial_coverage']
+        assert wire_bytes(bounded) <= 4096
+
+
+def test_metadata_only_overflow_omits_unselected_source_with_original_indices():
+    original = {'sources': [source('# api\napi works.\n'),
+                source('# Other\nother_identifier works.\n', 'https://other.test/' + 'x' * 3500)]}
+    before = deepcopy(original)
+    selected = evidence.select_highlights(original, 'api other_identifier', 4096)
+    assert original == before
+    assert len(selected['sources']) == 2  # Keep internal original-index mapping.
+    bounded = apply_budget(selected, 4096)
+    assert bounded['budget']['source_count'] == 2
+    assert bounded['budget']['returned_source_count'] == 1
+    assert bounded['budget']['omitted_source_indices'] == [1]
+    assert bounded['budget']['partial_coverage']
+    assert bounded['sources'][0]['highlights'] == selected['sources'][0]['highlights']
+    assert bounded['sources'][0]['highlights'][0]['text'] == original['sources'][0]['content']
+    assert bounded['selection']['covered_query_terms'] == ['api']
+    assert bounded['selection']['uncovered_query_terms'] == ['other_identifier']
+    assert selected['sources'][1]['selection_omitted_highlight_count'] == 1
+    assert wire_bytes(bounded) <= 4096

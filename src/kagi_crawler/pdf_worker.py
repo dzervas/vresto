@@ -1,6 +1,6 @@
 """Local-only basic parser. Invoked by absolute service-owned path with -I.
 
-Linux resource limits apply before importing Crawl4AI/pypdf. PDF object-stream
+Linux resource limits apply before importing pypdf. PDF object-stream
 expansion has no aggregate hard byte counter: pypdf's native filter limits
 and worker address-space/CPU caps contain it.
 No OCR, image extraction, models, remote scraper, or layout fidelity claim.
@@ -9,7 +9,6 @@ import contextlib
 import json
 import logging
 import os
-from pathlib import Path
 import resource
 import sys
 
@@ -33,17 +32,22 @@ def main():
         from pypdf import PdfReader
         from pypdf.errors import LimitReachedError
         resource_errors += (LimitReachedError,)
-        # The supported processor reads page count before encrypted handling;
-        # detect encryption locally so it is unsupported, not malformed text.
-        if PdfReader(path).is_encrypted:
+        reader = PdfReader(path)
+        # Encrypted documents are unsupported, not malformed text.
+        if reader.is_encrypted:
             sys.stdout.buffer.write(b'{"error":"unsupported_format"}')
             return
         with open(os.devnull, 'w') as sink, contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
-            from crawl4ai.processors.pdf.processor import NaivePDFProcessorStrategy
-            result = NaivePDFProcessorStrategy(extract_images=False,
-                save_images_locally=False, max_pages=int(pages)).process(Path(path))
-        response = {'title': result.metadata.title or '', 'total_pages': result.metadata.pages,
-            'pages': [[p.page_number, p.raw_text] for p in result.pages]}
+            # Page text is the concatenation of pypdf's text-visitor fragments
+            # (no layout reconstruction), for at most the first `pages` pages.
+            extracted = []
+            for number, page in enumerate(reader.pages[:int(pages)], start=1):
+                fragments = []
+                page.extract_text(visitor_text=lambda text, *_: fragments.append(text))
+                extracted.append([number, ''.join(fragments)])
+            metadata = reader.metadata or {}
+            response = {'title': metadata.get('/Title') or '', 'total_pages': len(reader.pages),
+                        'pages': extracted}
         encoded = json.dumps(response, ensure_ascii=False).encode()
         if len(encoded) > int(output):
             encoded = b'{"error":"resource_limit"}'

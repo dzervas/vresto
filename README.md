@@ -1,8 +1,8 @@
 # Kagi Crawler
 
 Private CPU-only Streamable HTTP MCP at `/mcp`, with **search** and **fetch**.
-Kagi discovers sources; Chromium/Patchright acquires pages natively; Crawl4AI
-converts rendered HTML and lexical BM25 selects verbatim, version-bound evidence. No GPU, models, external database,
+Kagi discovers sources; Chrome/Patchright acquires pages natively; local lxml +
+markdownify convert rendered HTML and lexical BM25 selects verbatim, version-bound evidence. No GPU, models, external database,
 external browser service or paid browser license is required.
 
 > Subscriber automation is an **unsupported, unofficial HTML interface**, not the
@@ -13,11 +13,14 @@ external browser service or paid browser license is required.
 ## Build and run
 
 The final image includes Microck Kagi CLI 0.22.0 at
-`cb64cf514a99e527429468f92bc9f6b633a765e4`, Crawl4AI 0.9.4, Patchright/Playwright
-1.63.0 and Patchright's exact Chromium **153.0.8010.12 / revision 1243**.
-Dependencies are locked in `uv.lock`. Base/tool image tags are version-pinned,
-not digest-reproducible; resolve approved digests in your release process and
-retest coordinated driver/browser upgrades rather than freezing security updates.
+`cb64cf514a99e527429468f92bc9f6b633a765e4`, Patchright
+1.63.0 and headed stable Google Chrome on a private Xvfb display.
+Python dependencies are locked in `uv.lock`; stable Chrome is a moving build
+target, not a pinned browser revision. Record the reported browser version and
+image digest for comparisons. Base/tool image tags are version-pinned, not
+digest-reproducible; resolve approved digests in your release process and retest
+coordinated driver/browser upgrades rather than freezing security updates.
+The Chrome installer currently supports Linux amd64, not Linux arm64.
 
 ```sh
 # The streamed allowlist is additionally protected by .dockerignore.
@@ -27,64 +30,49 @@ python3 scripts/build_context.py | docker build -t kagi-crawler:local -
 python3 scripts/container_check.py kagi-crawler:local
 ```
 
-### Optional headful test image
+### Headed Chrome runtime
 
-Build the normal image **from this revision first**, then the small headful overlay:
+The default image sets `KAGI_CRAWLER_BROWSER_CHANNEL=chrome` and
+`KAGI_CRAWLER_HEADFUL=1`. Its entrypoint owns a private 1280×720×24 Xvfb
+display and runs the same service with no fixed browser viewport. Chrome's
+managed secure-DoH policy is installed under
+`/etc/opt/chrome/policies/managed/`. No overlay image is needed.
 
-```sh
-set -o pipefail
-python3 scripts/build_context.py | docker build -t kagi-crawler:local -
-python3 scripts/build_context.py | docker build -f Dockerfile.headful --build-arg BASE_IMAGE=kagi-crawler:local -t kagi-crawler:headful -
-```
+No desktop, VNC, GPU or additional exposed port is required. X11 has no TCP
+listener; do not share its Unix sockets or `/tmp` with other containers.
+Xvfb receives no service/discovery secrets and is reaped after service shutdown.
+No custom UA, headers or stealth launch switches are added. Acquisition cookies
+still do not survive another document: this intentionally does not reuse a
+persistent clearance session.
 
-Use `kagi-crawler:headful` instead of `kagi-crawler:local` in the run command below.
-For a different base tag, pass `--build-arg BASE_IMAGE=your-current-image:tag`.
-The pinned base's `patchright install --with-deps` supplies Xvfb. The entrypoint
-starts a private 1280×720×24 virtual display and runs the same service headful
-(`KAGI_CRAWLER_HEADFUL=1`, no fixed browser viewport). No desktop, VNC, GPU or
-additional exposed port is needed. X11 has no TCP listener; do not share its Unix
-sockets or `/tmp` with other containers. Xvfb receives no service/discovery secrets
-and is reaped after service shutdown. The ordinary image stays headless.
-Headful mode does **not** guarantee challenge acceptance. Use `fresh_only` for
+Headed mode does **not** guarantee challenge acceptance. Use `fresh_only` for
 comparisons so retained cache entries do not hide browser behavior. Recognized
 challenge responses (`cf-mitigated: challenge`) and active interstitials get time
 for native JavaScript/cookie/redirect continuation, within the existing request
-deadline. Unresolved challenges return `blocked` with `reason: challenge_timeout`
+deadline. Site adapters report login/access walls as `blocked` with `reason: login_required`,
+and explicit deleted/private/not-found pages as `fetch_failed` with
+`reason: content_unavailable` (ordinary stale-fallback rules apply; walls are not
+cached as content). Public previews set `coverage.partial: true` and
+`coverage.site_adapter.reason: public_preview`.
+Unresolved challenges return `blocked` with `reason: challenge_timeout`
 and the last main-navigation `http_status`; ordinary 401/403 responses use
 `reason: http_status`. A challenge-marked native download is rejected rather
 than treated as evidence (`reason: challenge_download` for successful HTTP
 statuses). Error diagnostics contain no raw challenge headers/tokens. Mentions of
 CAPTCHA in normal prose, scripts or hidden widgets are not blocking signals.
 
-For an opt-in **headed Google Chrome** comparison, build the base first, then:
-
-```sh
-python3 scripts/build_context.py | docker build -f Dockerfile.chrome --build-arg BASE_IMAGE=kagi-crawler:local -t kagi-crawler:chrome -
-```
-
-This overlay installs stable Google Chrome and its correct managed-policy path,
-selects `KAGI_CRAWLER_BROWSER_CHANNEL=chrome`, and uses the same Xvfb entrypoint.
-The default remains bundled Chrome for Testing (`chromium`). No custom UA,
-headers or stealth launch switches are added. Acquisition cookies still do not
-survive another document: this intentionally does **not** reuse a persistent
-clearance session, even though upstream recommends persistent contexts.
-Stable Chrome is a moving build target; record the reported version and retain
-the image digest when comparing. Pass `--build-arg BASE_IMAGE=your-base:tag` if the
-fresh base is not tagged `kagi-crawler:latest`.
-
 Check actual WebGL in both an owned persistent profile and an acquisition-style
 context without service credentials or visiting external pages:
 
 ```sh
-docker run --rm --entrypoint python kagi-crawler:headful -m kagi_crawler.browser_check --headful
-docker run --rm --entrypoint python kagi-crawler:chrome -m kagi_crawler.browser_check --headful
+docker run --rm --entrypoint python kagi-crawler:local -m kagi_crawler.browser_check
 ```
 
-The diagnostic owns/reaps its own Xvfb and browser. It reports the actual browser
-version, UA, webdriver, viewport, WebGL/WebGL2 and verified secure DoH. It does
-not change rendering flags, spoof fingerprints, solve CAPTCHA or enable unsafe
-SwiftShader. Null WebGL on an image is a diagnostic observation, not proof that
-it caused a challenge failure.
+The diagnostic inherits the image's Chrome/headed defaults and owns/reaps its
+own Xvfb and browser. It reports the actual browser version, UA, webdriver,
+viewport, WebGL/WebGL2 and verified secure DoH. It does not change rendering
+flags, spoof fingerprints, solve CAPTCHA or enable unsafe SwiftShader. Null
+WebGL is a diagnostic observation, not proof that it caused a challenge failure.
 
 Provision two **different** runtime secrets using your secret manager:
 `KAGI_CRAWLER_ACCESS_TOKEN` (private MCP bearer access) and `KAGI_SESSION_TOKEN`
@@ -125,11 +113,15 @@ is performed by the service. Native bind defaults to `127.0.0.1`; image bind is
 ## Private access and safety
 
 Clients send `Authorization: Bearer <service-access-token>`; never send the Kagi
-session token. All routes, including `/credits`, require service access. Keep the
+session token. All routes, including `/health`, require service access. Keep the
 port loopback/private and terminate TLS at a **trusted private edge** when crossing
 hosts. Restrict edge access, redact Authorization/query/body logging, preserve MCP
 streaming and cancellation, and allow bounded requests long enough to finish.
 There is no OAuth onboarding, public tenancy or per-client authorization.
+`GET /health` returns JSON with status, version, uptime, browser state
+(`running`/`starting`/`stopped`/`closed`), acquisition and discovery queue
+counters and cache usage; it never starts the browser. Container/Kubernetes
+probes must send the bearer token (for example an exec probe reading the env).
 Runtime environment secrets remain visible to container administrators; use a
 trusted daemon/host, rotate tokens after exposure and never dump container env.
 
@@ -139,15 +131,15 @@ the original historical `spec.md`: all request interception, Python acquisition,
 DNS pinning and the deny-all proxy are removed.** Chromium owns native navigation,
 resources, POST/XHR, cookies, redirects, service workers and WebSockets. Each
 acquisition has an isolated ephemeral context; no caller headers, private profile
-or cookies from previous acquisitions are forwarded. Crawl4AI converts rendered
+or cookies from previous acquisitions are forwarded. `extraction.py` converts rendered
 HTML locally; PDF downloads use the browser, not its separate APIRequestContext.
 
-Full Chrome for Testing 153 uses Cloudflare **`https://1.1.1.1/dns-query` DoH in
-`secure` mode**, without ordinary hostname plaintext-DNS fallback. Chromium does
-not natively support DoT. A fresh temporary profile seeds browser-wide Local State
-preferences; the image also installs mandatory policy in the pinned branding's
-`/etc/opt/chrome_for_testing/policies/managed/` directory (or
-`/etc/opt/chrome/policies/managed/` for the optional Google Chrome overlay). Startup checks the
+The browser uses Cloudflare **`https://1.1.1.1/dns-query` DoH in `secure` mode**,
+without ordinary hostname plaintext-DNS fallback. Chromium does not natively
+support DoT. A fresh temporary profile seeds browser-wide Local State preferences;
+the image also installs mandatory policy in
+`/etc/opt/chrome/policies/managed/`. Native bundled Chrome for Testing uses its
+own `/etc/opt/chrome_for_testing/policies/managed/` branding path. Startup checks the
 **effective** Secure DNS setting via Chrome's WebUI handler and fails acquisition
 if it is unavailable or overridden. No invented DoH command-line switches or
 certificate-error bypasses are used. The IP endpoint avoids hostname bootstrap;
@@ -186,6 +178,18 @@ publication dates. Postfilters, per-source errors, budget omissions and partial
 coverage are disclosed; snippets never silently replace failed acquisitions.
 Lexical matches are not answer verification and absence of a highlight does not
 prove absence of an answer. Full text, expansion and original sources support review.
+Highlight selection combines BM25 relevance with additional query-term coverage,
+tries one fitting passage per source before extras (at most three per source),
+and checks the actual serialized byte budget before admitting each quote.
+Heavy overlap within the same source/version is suppressed only when it adds no
+new query terms or qualifications. Exact-document duplicates retain independent
+attribution and evidence IDs. Covered/uncovered query terms describe lexical
+representation, not whether the question is answered.
+
+New HTML acquisitions conservatively remove semantic controls and decorative
+permalinks/images, and recognize explicit API signatures and attributed article
+headers as passage boundaries. Uncertain structure and technical qualifications
+remain. Existing cached canonical text and historical evidence IDs are unchanged.
 
 | Bound | Default | Hard limit / configuration |
 |---|---:|---|
@@ -215,8 +219,10 @@ Acquisition opens native `details` and supported read-only in-page text/discussi
 controls in the same ephemeral context. Button labels alone never authorize a
 click: controls need explicit ARIA content association, or a heading-labelled
 public discussion/activity list with existing attributed entries and a contained
-remaining-item count heading referenced by the button. Forms, links and account
-actions remain unsupported. Exact identified repeats are suppressed only when
+remaining-item count heading referenced by the button. A site adapter may also
+authorize specific same-page `#` link controls (e.g. StackOverflow "show more
+comments") inside the same guards. Forms, navigating links and account actions
+remain unsupported. Exact identified repeats are suppressed only when
 their contents match; differing authors, code and qualifications remain ordered.
 Native initial and post-action fetch/XHR are observed, not intercepted; unrelated
 persistent resources can exhaust settling bounds. `coverage.initial_render`
@@ -241,8 +247,8 @@ The byte budget includes the text and structuredContent copies plus substantive
 metadata, **not tokens**, HTTP headers or the JSON-RPC envelope. Highlights retain
 whole qualified passages; full text can be explicitly truncated. Output bounds
 were fixture-measured beside `budget.py`; queue/time/byte limits are conservative
-containment, not inferred Exa parity. Cache sizing measurements are beside
-`server.py`. Serialized cache bytes exclude filesystem overhead. Discovery uses
+containment, not inferred Exa parity. Cache limits are operator allowances,
+not sizing claims. Serialized cache bytes exclude filesystem overhead. Discovery uses
 its own bounded pool, never the browser queue; cancellation removes queued work
 and shutdown rejects waiters/reaps process groups. Provisional 2-active/8-waiting
 limits bound retained CLI output to 2 MiB before decoding/parsing (not total RSS).
@@ -341,11 +347,6 @@ remain outside the baseline dependency closure.
 
 ## Attribution
 
-This product includes software developed by UncleCode (https://x.com/unclecode)
-as part of the Crawl4AI project (https://github.com/unclecode/crawl4ai).
-
-Keep `NOTICE`, `licenses/Crawl4AI-LICENSE` (including its appended attribution
-requirement), packaged Kagi/Rust notices and installed dependency/driver/Chromium
-third-party notices when redistributing. The image retains them; attribution is
-also available through authenticated `/credits`. This repository does not
+Keep `NOTICE`, packaged Kagi/Rust notices and installed dependency/driver/Chromium
+third-party notices when redistributing. This repository does not
 change upstream licenses.

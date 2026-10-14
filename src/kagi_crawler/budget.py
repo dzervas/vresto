@@ -4,46 +4,42 @@ Postprocessing contract: pass a JSON-compatible response with `sources` or
 `results` in priority order AFTER evidence selection, credential redaction and
 cache writes. This function copies it; canonical documents must never be trimmed.
 Only content/title/provider_snippet strings may be prefix-truncated. Other
-metadata (including URLs, versions, error codes and future evidence references)
+metadata (including URLs, versions, error codes and evidence references)
 remains intact or its entire source is omitted with its original zero-based index.
-Future highlights must be a list of complete passage records: remove whole
-records, never shorten quotes or detach qualifications/references. Selection in
-.6 should fit coherent evidence first; this is the final wire-size safety gate.
+Highlights are complete passage records: remove whole records, never shorten
+quotes or detach qualifications/references. Evidence selection fits coherent
+passages first; this is the final wire-size safety gate.
 """
+from typing import cast
 from copy import deepcopy
 import json
 
 from mcp.types import CallToolResult, TextContent
 
-# Provisional fixture measurements through real HTTP MCP + native Chromium
-# (tests/test_budget.py, 2026-10-12), including duplicate serialization:
-# ten discovery records: 3,086 bytes; nine multilingual technical documents
-# (300 repeated qualified sentences each) + one failure: 183,149 bytes intact.
-# 64 KiB returned all ten outcomes in 51,405 bytes with explicit text truncation;
-# 16 KiB retained ten in 12,957 bytes; 4 KiB retained four in 3,513 bytes with
-# six explicit omissions. Thus 4 KiB allows meaningful attribution/content,
-# 64 KiB is a moderate shared-context default and 256 KiB accommodates this
-# intact larger fixture while bounding output. Not production sizing or Exa
-# parity; client tokenization and deployment workloads still need measurement.
+from .types import ToolData, ToolResult
+
+# 4 KiB retains attributed fixture content; 64 KiB bounds shared-context output;
+# 256 KiB fits the intact 183,149-byte multilingual fixture (including both MCP
+# copies). These are byte safety caps, not production sizing or token claims.
 MIN_RESPONSE_BYTES = 4096
 DEFAULT_RESPONSE_BYTES = 65536
 MAX_RESPONSE_BYTES = 262144
 
 
-def result(data, *, error=False):
+def result(data: ToolData | ToolResult, *, error: bool = False) -> CallToolResult:
     # Compact JSON reduces duplication overhead. The budget counts the escaped
     # text copy AND structuredContent, wrappers and isError, but not transport
     # JSON-RPC id/envelope, HTTP headers or client-specific tokenizer overhead.
     return CallToolResult(content=[TextContent(type="text", text=json.dumps(
         data, ensure_ascii=False, separators=(",", ":")))],
-        structuredContent=data, isError=error)
+        structuredContent=cast(ToolData, data), isError=error)
 
 
-def wire_bytes(data):
+def wire_bytes(data: ToolData | ToolResult) -> int:
     return len(result(data).model_dump_json(exclude_none=True).encode("utf-8"))
 
 
-def apply_budget(data, limit):
+def apply_budget(data: ToolData, limit: int) -> ToolData:
     """Return valid bounded JSON with explicit source/content coverage.
 
     `limit` is validated by the public contract. Top-level semantic metadata is
@@ -92,7 +88,23 @@ def apply_budget(data, limit):
             source['context'].pop()
             source['omitted_context_section_count'] = source.get('omitted_context_section_count', 0) + 1
 
-    # Highlights are atomic: .6 owns relevance/qualification-preserving ordering.
+    # Highlight selection may retain unselected outcomes internally to preserve
+    # original source indices. Prefer their metadata omissions over losing an
+    # admitted exact quote or duplicate attribution. Full text/expansion keep
+    # their existing reduction order.
+    while output.get('content_mode') == 'highlights' and wire_bytes(output) > limit:
+        candidates = [i for i, s in enumerate(sources)
+                      if not s.get('highlights') and not s.get('duplicate_evidence')]
+        if not candidates:
+            break
+        position = max(candidates, key=lambda i: len(json.dumps(sources[i]).encode()))
+        sources.pop(position)
+        coverage['omitted_source_indices'].append(indices.pop(position))
+        coverage['omitted_source_indices'].sort()
+        coverage['returned_source_count'] = len(sources)
+        coverage['partial_coverage'] = True
+
+    # Highlights are atomic: evidence selection owns relevance/qualification ordering.
     while wire_bytes(output) > limit:
         candidates = [s for s in sources if s.get('content_mode') != 'evidence_expansion'
                       and isinstance(s.get('highlights'), list) and s['highlights']]

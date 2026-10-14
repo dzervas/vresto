@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en" class="text-size-normal anon no-touch discourse-no-touch desktop-view not-mobile-device" style="--header-offset: 52px; --main-outlet-offset: 52px;"><head>
+    <meta charset="utf-8">
+    <title>PEP 703: Making the Global Interpreter Lock Optional - PEPs - Discussions on Python.org</title>
+    <meta name="description" content="Hi :wave: 
+As the sponsor of @colesbury’s PEP, I’d like to invite you all to discuss the proposal to solve the biggest scalability limitation of CPython by making it possible to build a version of the interpreter which d…">
+    <meta name="discourse_theme_id" content="2">
+    <meta name="discourse_current_homepage" content="categories">
+
+    <meta name="generator" content="Discourse 2026.10.0-latest - https://github.com/discourse/discourse version a8b804c414f279d5c8f01505d198d4531cf377e9">
+<link rel="icon" type="image/png" href="https://us1.discourse-cdn.com/flex002/uploads/python1/optimized/1X/9997f0605d56c4bfecd63594f52f42cdafd6b06a_2_32x32.png">
+<link rel="apple-touch-icon" type="image/png" href="https://us1.discourse-cdn.com/flex002/uploads/python1/optimized/1X/4c06143de7870c35963b818b15b395092a434991_2_180x180.png">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111111">
+
+<meta name="color-scheme" content="light dark">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+<link rel="canonical" href="https://discuss.python.org/t/pep-703-making-the-global-interpreter-lock-optional/22606">
+
+<meta name="discourse-track-view-session-id" content="kc5MQBIAznLeTFqK7mQL5UbGXIWAzMeT">
+  <link rel="search" type="application/opensearchdescription+xml" href="https://discuss.python.org/opensearch.xml" title="Discussions on Python.org Search">
+
+    
+
+      <meta name="fragment" content="!">
+
+
+    
+  <script type="importmap" nonce=""></script>
+
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/automation_main.DK8Iyg-16oscdpy.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="automation">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/checklist_main.BehS7Y-fiy0u9lo.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="checklist">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-ai_main.D7v43l-ppgujfdm.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-ai">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-chat-integration_main.CF1XId-7trv60zp.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-chat-integration">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-data-explorer_main.DX876z-fuapxij4.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-data-explorer">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-deprecation-collector_main.UsZAHM-l37s2224.digested.js" nonce="" data-official="false" data-preinstalled="false" data-plugin-name="discourse-deprecation-collector">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-details_main.efw4kb-geiwe1yz.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-details">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-github_main.C1gIAx-cmhwsvwz.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-github">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-lazy-videos_main.CKBcYx-r1ypyn2o.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-lazy-videos">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-local-dates_main.DYZuSF-debpt3nu.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-local-dates">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-math_main.BjvgOh-m2b1qbqz.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-math">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-narrative-bot_main.CQ9-Is-hczd7o49.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-narrative-bot">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-policy_main.CRbkX8-3k2h030o.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-policy">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-presence_main.BIIx_U-af1zvo95.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-presence">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-reactions_main.CkMs0a-sqppaond.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-reactions">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-solved_main.DlUWIS-kvfpra9s.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-solved">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-templates_main.C_-B4P-1e4zuvfh.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-templates">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-topic-voting_main.DlDnTA-j42g4ckn.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-topic-voting">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-user-notes_main.CwaK07-mxv8y1mr.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="discourse-user-notes">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/footnote_main.DE1qtG-2olauttf.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="footnote">
+      <script defer src="https://us1.discourse-cdn.com/flex002/assets/plugins/footnote_extra-95ffab71.js" data-discourse-entrypoint="plugins/footnote_extra" data-official="true" data-preinstalled="true" data-plugin-name="footnote" nonce=""></script>
+
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/hosted-site_main.aP57LN-sxs3awk3.digested.js" nonce="" data-official="false" data-preinstalled="false" data-plugin-name="hosted-site">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/poll_main.BW68Rt-c84yzql0.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="poll">
+      <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/spoiler-alert_main.BgkUQr-qhr3itc6.digested.js" nonce="" data-official="true" data-preinstalled="true" data-plugin-name="spoiler-alert">
+
+    <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/automation_chunk.DvFpQj-16oscdpy.digested.js" nonce="">
+    <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-ai_chunk.GGGiN--ppgujfdm.digested.js" nonce="">
+    <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-data-explorer_chunk.DkE6BR-fuapxij4.digested.js" nonce="">
+    <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-solved_chunk.DL-z0A-kvfpra9s.digested.js" nonce="">
+    <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/discourse-user-notes_chunk.Dbexa0-mxv8y1mr.digested.js" nonce="">
+    <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/plugins/hosted-site_chunk.XtHBxd-sxs3awk3.digested.js" nonce="">
+
+
+    
+
+
+    <script nonce=""></script>
+
+    <script type="module" src="https://sea2.discourse-cdn.com/flex002/extra-locales/44fc90f1035f30ec8000f1662a2373a07beec79e/en/main.js" nonce=""></script>
+
+    <script type="module" src="https://sea2.discourse-cdn.com/flex002/extra-locales/0ffe7a21317d2af4f704e60d5a6802a6b9fa84f4/en/mf.js?__ws=discuss.python.org" nonce=""></script>
+
+      <script type="module" src="https://sea2.discourse-cdn.com/flex002/extra-locales/c0aff8253d3095539925493b41dec04c924b4408/en/overrides.js?__ws=discuss.python.org" nonce=""></script>
+
+      <script type="module" src="https://sea2.discourse-cdn.com/flex002/theme-javascripts/8386593bf29524501840e7364025b341746ee06b.js?__ws=discuss.python.org" data-theme-id="4" nonce=""></script>
+
+
+    <link rel="preload" href="https://us1.discourse-cdn.com/flex002/assets/br/browser-update-91688f13.js" as="script" nonce="">
+
+    <script defer src="https://us1.discourse-cdn.com/flex002/assets/br/browser-detect-47cf9e6d.js" data-discourse-entrypoint="js/browser-detect" nonce=""></script>
+
+
+    <link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/discourse-c99nyo6w.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-f96lzs6p.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-j35j4d75.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-ozs3k5lo.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-d5qas15v.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-o8cu9y0f.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-yz2ioxql.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-gb9wvj6c.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-b7zx6w88.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-oi5qu9de.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-lcux5byt.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-6vx9t3be.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-omp929yd.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-gfdrod1s.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-dl5wsie3.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-mex0tc9f.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-nq3pz4ig.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-he5vdgmd.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-kcscixpt.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-mkbfnw12.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-gve4ijtc.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-ecf5psr8.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-fzm18m2b.digested.js" nonce="">
+
+<link rel="modulepreload" href="https://us1.discourse-cdn.com/flex002/assets/br/chunk-dhzce8px.digested.js" nonce="">
+
+
+        <link rel="modulepreload" href="https://sea2.discourse-cdn.com/flex002/theme-javascripts/3385ba4c017d7dc764c68865d34a1ded72e47cb3.js?__ws=discuss.python.org" data-theme-id="4" nonce="">
+      
+
+    
+    
+    
+
+    <link id="manifest-link" rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+
+
+        <link rel="alternate nofollow" type="application/rss+xml" title="RSS feed of 'PEP 703: Making the Global Interpreter Lock Optional'" href="https://discuss.python.org/t/pep-703-making-the-global-interpreter-lock-optional/22606.rss">
+    <meta property="og:site_name" content="Discussions on Python.org">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://us1.discourse-cdn.com/flex002/uploads/python1/original/1X/f93ff97c4f381b5e8add5a0c163b4ded29f20ed7.png">
+<meta property="og:image" content="https://us1.discourse-cdn.com/flex002/uploads/python1/original/1X/f93ff97c4f381b5e8add5a0c163b4ded29f20ed7.png">
+<meta property="og:url" content="https://discuss.python.org/t/pep-703-making-the-global-interpreter-lock-optional/22606">
+<meta name="twitter:url" content="https://discuss.python.org/t/pep-703-making-the-global-interpreter-lock-optional/22606">
+<meta property="og:title" content="PEP 703: Making the Global Interpreter Lock Optional - PEPs - Discussions on Python.org">
+<meta name="twitter:title" content="PEP 703: Making the Global Interpreter Lock Optional - PEPs - Discussions on Python.org">
+<meta property="og:description" content="Hi 👋  As the sponsor of @colesbury’s PEP, I’d like to invite you all to discuss the proposal to solve the biggest scalability limitation of CPython by making it possible to build a version of the interpreter which doesn’t use the Global Interpreter Lock.  The document is somewhat of a demanding read as it’s one of the top 10 longest PEPs. That was to be expected though as the problem goes back decades and requires nuance, trade-offs, and careful consideration of alternatives. Thanks in adva...">
+<meta name="twitter:description" content="Hi 👋  As the sponsor of @colesbury’s PEP, I’d like to invite you all to discuss the proposal to solve the biggest scalability limitation of CPython by making it possible to build a version of the interpreter which doesn’t use the Global Interpreter Lock.  The document is somewhat of a demanding read as it’s one of the top 10 longest PEPs. That was to be expected though as the problem goes back decades and requires nuance, trade-offs, and careful consideration of alternatives. Thanks in adva...">
+<meta property="og:article:section" content="PEPs">
+<meta property="og:article:section:color" content="0088CC">
+<meta name="twitter:label1" value="Reading time">
+<meta name="twitter:data1" value="36 mins 🕑">
+<meta name="twitter:label2" value="Likes">
+<meta name="twitter:data2" value="632 ❤">
+<meta property="article:published_time" content="2023-01-10T16:08:09+00:00">
+<meta property="og:ignore_canonical" content="true">
+
+        <link rel="next" href="/t/pep-703-making-the-global-interpreter-lock-optional/22606?page=2">
+
+    <link rel="alternate" type="text/markdown" href="https://discuss.python.org/t/pep-703-making-the-global-interpreter-lock-optional/22606.md">
+
+    <script async="" src="/plugins/discourse-client-performance/javascripts/discourse-client-performance.js?v=a7b922e8787e07682fc55636ddbe93c4307c315489def4c7a44d5d46bf814e3c" nonce=""></script>
+
+
+
+
+    <meta id="data-discourse-setup" data-cdn="https://sea2.discourse-cdn.com/flex002" data-base-url="https://discuss.python.org" data-base-uri="" data-environment="production" data-letter-avatar-version="6_22734026db12803ebb3e059622ac3534" data-service-worker-url="service-worker.js" data-default-locale="en" data-asset-version="cb9c4a100a138cb4a73c28ac765faaf1" data-disable-custom-css="false" data-highlight-js-path="/highlight-js/discuss.python.org/d125c3422119592da271b68fa9500c957dd748c0.js" data-svg-sprite-path="/svg-sprite/discuss.python.org/svg-2-f6a801b9c454182e0da24cd6fa708b53940ea1b6.js" data-color-scheme-is-dark="false" data-user-color-scheme-id="-1" data-user-dark-scheme-id="-1" data-s3-cdn="https://us1.discourse-cdn.com/flex002" data-s3-base-url="//cdck-file-uploads-us1.s3.dualstack.us-west-2.amazonaws.com/flex002">
+
+    <meta name="discourse/config/environment" content="%7B%22modulePrefix%22%3A%22discourse%22%2C%22environment%22%3A%22production%22%2C%22rootURL%22%3A%22%22%2C%22locationType%22%3A%22history%22%2C%22EmberENV%22%3A%7B%22FEATURES%22%3A%7B%7D%2C%22EXTEND_PROTOTYPES%22%3Afalse%7D%2C%22APP%22%3A%7B%22name%22%3A%22discourse%22%2C%22version%22%3A%222026.10.0-latest%20a8b804c414f279d5c8f01505d198d4531cf377e9%22%7D%7D">
+  <style data-rolldown-module-id="app/static/development-error/styles.css"></style><style id="hashtag-css-generator"></style><script src="https://sea2.discourse-cdn.com/flex002/svg-sprite/discuss.python.org/svg-2-f6a801b9c454182e0da24cd6fa708b53940ea1b6.js"></script></head>
+
+  <body class="uc-enable-new-checkbox-style uc-floating-dismiss-topics-on-mobile uc-modernize-foundation-theme category category-peps archetype-regular">
+      
+
+
+    <discourse-assets>
+      <discourse-assets-stylesheets>
+        <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/color_definitions_light-default_-1_2_1c41a8456688bd30440a7858aae7c17f6b84eca8.css?__ws=discuss.python.org" media="(prefers-color-scheme: light)" rel="stylesheet" class="light-scheme"><link href="https://sea2.discourse-cdn.com/flex002/stylesheets/color_definitions_dark_1_2_f85177f2334a186f4914f929e58ef1f43b3fd913.css?__ws=discuss.python.org" media="(prefers-color-scheme: dark)" rel="stylesheet" class="dark-scheme" data-scheme-id="1">
+
+<link href="https://sea2.discourse-cdn.com/flex002/stylesheets/common_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="common">
+
+
+
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/automation_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="automation">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/checklist_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="checklist">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-ai_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-ai">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-chat-integration_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-chat-integration">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-data-explorer_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-data-explorer">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-details_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-details">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-github_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-github">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-lazy-videos_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-lazy-videos">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-local-dates_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-local-dates">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-math_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-math">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-narrative-bot_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-narrative-bot">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-policy_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-policy">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-presence_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-presence">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-reactions_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-reactions">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-solved_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-solved">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-templates_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-templates">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-topic-voting_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-topic-voting">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-user-notes_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="discourse-user-notes">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/footnote_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="footnote">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/hosted-site_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="hosted-site">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/poll_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="poll">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/spoiler-alert_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="spoiler-alert">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-ai_mobile_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="(width &lt; 40rem)" rel="stylesheet" data-target="discourse-ai_mobile">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-reactions_mobile_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="(width &lt; 40rem)" rel="stylesheet" data-target="discourse-reactions_mobile">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-ai_desktop_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="(width &gt;= 40rem)" rel="stylesheet" data-target="discourse-ai_desktop">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/discourse-reactions_desktop_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="(width &gt;= 40rem)" rel="stylesheet" data-target="discourse-reactions_desktop">
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/poll_desktop_4b72c053348bd034df7917371632d5651c91b3b0.css?__ws=discuss.python.org" media="(width &gt;= 40rem)" rel="stylesheet" data-target="poll_desktop">
+
+  <link href="https://sea2.discourse-cdn.com/flex002/stylesheets/common_theme_4_f02a0fb16d619b6e433ae4353d91cfb22a59715a.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="common_theme" data-theme-id="4" data-theme-name="unformatted code detector">
+<link href="https://sea2.discourse-cdn.com/flex002/stylesheets/common_theme_2_b0656053b27392ad26aadf10703c568136d72dad.css?__ws=discuss.python.org" media="all" rel="stylesheet" data-target="common_theme" data-theme-id="2" data-theme-name="light">
+  
+  
+
+      </discourse-assets-stylesheets>
+      <discourse-assets-json>
+        <script type="application/json" id="data-preloaded"></script>
+      </discourse-assets-json>
+      <discourse-assets-icons><div id="svg-sprites"><div class="fontawesome"><!--
+Discourse SVG subset of Font Awesome Free by @fontawesome - https://fontawesome.com
+License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;"></svg></div></div></discourse-assets-icons>
+    </discourse-assets>
+
+      
+
+    
+    
+
+      
+
+      
+
+    <section id="main" class="ember-application">
+    
+
+<style id="d-styles"></style>
+<style id="d-styles-block-outlets"></style>
+<!---->
+
+<div id="ember3" class="discourse-root ember-view">
+    <div aria-label="Skip navigation links" class="skip-links" id="skip-links__container">
+    <div>    
+          <a href="/t/pep-703-making-the-global-interpreter-lock-optional/22606/131">
+    
+          Skip to last reply
+        
+  </a>
+
+        <a href="/t/pep-703-making-the-global-interpreter-lock-optional/22606/1">
+    
+        Skip to top
+      
+  </a>
+
+
+</div>
+    <a class="skip-link" href="#main-container">
+      Skip to main content
+    </a>
+  </div>
+
+
+  
+
+  <!---->
+    <div class="loading-indicator-container ready" style="--loading-duration: 0.20s">
+    <div class="loading-indicator">
+    </div>
+  </div>
+
+  <!---->
+
+    <div class="drop-down-mode d-header-wrap">
+<!---->  <header class="d-header">
+  <div class="wrap">
+    <div class="contents">
+  <!---->
+<!---->
+  <div class="home-logo-wrapper-outlet">
+    
+      
+  <div class="title">
+    <a href="/">
+      
+            <img alt="Discussions on Python.org" class="logo-big" id="site-logo" src="https://us1.discourse-cdn.com/flex002/uploads/python1/original/1X/c7591c98caf3b31d4d9c6f322f41ed9d80a50800.png">
+
+
+      
+    </a>
+  </div>
+
+    
+  </div>
+
+<!---->
+<!---->
+  <div class="before-header-panel-outlet">
+    <!---->
+  </div>
+  <div aria-label="Header" class="panel" role="navigation">
+      <span class="header-buttons">
+            <span class="auth-buttons">
+    <button class="btn btn-primary btn-small sign-up-button" type="button">
+<!----><span class="d-button-label">Sign Up<!----></span>
+
+<!----></button>
+
+    <button class="btn btn-icon-text btn-primary btn-small login-button" type="button">
+<svg class="fa d-icon d-icon-user svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span class="d-button-label">Log In<!----></span>
+
+<!----></button>
+</span>
+      </span>
+
+        <ul class="icons d-header-icons">
+<!---->        <li class="header-dropdown-toggle header-color-scheme-toggle">
+          <button aria-expanded="false" aria-label="Color mode, currently [missing %{mode} value]" class="btn no-text btn-icon fk-d-menu__trigger interface-color-selector-trigger btn-flat sidebar-footer-actions-button interface-color-selector icon" title="Color mode" data-identifier="interface-color-selector" data-trigger="" type="button" id="ember7">
+<svg class="fa d-icon d-icon-circle-half-stroke svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <!---->
+<!---->
+
+<!----></button>
+
+<!---->
+        </li>
+        <li class="header-dropdown-toggle search-dropdown">
+  <button aria-label="Search" class="btn no-text btn-icon icon btn-flat" id="search-button" title="Search" aria-haspopup="true" type="button">
+<svg class="fa d-icon d-icon-magnifying-glass svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span aria-hidden="true">
+      ​
+    </span>
+
+<!----></button>
+
+</li>
+        <li class="header-dropdown-toggle hamburger-dropdown">
+  <button aria-label="Navigation menu" class="btn no-text btn-icon icon btn-flat" id="toggle-hamburger-menu" title="Navigation menu" aria-haspopup="true" type="button">
+<svg class="fa d-icon d-icon-bars svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span aria-hidden="true">
+      ​
+    </span>
+
+<!----></button>
+
+</li>
+<!----></ul>
+
+<!---->
+<!---->    </div>
+  <div class="after-header-panel-outlet">
+    <!---->
+  </div>
+  <!---->
+</div>
+  </div>
+  <!---->
+</header>
+</div>
+
+  <!---->
+
+<!---->
+  
+<!---->
+
+  <!---->
+
+    
+
+  
+    
+<!---->    
+
+
+
+
+  <div class="wrap" id="main-outlet-wrapper" role="main">
+<!---->
+    <!---->
+
+    <!---->
+
+    <div id="main-outlet">
+        <!---->
+          
+
+  
+    
+<!---->    
+
+
+
+
+          <!---->
+
+        
+<!---->
+
+        <div class="container" id="main-container">
+            <div>
+  
+</div>
+          <!---->
+          <!---->
+          <div class="global-notice">
+<!----></div>
+          <!---->
+        </div>
+
+            
+
+<div id="ember6" class="regular ember-view">
+  <!---->
+      
+
+<!---->
+    <!----><!----><!---->
+    
+
+        <div class="container">
+            <div class="container">
+    <div class="row">
+      <div id="banner">
+        <div class="floated-buttons">
+<!---->
+          <button aria-label="Dismiss this banner" class="btn no-text btn-icon btn-transparent close" title="Dismiss this banner" type="button">
+<svg class="fa d-icon d-icon-xmark svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span aria-hidden="true">
+      ​
+    </span>
+
+<!----></button>
+        </div>
+
+        <div id="banner-content"><p>Please read our <a href="https://discuss.python.org/guidelines/">Community Guidelines</a> that are tailored to this space in addition to the Python Software Foundation Code of Conduct that we’re bound by.</p>
+<p>Reach out to <a class="mention-group" href="/groups/moderators">@moderators</a> with any questions.</p></div><!---->
+      </div>
+    </div>
+  </div>
+
+        </div>
+
+<!---->
+        <span>
+          <!---->
+        </span>
+
+          <div class="container" id="topic-title">
+  <div class="title-wrapper">
+    
+              <h1 data-topic-id="22606">
+                    <!---->
+
+                  <span class="topic-statuses"><!----><!----><!----><!----><!----><!----><!----><!----></span>
+                  <a class="fancy-title" href="/t/pep-703-making-the-global-interpreter-lock-optional/22606">
+                    PEP 703: Making the Global Interpreter Lock Optional<!---->                  </a>
+
+                <!---->
+              </h1>
+
+              
+                <div class="topic-category">
+  
+      <a class="badge-category__wrapper " style="--category-badge-color: #0088CC;--category-badge-text-color: #FFFFFF;" href="/c/peps/19"><span data-category-id="19" data-drop-close="true" class="badge-category --style-square"><span class="badge-category__name">PEPs</span></span></a>
+  
+  <div class="topic-header-extra">
+      <div class="list-tags">
+        <!---->
+      </div>
+      <!---->
+  </div>
+
+  <span>
+    <!---->
+  </span>
+</div>
+              
+
+          
+  </div>
+
+  <!----><!----><!---->
+</div>
+
+<!---->
+
+        <div class="container posts">
+          <div class="selected-posts hidden">
+            <div>
+  <p>
+    <span>You have selected <b>0</b> posts.</span>
+  </p>
+
+    <p>
+      <a class="select-all" href="">
+        select all
+      </a>
+    </p>
+
+<!---->
+<!---->
+<!---->
+<!---->
+<!---->
+  <p class="cancel">
+    <a href="">
+      cancel selecting
+    </a>
+  </p>
+</div>
+          </div>
+
+<!---->
+          <!---->
+
+          <div class="with-timeline topic-navigation">
+    
+            <!----><div class="topic-navigation-outlet no-answer">
+<!----><!----></div><!---->
+
+              <div class="timeline-container timeline-docked">
+  <div class="topic-timeline">
+    <!---->
+<!---->
+  
+<!---->
+
+  <div class="timeline-scrollarea-wrapper">
+    <div class="timeline-date-wrapper">
+      <a class="start-date" href="/t/pep-703-making-the-global-interpreter-lock-optional/22606/1" title="Jump to the first post">
+        <span>
+          Jan 2023
+        </span>
+      </a>
+    </div>
+
+    <div class="timeline-scrollarea" style="height: 300px">
+      <div class="timeline-padding" style="height: 0.0019519907866036516px"></div>
+
+      <div class="timeline-scroller" style="height: 50px" data-pointer-drag="none">
+    <div class="timeline-handle"></div>
+    <div class="timeline-scroller-content">
+      <div class="timeline-replies">
+        1 / 130
+      </div>
+        <div class="timeline-ago">
+          Jan 2023
+        </div>
+<!---->    </div>
+</div>
+
+      <div class="timeline-padding" style="height: 249.9980480092134px"></div>
+
+<!---->    </div>
+
+    <div class="timeline-date-wrapper">
+      <a class="now-date" href="/t/pep-703-making-the-global-interpreter-lock-optional/22606/131">
+        <span>
+          <span class="relative-date" title="Jump to the last post" data-time="1728573776500" data-format="tiny">Oct 2024</span>
+        </span>
+      </a>
+    </div>
+  </div>
+
+  <div class="timeline-footer-controls">
+<!---->
+<!---->
+<!---->
+<!---->
+    <!---->
+  </div>
+
+  </div>
+</div>
+
+            <!---->
+          
+</div>
+
+          <div class="row">
+            <section class="topic-area" data-topic-id="22606" id="topic">
+              <div class="posts-wrapper">
+                <span>
+                  <!----><!----><!---->
+                </span>
+
+<!---->
+                  
+  <div class="loading-container">
+      
+  </div>
+
+<div class="post-stream">
+<!---->
+<!---->
+<!---->
+          <div class="topic-post clearfix post--sticky-avatar sticky-avatar post--topic-owner topic-owner post--group-committers group-committers post--regular regular" data-post-number="1">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-1">
+  post by ambv on Jan 10, 2023
+</h2>
+      
+        <article aria-labelledby="post-heading-1" class="boxed onscreen-post" data-post-id="80646" data-user-id="6" id="post_1">
+          
+<!----><!---->            <div class="post__row row">
+              <div class="topic-avatar">
+    
+      <div class="post-avatar">
+          <a class="main-avatar" aria-hidden="true" data-user-card="ambv" href="/u/ambv" tabindex="-1">
+  
+  <img alt="" width="48" height="48" src="https://sea2.discourse-cdn.com/flex002/user_avatar/discuss.python.org/ambv/48/25884_2.png" class="avatar" loading="lazy">
+
+</a>
+          
+              <div class="avatar-flair avatar-flair-committers rounded avatar-flair-image" style="background-image: url(https://us1.discourse-cdn.com/flex002/uploads/python1/original/1X/ca0883b21b8210c5a62c9ac02353de5f24a4d6fc.png); background-color: #006b94; color: #fac731" title="committers">
+<!----></div>
+
+          
+<!---->      </div>
+    
+</div>
+              <div class="post__body topic-body clearfix">
+                
+                  <div class="topic-meta-data">
+      
+  <div class="names trigger-user-card">
+    <!---->
+<!---->      <span class="first full-name staff admin moderator group--committers">
+        
+          <a aria-label="Łukasz Langa's profile" data-user-card="ambv" href="/u/ambv" tabindex="0">
+  
+            Łukasz Langa
+                <span class="svg-icon-title" title="This user is a moderator"><svg class="fa d-icon d-icon-shield-halved svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg></span>
+          
+</a>
+        
+      </span>
+
+          <span class="second username">
+            
+              <a aria-hidden="true" data-user-card="ambv" href="/u/ambv" tabindex="-1">
+  
+                  ambv
+              
+</a>
+            
+          </span>
+
+          <span class="user-title user-title--cpython-core-developer user-title--committers">
+              <a class="user-group trigger-group-card" data-group-card="committers" href="/g/committers">
+  
+                CPython core developer
+              
+</a>
+          </span>
+
+<!---->
+<!---->        <!---->
+    <!---->
+  </div>
+
+
+  <div class="post-infos">
+      <div class="post-info post-date">
+  <a aria-label="Jan 10, 2023" class="post-date" href="/t/pep-703-making-the-global-interpreter-lock-optional/22606" title="Post date">
+    <span aria-hidden="true">
+      <span class="relative-date" title="Jan 10, 2023 4:08 pm" data-time="1673366889249" data-format="tiny">Jan 2023</span>
+    </span>
+  </a>
+</div>
+      <div class="read-state read" title="Post is unread">
+  <svg class="fa d-icon d-icon-circle svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+  </div>
+</div>
+                
+                <div class="post__regular regular post__contents contents">
+                  <!---->
+                    <div class="cooked"><p>Hi <img src="https://emoji.discourse-cdn.com/apple/wave.png?v=15" title=":wave:" class="emoji" alt=":wave:" loading="lazy" width="20" height="20" style="aspect-ratio: 20 / 20;"></p>
+<p>As the sponsor of <a class="mention" href="/u/colesbury">@colesbury</a>’s PEP, I’d like to invite you all to discuss the proposal to solve the biggest scalability limitation of CPython by making it possible to build a version of the interpreter which doesn’t use the Global Interpreter Lock.</p>
+<p>The document is somewhat of a demanding read as it’s one of the top 10 longest PEPs. That was to be expected though as the problem goes back decades and requires nuance, trade-offs, and careful consideration of alternatives. Thanks in advance for your time reading the PEP and iterating on it with us.</p>
+<p>Our hope with this PEP is to get a definitive answer to the GIL question once and for all. We look forward to your feedback!</p>
+<p>– Sam Gross and Łukasz Langa</p>
+<h1><a name="p-80646-see-the-latest-version-of-the-pep-1" class="anchor" href="#p-80646-see-the-latest-version-of-the-pep-1" aria-label="Heading link"></a>See the latest version of the PEP</h1>
+<aside class="onebox allowlistedgeneric" data-onebox-src="https://peps.python.org/pep-0703/">
+  <header class="source">
+      <img src="https://us1.discourse-cdn.com/flex002/uploads/python1/original/2X/8/88d4484552c4beac33d9a0848f523aaa66aad78c.png" class="site-icon" alt="" data-dominant-color="979F6B" width="16" height="16" loading="lazy" style="aspect-ratio: 16 / 16;">
+
+      <a href="https://peps.python.org/pep-0703/" target="_blank" rel="noopener">Python Enhancement Proposals (PEPs)</a>
+  </header>
+
+  <article class="onebox-body">
+    <img width="200" height="200" src="https://us1.discourse-cdn.com/flex002/uploads/python1/original/3X/8/3/8354042ac932196b5fde1d1048a76b567decdcdc.png" class="thumbnail onebox-avatar" alt="" data-dominant-color="9EAC81" loading="lazy" style="aspect-ratio: 200 / 200;">
+
+<h3><a href="https://peps.python.org/pep-0703/" target="_blank" rel="noopener" data-clicks="3.0k" aria-label="PEP 703 – Making the Global Interpreter Lock Optional in CPython |... link clicked 2981 times">PEP 703 – Making the Global Interpreter Lock Optional in CPython |...</a></h3>
+
+  <p>CPython’s global interpreter lock (“GIL”) prevents multiple threads from executing Python code at the same time.  The GIL is an obstacle to using multi-core CPUs from Python efficiently.  This PEP proposes adding a build configuration (--disable-gil)...</p>
+
+
+  </article>
+
+  <div class="onebox-metadata">
+    
+    
+  </div>
+
+  <div style="clear: both"></div>
+</aside>
+
+<p>(<a href="http://python.org" data-clicks="69" aria-label="python.org link clicked 69 times">python.org</a> uses aggressive front-end caching so you might need to refresh the page your browser to see latest changes)</p><div class="cooked-selection-barrier" aria-hidden="true"><br></div></div><!---->
+                  <!----><!----><!---->
+
+<!---->
+<!---->
+<!---->
+                  <section aria-label="Post actions" class="post__menu-area post-menu-area clearfix" role="group">
+                    
+  <nav class="post-controls expanded" role="none">
+          <div class="reactions-actions-summary">
+    <div class="discourse-reactions-actions has-reactions can-toggle-reaction" id="discourse-reactions-actions-80646-left">
+<!---->
+        <button aria-expanded="false" aria-haspopup="dialog" aria-label="120 reactions" class="discourse-reactions-counter only-like" id="discourse-reactions-counter-80646-left" type="button">
+    <span class="discourse-reactions-list">
+    <span class="reactions">
+        <span class="discourse-reactions-list-emoji" id="discourse-reactions-list-emoji-80646-heart">
+    <img width="20" height="20" src="https://emoji.discourse-cdn.com/apple/heart.png?v=15" title="heart" alt="heart" class="emoji">
+</span>
+    </span>
+</span>
+
+    <span aria-hidden="true" class="reactions-counter">
+      120
+    </span>
+  </button>
+
+</div>
+  </div>
+
+
+        <button aria-expanded="false" aria-label="This post has 1 reply" aria-pressed="false" class="btn post-action-menu__show-replies show-replies btn-icon-text btn-flat" type="button">
+<!----><span class="d-button-label">1 Reply<!----></span>
+<svg class="fa d-icon d-icon-chevron-down svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
+
+<!----></button>
+
+    <div class="actions">
+        <!---->
+          <div class="discourse-reactions-actions-button-shim">
+  <div class="discourse-reactions-actions has-reactions can-toggle-reaction" id="discourse-reactions-actions-80646-right">
+<!---->
+      <div class="discourse-reactions-reaction-button" title="Please sign up or log in to like this post">
+    <button class="btn no-text btn-icon btn-toggle-reaction-like btn-flat btn-icon no-text reaction-button" title="Please sign up or log in to like this post" type="button">
+<svg class="fa d-icon d-icon-d-unliked svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span aria-hidden="true">
+      ​
+    </span>
+
+<!----></button>
+  </div>
+    </div>
+</div>
+
+          <button aria-label="copy a link to this post to clipboard" class="btn no-text btn-icon post-action-menu__copy-link btn-flat" title="copy a link to this post to clipboard" type="button">
+<svg class="fa d-icon d-icon-link svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span aria-hidden="true">
+      ​
+    </span>
+
+<!----></button>
+
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+    </div>
+  </nav>
+  
+  <div class="small-user-list  who-read">
+    <span aria-atomic="true" aria-live="polite" class="small-user-list-content" role="list">
+<!---->    </span>
+  </div>
+
+<!---->
+
+                  </section>
+
+<!---->                </div>
+
+                <section class="post__actions post-actions">
+                  <!----><!---->
+                </section>
+                
+                    <div class="post-links-container">
+    <ul class="post-links">
+        <li>
+          <a class="track-link inbound" data-clicks="21" href="https://discuss.python.org/t/a-fast-free-threading-python/27903/111">
+            <svg class="fa d-icon d-icon-link svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
+            <span> A fast, free threading Python</span>
+          </a>
+        </li>
+        <li>
+          <a class="track-link inbound" data-clicks="1" href="https://discuss.python.org/t/is-free-threading-our-only-option/91775/100">
+            <svg class="fa d-icon d-icon-link svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
+            <span> Is Free-Threading Our Only Option?</span>
+          </a>
+        </li>
+<!---->    </ul>
+  </div>
+
+                
+              </div>
+            </div>
+              <div class="post__topic-map topic-map --op">
+                  
+    <section class="topic-map__contents">
+      <div class="topic-map__stats --many-stats">
+  <button aria-expanded="false" class="btn no-text fk-d-menu__trigger topic-map__views-trigger" data-identifier="topic-map__views" data-trigger="" type="button" id="ember8">
+<!----><!---->
+    
+      <span class="number">41.1k</span>
+      <span class="topic-map__stat-label">
+        views
+      </span>
+    
+
+
+<!----></button>
+
+<!---->
+
+<!---->
+      <button aria-expanded="false" class="btn no-text fk-d-menu__trigger topic-map__likes-trigger" data-identifier="topic-map__likes" data-trigger="" type="button" id="ember9">
+<!----><!---->
+    
+          <span class="number">632</span>
+          <span class="topic-map__stat-label">
+            likes
+          </span>
+        
+
+
+<!----></button>
+
+<!---->
+
+    <button aria-expanded="false" class="btn no-text fk-d-menu__trigger topic-map__links-trigger" data-identifier="topic-map__links" data-trigger="" type="button" id="ember10">
+<!----><!---->
+    
+        <span class="number">50+</span>
+        <span class="topic-map__stat-label">
+          links
+        </span>
+      
+
+
+<!----></button>
+
+<!---->
+
+    <button aria-expanded="false" class="btn no-text fk-d-menu__trigger topic-map__users-trigger" data-identifier="topic-map__users" data-trigger="" type="button" id="ember11">
+<!----><!---->
+    
+        <span class="number">48</span>
+        <span class="topic-map__stat-label">
+          users
+        </span>
+      
+
+
+<!----></button>
+
+<!---->
+
+    <!----><div class="topic-map__users-list --users-summary">
+    
+  <div class="group-committers">
+    <a class="poster trigger-user-card" title="colesbury" aria-label="colesbury's profile" data-user-card="colesbury" href="/u/colesbury" tabindex="0">
+  
+
+      <img alt="" width="48" height="48" src="https://sea2.discourse-cdn.com/flex002/user_avatar/discuss.python.org/colesbury/48/28031_2.png" class="avatar" title="Sam Gross">
+        <span class="post-count">18</span>
+        <div class="avatar-flair avatar-flair-committers rounded avatar-flair-image" style="background-image: url(https://us1.discourse-cdn.com/flex002/uploads/python1/original/1X/ca0883b21b8210c5a62c9ac02353de5f24a4d6fc.png); background-color: #006b94; color: #fac731" title="committers">
+<!----></div>
+
+    
+</a>
+  </div>
+
+    
+  <div class="">
+    <a class="poster trigger-user-card" title="barry-scott" aria-label="barry-scott's profile" data-user-card="barry-scott" href="/u/barry-scott" tabindex="0">
+  
+
+      <img alt="" width="48" height="48" src="https://avatars.discourse-cdn.com/v4/letter/b/e9c0ed/48.png" class="avatar" title="Barry Scott">
+        <span class="post-count">11</span>
+      <!---->
+    
+</a>
+  </div>
+
+    
+  <div class="">
+    <a class="poster trigger-user-card" title="renejsum" aria-label="renejsum's profile" data-user-card="renejsum" href="/u/renejsum" tabindex="0">
+  
+
+      <img alt="" width="48" height="48" src="https://sea2.discourse-cdn.com/flex002/user_avatar/discuss.python.org/renejsum/48/2940_2.png" class="avatar" title="Rene Nejsum">
+        <span class="post-count">8</span>
+      <!---->
+    
+</a>
+  </div>
+
+    
+  <div class="">
+    <a class="poster trigger-user-card" title="ajoino" aria-label="ajoino's profile" data-user-card="ajoino" href="/u/ajoino" tabindex="0">
+  
+
+      <img alt="" width="48" height="48" src="https://sea2.discourse-cdn.com/flex002/user_avatar/discuss.python.org/ajoino/48/6907_2.png" class="avatar" title="Jacob Nilsson">
+        <span class="post-count">6</span>
+      <!---->
+    
+</a>
+  </div>
+
+    
+  <div class="">
+    <a class="poster trigger-user-card" title="stonebig" aria-label="stonebig's profile" data-user-card="stonebig" href="/u/stonebig" tabindex="0">
+  
+
+      <img alt="" width="48" height="48" src="https://sea2.discourse-cdn.com/flex002/user_avatar/discuss.python.org/stonebig/48/2796_2.png" class="avatar" title="Stonebig">
+        <span class="post-count">6</span>
+      <!---->
+    
+</a>
+  </div>
+
+</div>
+  <!----><!----><!---->
+  <div class="topic-map__buttons">
+      <div class="estimated-read-time">
+        <span> read </span>
+        <span>
+          37
+          min
+        </span>
+      </div>
+      <div class="summarization-button">
+        <button class="btn btn-icon-text btn-default top-replies" title="Show this topic top replies: the most interesting posts as determined by the community" type="button">
+<svg class="fa d-icon d-icon-layer-group svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span class="d-button-label">Top replies<!----></span>
+
+<!----></button>
+      </div>
+  </div>
+</div>
+    </section>
+
+    <!----><!----><!---->
+
+<!---->  
+
+              </div>
+          
+        </article>
+      
+</div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="topic-post clearfix post--sticky-avatar sticky-avatar post--regular regular" data-post-number="2">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-2">
+  post by ajoino on Jan 10, 2023
+</h2>
+      
+        <article aria-labelledby="post-heading-2" class="boxed onscreen-post" data-post-id="80651" data-user-id="7020" id="post_2">
+          
+<!----><!---->            <div class="post__row row">
+              <div class="topic-avatar">
+    
+      <div class="post-avatar">
+          <a class="main-avatar" aria-hidden="true" data-user-card="ajoino" href="/u/ajoino" tabindex="-1">
+  
+  <img alt="" width="48" height="48" src="https://sea2.discourse-cdn.com/flex002/user_avatar/discuss.python.org/ajoino/48/6907_2.png" class="avatar" loading="lazy">
+
+</a>
+          
+            <!---->
+          
+<!---->      </div>
+    
+</div>
+              <div class="post__body topic-body clearfix">
+                
+                  <div class="topic-meta-data">
+      
+  <div class="names trigger-user-card">
+    <!---->
+<!---->      <span class="first full-name">
+        
+          <a aria-label="Jacob Nilsson's profile" data-user-card="ajoino" href="/u/ajoino" tabindex="0">
+  
+            Jacob Nilsson
+<!---->          
+</a>
+        
+      </span>
+
+          <span class="second username">
+            
+              <a aria-hidden="true" data-user-card="ajoino" href="/u/ajoino" tabindex="-1">
+  
+                  ajoino
+              
+</a>
+            
+          </span>
+
+<!---->
+<!---->
+<!---->        <!---->
+    <!---->
+  </div>
+
+
+  <div class="post-infos">
+      <div class="post-info post-date">
+  <a aria-label="Jan 10, 2023" class="post-date" href="/t/pep-703-making-the-global-interpreter-lock-optional/22606/2" title="Post date">
+    <span aria-hidden="true">
+      <span class="relative-date" title="Jan 10, 2023 4:39 pm" data-time="1673368787751" data-format="tiny">Jan 2023</span>
+    </span>
+  </a>
+</div>
+      <div class="read-state read" title="Post is unread">
+  <svg class="fa d-icon d-icon-circle svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+  </div>
+</div>
+                
+                <div class="post__regular regular post__contents contents">
+                  <!---->
+                    <div class="cooked"><p>Exciting stuff!</p><div class="cooked-selection-barrier" aria-hidden="true"><br></div></div><!---->
+                  <!----><!----><!---->
+
+<!---->
+<!---->
+<!---->
+                  <section aria-label="Post actions" class="post__menu-area post-menu-area clearfix" role="group">
+                    
+  <nav class="post-controls expanded" role="none">
+          <div class="reactions-actions-summary">
+    <div class="discourse-reactions-actions has-reactions can-toggle-reaction" id="discourse-reactions-actions-80651-left">
+<!---->
+        <button aria-expanded="false" aria-haspopup="dialog" aria-label="5 reactions" class="discourse-reactions-counter only-like" id="discourse-reactions-counter-80651-left" type="button">
+    <span class="discourse-reactions-list">
+    <span class="reactions">
+        <span class="discourse-reactions-list-emoji" id="discourse-reactions-list-emoji-80651-heart">
+    <img width="20" height="20" src="https://emoji.discourse-cdn.com/apple/heart.png?v=15" title="heart" alt="heart" class="emoji">
+</span>
+    </span>
+</span>
+
+    <span aria-hidden="true" class="reactions-counter">
+      5
+    </span>
+  </button>
+
+</div>
+  </div>
+
+
+      <!---->
+    <div class="actions">
+        <!---->
+          <div class="discourse-reactions-actions-button-shim">
+  <div class="discourse-reactions-actions has-reactions can-toggle-reaction" id="discourse-reactions-actions-80651-right">
+<!---->
+      <div class="discourse-reactions-reaction-button" title="Please sign up or log in to like this post">
+    <button class="btn no-text btn-icon btn-toggle-reaction-like btn-flat btn-icon no-text reaction-button" title="Please sign up or log in to like this post" type="button">
+<svg class="fa d-icon d-icon-d-unliked svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span aria-hidden="true">
+      ​
+    </span>
+
+<!----></button>
+  </div>
+    </div>
+</div>
+
+          <button aria-label="copy a link to this post to clipboard" class="btn no-text btn-icon post-action-menu__copy-link btn-flat" title="copy a link to this post to clipboard" type="button">
+<svg class="fa d-icon d-icon-link svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span aria-hidden="true">
+      ​
+    </span>
+
+<!----></button>
+
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+    </div>
+  </nav>
+  
+  <div class="small-user-list  who-read">
+    <span aria-atomic="true" aria-live="polite" class="small-user-list-content" role="list">
+<!---->    </span>
+  </div>
+
+<!---->
+
+                  </section>
+
+<!---->                </div>
+
+                <section class="post__actions post-actions">
+                  <!----><!---->
+                </section>
+                
+                  <!---->
+                
+              </div>
+            </div>
+<!---->          
+        </article>
+      
+</div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="topic-post clearfix post--sticky-avatar sticky-avatar post--regular regular" data-post-number="3">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-3">
+  post by cirospaciari on Jan 10, 2023
+</h2>
+      
+        <article aria-labelledby="post-heading-3" class="boxed onscreen-post" data-post-id="80669" data-user-id="10158" id="post_3">
+          
+<!----><!---->            <div class="post__row row">
+              <div class="topic-avatar">
+    
+      <div class="post-avatar">
+          <a class="main-avatar" aria-hidden="true" data-user-card="cirospaciari" href="/u/cirospaciari" tabindex="-1">
+  
+  <img alt="" width="48" height="48" src="https://sea2.discourse-cdn.com/flex002/user_avatar/discuss.python.org/cirospaciari/48/10538_2.png" class="avatar" loading="lazy">
+
+</a>
+          
+            <!---->
+          
+<!---->      </div>
+    
+</div>
+              <div class="post__body topic-body clearfix">
+                
+                  <div class="topic-meta-data">
+      
+  <div class="names trigger-user-card">
+    <!---->
+<!---->      <span class="first full-name new-user">
+        
+          <a aria-label="Ciro Spaciari's profile" data-user-card="cirospaciari" href="/u/cirospaciari" tabindex="0">
+  
+            Ciro Spaciari
+<!---->          
+</a>
+        
+      </span>
+
+<!---->
+<!---->
+<!---->
+<!---->        <!---->
+    <!---->
+  </div>
+
+
+  <div class="post-infos">
+      <div class="post-info post-date">
+  <a aria-label="Jan 10, 2023" class="post-date" href="/t/pep-703-making-the-global-interpreter-lock-optional/22606/3" title="Post date">
+    <span aria-hidden="true">
+      <span class="relative-date" title="Jan 10, 2023 5:28 pm" data-time="1673371710381" data-format="tiny">Jan 2023</span>
+    </span>
+  </a>
+</div>
+      <div class="read-state read" title="Post is unread">
+  <svg class="fa d-icon d-icon-circle svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+  </div>
+</div>
+                
+                <div class="post__regular regular post__contents contents">
+                  <!---->
+                    <div class="cooked"><p>awesome news!</p><div class="cooked-selection-barrier" aria-hidden="true"><br></div></div><!---->
+                  <!----><!----><!---->
+
+<!---->
+<!---->
+<!---->
+                  <section aria-label="Post actions" class="post__menu-area post-menu-area clearfix" role="group">
+                    
+  <nav class="post-controls expanded" role="none">
+      <!---->
+      <!---->
+    <div class="actions">
+        <!---->
+          <div class="discourse-reactions-actions-button-shim">
+  <div class="discourse-reactions-actions can-toggle-reaction" id="discourse-reactions-actions-80669-right">
+<!---->
+      <div class="discourse-reactions-reaction-button" title="Please sign up or log in to like this post">
+    <button class="btn no-text btn-icon btn-toggle-reaction-like btn-flat btn-icon no-text reaction-button" title="Please sign up or log in to like this post" type="button">
+<svg class="fa d-icon d-icon-d-unliked svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span aria-hidden="true">
+      ​
+    </span>
+
+<!----></button>
+  </div>
+    </div>
+</div>
+
+          <button aria-label="copy a link to this post to clipboard" class="btn no-text btn-icon post-action-menu__copy-link btn-flat" title="copy a link to this post to clipboard" type="button">
+<svg class="fa d-icon d-icon-link svg-icon fa-width-auto svg-string" width="1em" height="1em" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>  <span aria-hidden="true">
+      ​
+    </span>
+
+<!----></button>
+
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+        <!---->
+    </div>
+  </nav>
+  
+  <div class="small-user-list  who-read">
+    <span aria-atomic="true" aria-live="polite" class="small-user-list-content" role="list">
+<!---->    </span>
+  </div>
+
+<!---->
+
+                  </section>
+
+<!---->                </div>
+
+                <section class="post__actions post-actions">
+                  <!----><!---->
+                </section>
+                
+                  <!---->
+                
+              </div>
+            </div>
+<!---->          
+        </article>
+      
+</div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="4" id="post_4" style="height:786.390625px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-4">
+  post by ambv on Jan 10, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="5" id="post_5" style="height:400.390625px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-5">
+  post by barry-scott on Jan 10, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="6" id="post_6" style="height:649px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-6">
+  post by h-vetinari on Jan 10, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="7" id="post_7" style="height:264.390625px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-7">
+  post by barry-scott on Jan 10, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="8" id="post_8" style="height:389.1875px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-8">
+  post by jeanas on Jan 10, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="9" id="post_9" style="height:584.390625px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-9">
+  post by methane on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="10" id="post_10" style="height:336.390625px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-10">
+  post by gregington on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="11" id="post_11" style="height:837.1875px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-11">
+  post by colesbury on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="12" id="post_12" style="height:885.1875px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-12">
+  post by colesbury on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="13" id="post_13" style="height:301.1875px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-13">
+  post by colesbury on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="14" id="post_14" style="height:176.390625px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-14">
+  post by petersuter on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="15" id="post_15" style="height:1542.78125px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-15">
+  post by h-vetinari on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="16" id="post_16" style="height:224.390625px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-16">
+  post by encukou on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="17" id="post_17" style="height:265px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-17">
+  post by ashbt on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="18" id="post_18" style="height:413.1875px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-18">
+  post by ashbt on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="19" id="post_19" style="height:501.1875px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-19">
+  post by mattip on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!----><!---->
+<!---->
+          <div class="post-stream--cloaked" data-post-number="20" id="post_20" style="height:224.390625px !important;margin:0px !important;box-sizing: border-box !important;">
+  <h2 aria-hidden="false" class="sr-only" id="post-heading-20">
+  post by ashbt on Jan 11, 2023
+</h2>
+<!----></div>
+
+<!---->
+<!---->
+      <div aria-hidden="true" class="load-more-sentinel"></div>
+
+
+<div class="post-stream-load-more-accessible sr-only">
+  <h2 class="post-stream-load-more-accessible__heading" id="post-stream-load-more-heading__below">
+    Load more posts below
+  </h2>
+</div>
+
+<!----></div>
+
+  <div class="loading-container">
+      
+  </div>
+
+
+                  
+              </div>
+              <div id="topic-bottom"></div>
+
+              
+  <div class="loading-container">
+      
+<!---->              
+  </div>
+
+
+              <!---->
+            </section>
+          </div>
+
+        </div>
+<!---->        <!---->
+        <!---->
+
+        <div></div>
+</div>
+
+<!---->      <!---->
+
+  <div aria-label="User card" id="user-card" class="user-card show-badges no-bg group-undefined ember-view" role="dialog"><!----></div>
+
+
+<div id="group-card" class="no-bg group-card show-badges ember-view"><!----></div>
+
+<!---->
+    </div>
+
+    <!---->
+
+<!---->
+<!---->  </div>
+
+  <!---->
+<!---->  <!----><!----><!---->
+
+  <div class="modal-container"></div>
+
+<!---->
+  <!---->
+  <!---->
+    <div id="reply-control" class="closed hide-preview ember-view">
+  <div class="d-resize-separator grippie" tabindex="0" aria-label="Resize composer" aria-orientation="horizontal" data-resize-axis="vertical" role="separator" data-pointer-drag="none" aria-valuemax="668" aria-valuemin="0" aria-valuenow="0"></div>
+<!----></div>
+  <!---->
+
+<!----></div>
+
+<div id="d-menu-portals"></div>
+
+<!---->
+<div id="d-tooltip-portals"></div>
+
+<!---->
+<section class="fk-d-toasts">
+<!----></section>
+
+<div aria-atomic="true" aria-live="polite" class="sr-only" id="a11y-announcements-polite" role="status">
+   
+</div>
+<div aria-atomic="true" aria-live="assertive" class="sr-only" id="a11y-announcements-assertive" role="alert">
+   
+</div></section>
+
+      <form id="hidden-login-form" method="post" action="/login" style="display: none;">
+        <input name="username" type="text" id="signin_username">
+        <input name="password" type="password" id="signin_password">
+        <input name="redirect" type="hidden">
+        <input type="submit" id="signin-button" value="Log In">
+      </form>
+
+    <script type="module" src="https://us1.discourse-cdn.com/flex002/assets/br/discourse-c99nyo6w.digested.js" data-discourse-entrypoint="discourse" nonce=""></script>
+
+
+    <script defer src="https://us1.discourse-cdn.com/flex002/assets/br/browser-update-91688f13.js" nonce=""></script>
+
+    
+
+      
+
+      
+
+    <script nonce=""></script>
+  
+
+</body></html>

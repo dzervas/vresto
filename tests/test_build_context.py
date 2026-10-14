@@ -8,7 +8,8 @@ import tarfile
 
 def test_build_context_excludes_credentials_and_workspace_metadata(tmp_path):
     for path in ['Dockerfile', 'Dockerfile.headful', 'Dockerfile.chrome', 'pyproject.toml', 'uv.lock', 'NOTICE', '.dockerignore',
-                 'src/kagi_crawler/server.py', 'licenses/Crawl4AI-LICENSE',
+                 'src/kagi_crawler/server.py', 'src/kagi_crawler/sites/x.py',
+                 'src/kagi_crawler/sites/__pycache__/x.cpython-312.pyc', 'licenses/LICENSE',
                  '.envrc', '.beads/issues.json', '.jj/repo/config.toml',
                  'src/kagi_crawler/.envrc', 'src/kagi_crawler/credentials.json',
                  'licenses/session.key']:
@@ -18,8 +19,8 @@ def test_build_context_excludes_credentials_and_workspace_metadata(tmp_path):
     result = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] /
         'scripts/build_context.py'), '--root', str(tmp_path)], capture_output=True, check=True)
     with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
-        assert set(archive.getnames()) == {'.dockerignore', 'Dockerfile', 'Dockerfile.headful', 'Dockerfile.chrome', 'pyproject.toml',
-            'uv.lock', 'src/kagi_crawler/server.py'}
+        assert set(archive.getnames()) == {'.dockerignore', 'Dockerfile', 'pyproject.toml',
+            'uv.lock', 'src/kagi_crawler/server.py', 'src/kagi_crawler/sites/x.py'}
     # An allowed filename must not smuggle an excluded file through a symlink.
     (tmp_path / 'src/kagi_crawler/server.py').unlink()
     (tmp_path / 'src/kagi_crawler/server.py').symlink_to(tmp_path / '.envrc')
@@ -27,3 +28,21 @@ def test_build_context_excludes_credentials_and_workspace_metadata(tmp_path):
         'scripts/build_context.py'), '--root', str(tmp_path)], capture_output=True)
     assert refused.returncode != 0
     assert b'build input symlink refused' in refused.stderr
+
+
+def test_default_dockerfile_declares_owned_headed_chrome_only():
+    # Configuration guard, not a claim that Debian/container launch was tested.
+    root = Path(__file__).resolve().parents[1]
+    dockerfile = (root / 'Dockerfile').read_text()
+    assert 'patchright install --with-deps chrome' in dockerfile
+    assert 'KAGI_CRAWLER_HEADFUL=1' in dockerfile
+    assert 'KAGI_CRAWLER_BROWSER_CHANNEL=chrome' in dockerfile
+    assert '/etc/opt/chrome/policies/managed/native-doh.json' in dockerfile
+    assert 'command -v Xvfb' in dockerfile
+    assert 'chmod 1777 /tmp/.X11-unix' in dockerfile
+    assert 'USER 10001:10001' in dockerfile
+    assert 'ENTRYPOINT ["python", "-m", "kagi_crawler.headful"]' in dockerfile
+    assert 'patchright install --with-deps chromium' not in dockerfile
+    assert 'chrome_for_testing' not in dockerfile
+    assert not (root / 'Dockerfile.headful').exists()
+    assert not (root / 'Dockerfile.chrome').exists()

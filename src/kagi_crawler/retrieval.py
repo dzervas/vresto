@@ -1,0 +1,105 @@
+"""Search/fetch orchestration returning final public, budgeted tool data."""
+from copy import deepcopy
+
+from .acquisition import Acquisition
+from .budget import apply_budget
+from .cache import CachedAcquisition, DocumentCache
+from .contract import FetchInput, SearchInput
+from .discovery import Discovery, DiscoveryError
+from .evidence import expand_evidence, select_highlights
+from .safety import safe_sources
+from .traversal import Traversal
+from .types import ToolData
+
+
+class Retrieval:
+    def __init__(self, discovery: Discovery, acquisition: Acquisition,
+                 cached_acquisition: CachedAcquisition, cache: DocumentCache,
+                 secrets: tuple[str, ...]) -> None:
+        self.discovery = discovery
+        self.acquisition = acquisition
+        self.cached_acquisition = cached_acquisition
+        self.cache = cache
+        self.secrets = secrets
+
+    def _acquisition_limits(self, page_limit):
+        options = self.acquisition.options
+        return {'returned_page_limit': page_limit, 'request_deadline_seconds': options.deadline,
+                'rendered_dom_bytes': options.dom_bytes,
+                'post_acquisition_document_bytes': options.response_bytes,
+                'expansion_actions': options.expansion_actions,
+                'expansion_seconds': options.expansion_timeout,
+                'native_network_resource_bounds': 'operator_memory_disk_egress_limits',
+                'queue_capacity': options.queue_capacity,
+                'queue_wait_seconds': options.queue_wait, 'browser_navigation_seconds': min(10, options.request_timeout),
+                'browser_acquisition_seconds': options.request_timeout}
+
+    def _finalize(self, data: ToolData, request: SearchInput | FetchInput) -> ToolData:
+        # The only output boundary. Strip private traversal metadata from a
+        # copy, preserving canonical/cache records. Reject credentials before
+        # selection so contaminated quotations cannot influence admission.
+        data = deepcopy(data)
+        for source in data.get('sources', data.get('results', [])):
+            source.pop('link_targets', None)
+            source.pop('links_truncated', None)
+        data = safe_sources(data, self.secrets)
+        highlights = (request.content_mode == 'highlights' or
+                      (isinstance(request, FetchInput) and request.content_mode is None and request.query))
+        if highlights and 'error' not in data:
+            assert request.query is not None  # Validated highlight mode requires a query.
+            data = select_highlights(data, request.query, request.response_budget_bytes)
+            # Selection adds normalized query terms; those can newly match a
+            # credential even when the original input's case did not.
+            data = safe_sources(data, self.secrets)
+        return apply_budget(data, request.response_budget_bytes)
+
+    async def fetch(self, request: FetchInput) -> ToolData:
+        data: ToolData
+        if request.evidence_ids is not None:
+            try:
+                data = dict(expand_evidence(self.cache, request.evidence_ids))
+            except ValueError:
+                # Evidence validation also checks retained versions/offsets;
+                # never forward the offending ID or exception details.
+                return {"error": {"code": "invalid_input", "message":
+                    "Invalid tool input or unsupported control; see tool input schema."}}
+        else:
+            assert request.urls is not None  # Validated exclusive URL/evidence modes.
+            with self.acquisition.request():
+                if request.traversal is not None:
+                    data = dict(await Traversal(self.cached_acquisition, request, self.acquisition.options).run(request.urls[0]))
+                else:
+                    data = dict(await self.cached_acquisition.fetch_many(request.urls, freshness=request.freshness,
+                                                               max_age_seconds=request.max_age_seconds))
+            data['acquisition_limits'] = self._acquisition_limits(request.traversal.max_pages if request.traversal else 10)
+        return self._finalize(data, request)
+
+    async def search(self, request: SearchInput) -> ToolData:
+        data: ToolData
+        try:
+            data = dict(await self.discovery.search(request))
+            if request.content_mode != 'discovery':
+                # One request-wide deadline across all returned pages, including
+                # cache refresh loops; each URL must not reset the shared deadline.
+                with self.acquisition.request():
+                    acquired = await self.cached_acquisition.fetch_many([r['url'] for r in data['results']],
+                        freshness=request.freshness, max_age_seconds=request.max_age_seconds)
+                data['results'] = [dict(result, **source) for result, source in
+                                   zip(data['results'], acquired['sources'])]
+                data['content_mode'] = 'full_text'
+                data['acquisition_limits'] = self._acquisition_limits(20)
+            return self._finalize(data, request)
+        except DiscoveryError as error:
+            messages = {
+                "upstream_authentication": "Kagi subscriber session missing, rejected or expired.",
+                "rate_limited": "Kagi rate limited discovery; retry later.",
+                "discovery_parse_error": "Invalid discovery output; upstream HTML/parser may have changed.",
+                "discovery_failed": "Kagi discovery failed; no paid API fallback was attempted.",
+                "discovery_timeout": "Kagi discovery exceeded the service deadline.",
+                "discovery_output_limit": "Kagi CLI output exceeded the service byte limit.",
+                "discovery_queue_full": "Discovery waiting capacity exceeded; retry later.",
+                "discovery_queue_timeout": "Discovery admission wait exceeded the service limit; retry later.",
+                "discovery_cli_version": "Install the pinned Microck Kagi CLI revision; release mismatch.",
+            }
+            return {"error": {"code": error.code, "message": messages[error.code]}}
+

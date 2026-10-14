@@ -4,6 +4,7 @@ No desktop/VNC or TCP X11 listener. Local X11 access is trusted only inside this
 private container; never share its /tmp X11 sockets with other containers.
 The service retains its own SIGTERM handling and closes the browser before Xvfb.
 """
+from collections.abc import Iterator
 from contextlib import contextmanager
 import os
 import select
@@ -16,7 +17,7 @@ _RUNTIME_ENV = ('PATH', 'HOME', 'TMPDIR', 'LD_LIBRARY_PATH', 'LANG',
 
 
 @contextmanager
-def virtual_display():
+def virtual_display() -> Iterator[None]:
     """Own a private display for the service or the opt-in browser diagnostic."""
     def stop(signum, frame):
         raise SystemExit(128 + signum)
@@ -63,7 +64,7 @@ def virtual_display():
             signal.signal(signum, handler)
 
 
-def main():
+def main() -> None:
     with virtual_display():
         from .server import main as serve
         serve()

@@ -33,21 +33,29 @@ def test_model_free_replay_keeps_gold_and_budget_contracts(tmp_path):
     assert missed['candidate_coverage'] == 0 and missed['all_window_coverage'] == 1
 
 
-def test_replay_refuses_gold_for_a_different_canonical_version(tmp_path):
+@pytest.mark.parametrize('tamper', ['gold_version', 'snapshot_digest'])
+def test_replay_refuses_invalid_frozen_gold_or_historical_snapshot(tmp_path, tamper):
     corpus = json.loads((ROOT / 'scripts/evaluation/data/corpus.json').read_text())
-    corpus['cases'][0]['gold'][0]['content_version'] = '0' * 64
+    if tamper == 'gold_version':
+        corpus['cases'][0]['gold'][0]['content_version'] = '0' * 64
+    else:
+        corpus['production_snapshots'][0]['production_sha256'] = '0' * 64
     path = tmp_path / 'corpus.json'
     path.write_text(json.dumps(corpus))
     result = subprocess.run([sys.executable, str(ROOT / 'scripts/evaluation/run.py'),
         '--corpus', str(path), '--output', str(tmp_path / 'result.json')], capture_output=True)
     assert result.returncode != 0
-    assert b'Invalid frozen gold' in result.stderr
+    assert (b'Invalid frozen gold' if tamper == 'gold_version'
+            else b'Frozen historical HTTP baseline drifted') in result.stderr
 
 
 async def test_real_http_freeze_keeps_complete_canonical_and_historical_evidence(tmp_path):
     from freeze import capture
     corpus = await capture(tmp_path / 'corpus.json', tmp_path / 'cache')
     assert len(corpus['documents']) == 14 and len(corpus['cases']) == 16
+    assert corpus['baseline_revision'] == 'current-working-tree'
+    for name, sha256 in corpus['baseline_provenance']['source_sha256'].items():
+        assert sha256 == hashlib.sha256((ROOT / 'src/kagi_crawler' / name).read_bytes()).hexdigest()
     assert all(corpus['contracts'].values())
     expanded = corpus['documents']['I']
     assert 'Native expanded cancellation caveat.' in expanded['content']

@@ -85,7 +85,15 @@ async def capture(output, cache_directory):
                 for budget in (65536, 16384, 4096):
                     live = body(await session.call_tool('fetch', {'urls': targets, 'query': case['query'],
                         'freshness': 'cache_only', 'response_budget_bytes': budget}))
-                    replay = select_highlights(deepcopy(canonical), case['query'])
+                    # Replay current server ordering, not the archived lexical
+                    # experiment: reject unsafe sources before budgeted selection.
+                    replay = deepcopy(canonical)
+                    for source in replay['sources']:
+                        source.pop('link_targets', None)
+                        source.pop('links_truncated', None)
+                    replay = safe_sources(replay, ('client-secret', 'subscriber-secret'))
+                    if 'error' not in replay:
+                        replay = select_highlights(replay, case['query'], budget)
                     replay = apply_budget(safe_sources(replay, ('client-secret', 'subscriber-secret')), budget)
                     assert live == replay, f"HTTP/replay mismatch: {case['id']} {budget}"
                     # Expand every ID, including duplicate attribution, through the actual cache.
@@ -113,7 +121,13 @@ async def capture(output, cache_directory):
         async with running(cache_directory, acquisition_options=options, cache_cap_bytes=1024) as (url, _), client(url) as session:
             expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert expanded['error']['code'] == 'evidence_unavailable'
-    corpus = dict(schema_version=1, baseline_revision='c7f1cbca', fixture_manifest=manifest,
+    # A capture may include uncommitted production changes. Do not attribute
+    # its snapshots to the fixture preparation revision or invent an exact commit.
+    provenance = dict(scope='current production working tree at capture; not the archived lexical baseline',
+        source_sha256={name: hashlib.sha256((ROOT / 'src/kagi_crawler' / name).read_bytes()).hexdigest()
+            for name in ('server.py', 'evidence.py', 'budget.py', 'safety.py')})
+    corpus = dict(schema_version=1, baseline_revision='current-working-tree',
+        baseline_provenance=provenance, fixture_manifest=manifest,
         documents=documents, cases=queries, acquisition_limits=canonical['acquisition_limits'],
         production_snapshots=snapshots, acquisition_seconds=acquisition_seconds,
         contracts={'http_replay_parity': True, 'all_ids_expanded': True,

@@ -49,7 +49,7 @@ time.sleep(60)
                     while True:
                         assert process.returncode is None
                         try:
-                            response = await http.get(f'http://127.0.0.1:{port}/credits',
+                            response = await http.get(f'http://127.0.0.1:{port}/health',
                                 headers={'Authorization': 'Bearer fixture-access'})
                             break
                         except httpx.ConnectError:

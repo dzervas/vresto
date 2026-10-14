@@ -2,7 +2,9 @@
 from urllib.parse import unquote
 
 
-def contains_secret(value, secrets):
+from .types import ToolData
+
+def contains_secret(value: object, secrets: tuple[str, ...]) -> bool:
     if isinstance(value, str):
         # URLs can reflect percent-encoded credentials, including repeated encoding.
         for _ in range(4):
@@ -20,7 +22,7 @@ def contains_secret(value, secrets):
     return False
 
 
-def safe_sources(data, secrets):
+def safe_sources(data: ToolData, secrets: tuple[str, ...]) -> ToolData:
     # Do not redact text in place: that would break quote/version fidelity. Failed
     # outcomes intentionally omit contaminated URLs and nested errors as well.
     for key in ('sources', 'results'):

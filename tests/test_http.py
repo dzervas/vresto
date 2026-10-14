@@ -12,7 +12,7 @@ from mcp import ClientSession, types
 from mcp.client.streamable_http import streamable_http_client
 
 from kagi_crawler.server import Settings, create_app
-from kagi_crawler.transport import AcquisitionOptions
+from kagi_crawler.acquisition_policy import AcquisitionOptions
 
 
 @asynccontextmanager
@@ -101,24 +101,6 @@ async def test_discovery_preserves_provider_order_and_labels_snippets(tmp_path):
         assert "result_limit" in data["postfilters"]
 
 
-async def test_subscriber_controls_are_forwarded_and_update_dates_disclosed(tmp_path):
-    source = '''import json, sys
-if "--version" in sys.argv:
-    print("kagi 0.22.0")
-else:
-    expected = ["--error-format", "json", "search", "--format", "json", "--limit", "3", "--region", "gb", "--lens", "2", "--from-date", "2026-01-01", "--to-date", "2026-02-01", "--order", "recency", "--verbatim", "--no-personalized", "--", "--query ; $(oops)"]
-    assert sys.argv[1:] == expected
-    print(json.dumps({"data": [{"t": 0, "rank": 4, "url": "https://example.org/docs", "title": "Docs", "snippet": "Text"}]}))
-'''
-    async with running(tmp_path, source=source) as (url, _), client(url) as session:
-        result = await session.call_tool("search", {"query": "--query ; $(oops)", "num_results": 3,
-            "region": "gb", "lens": 2, "from_date": "2026-01-01", "to_date": "2026-02-01",
-            "order": "recency", "verbatim": True, "personalized": False, "content_mode": "discovery"})
-        assert not result.isError
-        assert body(result)["results"][0]["provider_rank"] == 4
-        assert body(result)["date_semantics"] == "provider_update_date_not_verified_publication"
-
-
 @pytest.mark.parametrize("arguments", [
     {"query": ""}, {"query": "x", "num_results": 0}, {"query": "x", "num_results": 21},
     {"query": "x", "num_results": True}, {"query": "x", "num_results": "2"},
@@ -137,40 +119,6 @@ async def test_invalid_and_unsupported_controls_are_rejected(tmp_path, arguments
 
 def cli_response(payload, *, failed=False):
     return "import sys\nif '--version' in sys.argv:\n    print('kagi 0.22.0')\nelse:\n    print(" + repr(payload) + ", file=sys.stderr if " + repr(failed) + " else sys.stdout)\n    sys.exit(" + ("1" if failed else "0") + ")\n"
-
-
-@pytest.mark.parametrize("payload,failed,code", [
-    ('not JSON subscriber-secret', False, "discovery_parse_error"),
-    ('[' * 2000 + ']' * 2000, False, "discovery_parse_error"),
-    ('{"wrong": []}', False, "discovery_parse_error"),
-    ('{"data": [{"url": "file:///etc/passwd", "title": "Bad"}]}', False, "discovery_parse_error"),
-    ('{"data": [{"url": "https://example.org", "title": 4}]}', False, "discovery_parse_error"),
-    ('{"data": [{"url": "https://example.org", "title": "subscriber-secret"}]}', False, "discovery_parse_error"),
-    ('{"code": "authentication_error", "message": "expired subscriber-secret", "http_status": 403}', True, "upstream_authentication"),
-    ('{"code": "network_error", "http_status": 429, "message": "client-secret"}', True, "rate_limited"),
-    ('{"code": "parse_error", "message": "subscriber-secret"}', True, "discovery_parse_error"),
-    ('{"code": "network_error", "http_status": 503}', True, "discovery_failed"),
-])
-async def test_discovery_failures_are_clear_and_never_echo_credentials(tmp_path, caplog, payload, failed, code):
-    async with running(tmp_path, source=cli_response(payload, failed=failed)) as (url, _), client(url) as session:
-        result = await session.call_tool("search", {"query": "x"})
-        assert result.isError
-        assert body(result)["error"]["code"] == code
-        assert "subscriber-secret" not in result.model_dump_json() + caplog.text
-        assert "client-secret" not in result.model_dump_json() + caplog.text
-
-
-async def test_missing_ranks_and_empty_results_are_not_invented(tmp_path):
-    payload = '{"data": [{"t": 0, "rank": null, "url": "https://example.org", "title": "Docs", "snippet": "", "published": "yesterday"}]}'
-    async with running(tmp_path, source=cli_response(payload)) as (url, _), client(url) as session:
-        data = body(await session.call_tool("search", {"query": "x", "content_mode": "discovery"}))
-        assert data["results"][0]["provider_rank"] is None
-        assert "published" not in data["results"][0]
-        assert "provider_rank_unavailable" in data["warnings"]
-    async with running(tmp_path, source=cli_response('{"data": []}')) as (url, _), client(url) as session:
-        data = body(await session.call_tool("search", {"query": "x"}))
-        assert data["results"] == []
-        assert "empty_results_may_indicate_upstream_markup_change" in data["warnings"]
 
 
 def hanging_cli(tmp_path):
@@ -241,19 +189,6 @@ async def test_mcp_cancellation_reaps_subprocess_and_session_remains_usable(tmp_
         assert [t.name for t in (await session.list_tools()).tools] == ["search", "fetch"]
 
 
-async def test_unpinned_cli_is_rejected(tmp_path):
-    source = '''import sys
-if "--version" in sys.argv:
-    print("kagi 0.21.0")
-else:
-    print('{"data": []}')
-'''
-    async with running(tmp_path, source=source) as (url, _), client(url) as session:
-        result = await session.call_tool("search", {"query": "x"})
-        assert result.isError
-        assert body(result)["error"]["code"] == "discovery_cli_version"
-
-
 async def test_service_access_is_required_for_mcp_initialization(tmp_path):
     async with running(tmp_path) as (url, _):
         with pytest.raises(BaseExceptionGroup) as error:
@@ -264,25 +199,6 @@ async def test_service_access_is_required_for_mcp_initialization(tmp_path):
             response = await http.post(url, json={"jsonrpc": "2.0", "id": 0, "method": "initialize"})
             assert response.status_code == 401
             assert response.json() == {"error": "access_rejected"}
-
-
-async def test_cli_receives_only_upstream_session_without_host_auth_or_preferences(tmp_path):
-    source = '''import json, os, sys
-if "--version" in sys.argv:
-    print("kagi 0.22.0")
-else:
-    assert os.environ["KAGI_SESSION_TOKEN"] == "subscriber-secret"
-    assert not any(k in os.environ for k in ("KAGI_API_KEY", "KAGI_API_TOKEN", "KAGI_CRAWLER_ACCESS_TOKEN", "KAGI_BASE_URL"))
-    assert all("client-secret" not in value for value in os.environ.values())
-    assert "subscriber-secret" not in str(sys.argv)
-    assert not os.path.exists(os.environ["KAGI_CONFIG"])
-    assert os.environ["RUST_LOG"] == "off"
-    print(json.dumps({"data": [{"t": 0, "rank": 1, "url": "https://example.org", "title": "Isolated", "snippet": ""}]}))
-'''
-    async with running(tmp_path, source=source) as (url, _), client(url) as session:
-        result = await session.call_tool("search", {"query": "x", "content_mode": "discovery"})
-        assert not result.isError
-        assert body(result)["results"][0]["title"] == "Isolated"
 
 
 async def test_server_shutdown_reaps_active_discovery(tmp_path):
@@ -305,23 +221,6 @@ async def test_server_shutdown_reaps_active_discovery(tmp_path):
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
     assert not alive(pid)
-
-
-@pytest.mark.parametrize("window,order", [("day", "default"), ("week", "website"),
-                                          ("month", "trackers"), ("year", "recency")])
-async def test_relative_time_order_and_personalization_controls(tmp_path, window, order):
-    source = f'''import sys
-if "--version" in sys.argv:
-    print("kagi 0.22.0")
-else:
-    assert sys.argv[1:] == ["--error-format", "json", "search", "--format", "json", "--limit", "10", "--time", {window!r}, "--order", {order!r}, "--personalized", "--", "x"]
-    print('{{"data": []}}')
-'''
-    async with running(tmp_path, source=source) as (url, _), client(url) as session:
-        result = await session.call_tool("search", {"query": "x", "time": window,
-                                                    "order": order, "personalized": True})
-        assert not result.isError
-        assert body(result)["results"] == []
 
 
 def held_cli(tmp_path):

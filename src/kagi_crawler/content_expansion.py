@@ -4,16 +4,22 @@ Only details and structurally associated in-page text/discussion controls qualif
 Labels alone never authorize form submission, links, navigation or account actions.
 Native page scripts/networking still require operator egress/resource containment.
 """
+from collections.abc import Awaitable, Callable
 import asyncio
 
 from patchright.async_api import Error
 
+from patchright.async_api import Page
+from .acquisition_policy import AcquisitionOptions
+from .types import Coverage
+
 from .native_observation import NativeLoadObservation
 
 _CONTROLS = 'details > summary, button, [role="button"], a'
-_INSPECT = r'''elements => {
+_SCOPE = 'main, article, [role="main"]'
+_INSPECT = r'''(elements, {scopeSelector, authorizeSelector}) => {
     const visible = el => el.checkVisibility({checkOpacity:true, checkVisibilityCSS:true});
-    const scope = el => el.closest('main, article, [role="main"], .discussion-timeline');
+    const scope = el => el.closest(scopeSelector);
     const label = el => (el.innerText || el.getAttribute('aria-label') || '').trim();
     const more = /^(load|show|view) (more|older)( (comments|replies|discussion|items))?[.!…]*$/i;
     const references = (el, attr) => (el.getAttribute(attr) || '').split(/\s+/).filter(Boolean).map(id => document.getElementById(id));
@@ -39,7 +45,7 @@ _INSPECT = r'''elements => {
     let unsupported = false;
     let action = -1;
     elements.forEach((el, index) => {
-        if (!visible(el) || el.closest('nav, header, footer, [role="dialog"]')) return;
+        if (!visible(el) || el.closest('nav, header, footer, dialog, [role="dialog"], [role="navigation"]')) return;
         if (el.closest('form')) {
             if (more.test(label(el))) unsupported = true;
             return;
@@ -57,14 +63,17 @@ _INSPECT = r'''elements => {
             return;
         }
         const collapsed = el.getAttribute('aria-expanded') === 'false';
-        const candidate = more.test(label(el)) || collapsed;
+        const authorized = !!authorizeSelector && el.matches(authorizeSelector);
+        const candidate = more.test(label(el)) || collapsed || authorized;
         if (!candidate) return;
         // A heading-labelled discussion list plus a contained remaining-items
         // heading is a structural association; the button label alone is not.
         // Links masquerading as buttons and submit controls are not read-only.
-        const safe = el.tagName === 'BUTTON' && !el.hasAttribute('form') &&
-            el.type === 'button' && associated && scope(el) &&
-            (more.test(label(el)) || (collapsed && textToggle.test(label(el))));
+        const href = (el.getAttribute('href') || '').trim();
+        const control = (el.tagName === 'BUTTON' && el.type === 'button') ||
+            (authorized && el.tagName === 'A' && (!href || href.startsWith('#')));
+        const safe = control && !el.hasAttribute('form') && associated && scope(el) &&
+            (authorized || more.test(label(el)) || (collapsed && textToggle.test(label(el))));
         if (safe && action < 0) action = index;
         if (!safe) unsupported = true;
     });
@@ -85,12 +94,15 @@ DOM_WITHIN_LIMIT = '''limit => {
 }'''
 _SIZE = ('limits => (' + DOM_WITHIN_LIMIT + ')(limits.dom) && '
          '(document.body?.innerText.length || 0) * 4 <= limits.content')
-# Suppress only identical repeated *identified* discussion items. Different
-# qualifications, authors, code or warnings under the same ID are never removed.
+
+
+# data-comment-id explicitly declares item identity, independent of a site's
+# CSS conventions. Remove only the exact same innerHTML under the same identity:
+# different qualifications, authors, code and warnings always survive.
 _DEDUP = '''() => {
     const seen = new Map();
-    for (const el of document.querySelectorAll('[data-comment-id], .timeline-comment[id]')) {
-        const id = el.getAttribute('data-comment-id') || el.id;
+    for (const el of document.querySelectorAll('[data-comment-id]')) {
+        const id = el.getAttribute('data-comment-id');
         const value = el.innerHTML;
         if (seen.get(id)?.has(value)) el.remove();
         else { if (!seen.has(id)) seen.set(id, new Set()); seen.get(id).add(value); }
@@ -98,9 +110,38 @@ _DEDUP = '''() => {
 }'''
 
 
-async def expand_content(page, options, *, deadline, revalidate):
-    coverage = {'exhaustive': False, 'partial': False, 'actions': 0,
+async def expand_content(page: Page, options: AcquisitionOptions, *, deadline: float,
+                         revalidate: Callable[[], Awaitable[bool]],
+                         scope_selector: str = _SCOPE,
+                         deduplicate: str = '() => {}',
+                         authorize_selector: str | None = None,
+                         on_failure: Callable[[Exception], None] | None = None) -> Coverage:
+    coverage: Coverage = {'exhaustive': False, 'partial': False, 'actions': 0,
                 'policy': 'bounded_read_only_in_page_controls', 'stop_reason': 'settled'}
+    async def inspect_controls():
+        nonlocal scope_selector, deduplicate, authorize_selector
+        try:
+            return await controls.evaluate_all(_INSPECT, {'scopeSelector': scope_selector,
+                                                         'authorizeSelector': authorize_selector})
+        except Exception as error:
+            if on_failure is None or (scope_selector == _SCOPE and authorize_selector is None):
+                raise
+            on_failure(error)
+            scope_selector, deduplicate, authorize_selector = _SCOPE, '() => {}', None
+            return await controls.evaluate_all(_INSPECT, {'scopeSelector': scope_selector,
+                                                         'authorizeSelector': authorize_selector})
+
+    async def dedup():
+        nonlocal scope_selector, deduplicate, authorize_selector
+        await page.evaluate(_DEDUP)
+        try:
+            await page.evaluate(deduplicate)
+        except Exception as error:
+            if on_failure is None or deduplicate == '() => {}':
+                raise
+            on_failure(error)
+            scope_selector, deduplicate, authorize_selector = _SCOPE, '() => {}', None
+
     limits = {'dom': options.dom_bytes, 'content': options.response_bytes}
     controls = page.locator(_CONTROLS)
     # Observe only native requests begun during expansion, not a pre-existing
@@ -117,7 +158,7 @@ async def expand_content(page, options, *, deadline, revalidate):
                 if not await page.evaluate(_SIZE, limits):
                     coverage.update(partial=True, stop_reason='content_limit')
                     break
-                inspected = await controls.evaluate_all(_INSPECT)
+                inspected = await inspect_controls()
                 if inspected['unsupported']:
                     coverage['partial'] = True
                 if coverage['actions'] >= options.expansion_actions:
@@ -137,14 +178,8 @@ async def expand_content(page, options, *, deadline, revalidate):
                 # A spinner or disappearing button is not loaded discussion.
                 # Wait for post-action native fetch/XHR and a quiet visible DOM;
                 # the enclosing duration/content/deadline caps still apply.
-                # The pre-action text is already an observation. An identical
-                # first poll is not a DOM change: seeding with None added an
-                # artificial 100ms interval to unchanged clicks/scrolls in the
-                # local HTTP profile. Start the full quiet window after the
-                # action; real text changes or pending native loads still reset
-                # it, with the same revalidation and enclosing bounds. Matched
-                # local-only raw timing/RSS, corpus/version/budget checks and
-                # provenance: scripts/performance/hkq-{before,after}.json.
+                # Seed with pre-action text so an unchanged first poll does not
+                # restart the quiet window; text changes or pending loads do.
                 previous = before
                 quiet_since = asyncio.get_running_loop().time()
                 while True:
@@ -165,10 +200,10 @@ async def expand_content(page, options, *, deadline, revalidate):
                 if not await page.evaluate(_SIZE, limits):
                     coverage.update(partial=True, stop_reason='content_limit')
                     break
-                await page.evaluate(_DEDUP)
+                await dedup()
                 after = await page.evaluate('() => document.body.innerText')
                 if before == after:
-                    remaining = await controls.evaluate_all(_INSPECT)
+                    remaining = await inspect_controls()
                     coverage.update(partial=coverage['partial'] or remaining['action'] >= 0,
                                     stop_reason='no_progress')
                     break
@@ -181,10 +216,10 @@ async def expand_content(page, options, *, deadline, revalidate):
     finally:
         native_loads.close()
     # A duration bound may interrupt settling *after* content was appended.
-    # Canonicalize exact identified repeats even in that partial document.
+    # An adapter can canonicalize exact identified repeats in that partial DOM.
     if await page.evaluate(_SIZE, limits):
-        await page.evaluate(_DEDUP)
-    inspected = await controls.evaluate_all(_INSPECT)
+        await dedup()
+    inspected = await inspect_controls()
     coverage['partial'] |= inspected['unsupported'] or inspected['action'] >= 0
     if inspected['unsupported'] and coverage['stop_reason'] in ('settled', 'no_progress'):
         coverage['stop_reason'] = 'unsupported_controls'

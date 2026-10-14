@@ -4,7 +4,7 @@ Requires a reachable Docker daemon; never starts one or requests privileges.
 Uses two fresh unprivileged containers and one named volume, no real credentials.
 Mounted harness is test-only; neither it nor fixture exceptions are in the image.
 Native observations do not verify image build, Debian shared libraries, container
-Chromium launch/seccomp, UID volume ownership, cgroup peaks or signal handling.
+Google Chrome launch/seccomp, UID volume ownership, cgroup peaks or signal handling.
 This gate is intentionally separate from those claims until actually executed.
 """
 import argparse
@@ -35,14 +35,23 @@ def main():
         # Check actual installed CLI, identity and dependency closure without auth.
         docker(*common, '-c', 'import os,subprocess,importlib.metadata as m; '
                'assert os.getuid()==10001; '
-               'from patchright.sync_api import sync_playwright; '
-               'p=sync_playwright().start(); browser=p.chromium.executable_path; p.stop(); '
-               'assert "153.0.8010.12" in subprocess.check_output([browser,"--version"],text=True); '
+               'import shutil,re,json; '
+               'browser=shutil.which("google-chrome"); assert browser, "Google Chrome is not installed"; '
+               'version=subprocess.check_output([browser,"--version"],text=True).strip(); '
+               'assert re.fullmatch(r"Google Chrome \\d+\\.\\d+\\.\\d+\\.\\d+",version), version; '
+               'print(json.dumps({"browser_path":browser,"browser_version":version}),flush=True); '
                'assert subprocess.check_output(["kagi","--version"],text=True).strip()=="kagi 0.22.0"; '
                'assert not {"torch","transformers","sentence-transformers","onnxruntime"} & '
                '{d.metadata["Name"].lower() for d in m.distributions()}')
-        docker(*common, '/gate/release_check.py', '--cache', '/data/cache')
-        docker(*common, '/gate/release_check.py', '--cache', '/data/cache', '--verify-persisted')
+        # Overriding the image entry point bypasses its display ownership. Own one
+        # here too: the image defaults to headed Chrome, not bundled Chromium.
+        # Keep run_path's script argv and let virtual_display clean up on errors.
+        wrapper = ('import runpy,sys; from kagi_crawler.headful import virtual_display; '
+                   'sys.argv=sys.argv[1:]; '
+                   '\nwith virtual_display(): runpy.run_path(sys.argv[0],run_name="__main__")')
+        docker(*common, '-c', wrapper, '/gate/release_check.py', '--cache', '/data/cache')
+        docker(*common, '-c', wrapper, '/gate/release_check.py', '--cache', '/data/cache',
+               '--verify-persisted')
         # Exercise the production entry point, private HTTP and SIGTERM too.
         name = 'kagi-entry-' + uuid.uuid4().hex
         docker('run', '--detach', '--name', name, '--init', '--network', 'none',
@@ -54,13 +63,14 @@ def main():
             docker('exec', name, '/app/.venv/bin/python', '-c',
                 'import time,httpx; '
                 'time.sleep(3); '
-                'r=httpx.get("http://127.0.0.1:8000/credits",trust_env=False); '
+                'r=httpx.get("http://127.0.0.1:8000/health",trust_env=False); '
                 'assert r.status_code==401; '
-                'r=httpx.get("http://127.0.0.1:8000/credits",headers={"Authorization":"Bearer fixture-access"},trust_env=False); '
-                'assert r.status_code==200 and "UncleCode" in r.text')
+                'r=httpx.get("http://127.0.0.1:8000/health",headers={"Authorization":"Bearer fixture-access"},trust_env=False); '
+                'assert r.status_code==200 and r.json()["status"]=="ok"')
             docker('stop', '--time', '10', name, stdout=subprocess.DEVNULL)
             result = subprocess.check_output(['docker', 'inspect', '--format', '{{.State.ExitCode}}', name], text=True)
-            assert result.strip() == '0', 'production SIGTERM did not exit cleanly'
+            # virtual_display deliberately exits 128 + SIGTERM after cleanup.
+            assert result.strip() == '143', 'production headful SIGTERM did not exit with 143'
         finally:
             subprocess.run(['docker', 'rm', '--force', '--volumes', name], check=False,
                            stdout=subprocess.DEVNULL)

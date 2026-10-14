@@ -39,15 +39,17 @@ async def test_operator_can_bind_container_interface_without_exposing_credential
                     if process.returncode is not None:
                         raise AssertionError('entry point exited before accepting HTTP')
                     try:
-                        response = await http.get(f'http://127.0.0.2:{port}/credits')
+                        response = await http.get(f'http://127.0.0.2:{port}/health')
                         break
                     except httpx.ConnectError:
                         await asyncio.sleep(.05)
             assert response.status_code == 401
-            response = await http.get(f'http://127.0.0.2:{port}/credits',
+            response = await http.get(f'http://127.0.0.2:{port}/health',
                 headers={'Authorization': 'Bearer fixture-access'})
             assert response.status_code == 200
-            assert 'software developed by UncleCode' in response.text
+            health = response.json()
+            assert health['status'] == 'ok' and health['browser'] in ('stopped', 'starting')
+            assert health['cache']['cap_bytes'] > 0 and 'fixture' not in response.text
     finally:
         if process.returncode is None:
             process.terminate()
@@ -103,7 +105,7 @@ server.main()
                         if process.returncode is not None:
                             raise AssertionError('entry point exited before accepting HTTP')
                         try:
-                            await http.get(f'http://127.0.0.1:{port}/credits')
+                            await http.get(f'http://127.0.0.1:{port}/health')
                             break
                         except httpx.ConnectError:
                             await asyncio.sleep(.05)

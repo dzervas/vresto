@@ -5,6 +5,8 @@ JSON record sizes include metadata; eviction is oldest fetched version first,
 not query popularity. Expiry is swept on startup and cache use, not by an idle
 browser timer. No separate index/evidence store can outlive its document.
 """
+from collections.abc import Callable
+from typing import cast
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -12,11 +14,15 @@ import os
 from pathlib import Path
 import time
 
+from .acquisition import Acquisition
+from .types import AcquisitionResult, Source, SourceSuccess
+
+
 from .safety import contains_secret
 
 
 class DocumentCache:
-    def __init__(self, directory, cap_bytes=268_435_456, retention_seconds=604_800):
+    def __init__(self, directory: str | Path, cap_bytes: int = 268_435_456, retention_seconds: float = 604_800) -> None:
         self.directory = Path(directory)
         self.cap_bytes = cap_bytes
         self.retention_seconds = retention_seconds
@@ -53,10 +59,16 @@ class DocumentCache:
                 path.unlink(missing_ok=True)
                 total -= size
 
-    def lookup(self, url, content_version=None):
+    def usage(self) -> dict[str, int]:
+        """Retained record count and serialized bytes (stat only, no reads)."""
+        records = self._records()
+        return {'entries': len(records), 'bytes': sum(size for _, _, size in records),
+                'cap_bytes': self.cap_bytes}
+
+    def lookup(self, url: str, content_version: str | None = None) -> SourceSuccess | None:
         """Return the exact retained version, or latest; never substitute versions.
 
-        .6/.7 can bind passage offsets to (requested_url, content_version).
+        Evidence references bind passage offsets to (requested_url, content_version).
         Returned dictionaries are independent copies; selection must not persist
         query metadata or truncate these canonical records.
         """
@@ -76,9 +88,9 @@ class DocumentCache:
                 path.unlink(missing_ok=True)
         return None
 
-    def store(self, source):
-        source = {k: v for k, v in source.items() if k not in ('cache_state', 'stale', 'refresh_error')}
-        payload = json.dumps(source, ensure_ascii=False, separators=(',', ':')).encode()
+    def store(self, source: SourceSuccess) -> None:
+        record = {k: v for k, v in source.items() if k not in ('cache_state', 'stale', 'refresh_error')}
+        payload = json.dumps(record, ensure_ascii=False, separators=(',', ':')).encode()
         if len(payload) > self.cap_bytes:
             return  # Acquisition succeeds even if a single document cannot fit.
         path = self._path(source['requested_url'], source['content_version'])
@@ -96,13 +108,14 @@ class DocumentCache:
 
 
 class CachedAcquisition:
-    def __init__(self, acquisition, cache, secrets=()):
+    def __init__(self, acquisition: Acquisition, cache: DocumentCache, secrets: tuple[str, ...] = ()) -> None:
         self.acquisition = acquisition
         self.cache = cache
         self.secrets = secrets
 
-    async def fetch_many(self, urls, *, freshness='ordinary', max_age_seconds=3600):
-        sources = []
+    async def fetch_many(self, urls: list[str], *, freshness: str = 'ordinary', max_age_seconds: float = 3600,
+                         scope: Callable[[str], str] | None = None) -> AcquisitionResult:
+        sources: list[Source] = []
         for url in urls:
             if contains_secret(url, self.secrets):
                 sources.append({'error': {'code': 'fetch_failed'}})
@@ -119,21 +132,21 @@ class CachedAcquisition:
                 continue
             # Acquisition owns bounded queueing; never hide it behind an
             # unbounded cache lock. Concurrent misses may acquire twice.
-            source = (await self.acquisition.fetch_many([url]))['sources'][0]
+            source: Source = (await self.acquisition.fetch_many([url], scope=scope))['sources'][0]
             if contains_secret(source, self.secrets):
                 source = {'error': {'code': 'fetch_failed'}}
             if 'error' not in source:
                 self.cache.store(source)
-                source = dict(source, cache_state='refresh' if cached else 'miss', stale=False)
+                source = cast(SourceSuccess, dict(source, cache_state='refresh' if cached else 'miss', stale=False))
             elif cached and freshness != 'fresh_only' and source['error']['code'] not in ('policy_rejected', 'scope_rejected', 'traversal_byte_limit'):
-                source = dict(cached, cache_state='stale', stale=True, refresh_error=source['error'])
+                source = cast(SourceSuccess, dict(cached, cache_state='stale', stale=True, refresh_error=source['error']))
             sources.append(source)
         return {'sources': sources, 'content_mode': 'full_text'}
 
     @staticmethod
-    def _age(source):
+    def _age(source: SourceSuccess) -> float:
         return (datetime.now(timezone.utc) - datetime.fromisoformat(source['fetched_at'])).total_seconds()
 
-    def _hit(self, source, max_age):
+    def _hit(self, source: SourceSuccess, max_age: float) -> SourceSuccess:
         stale = self._age(source) > max_age
-        return dict(source, cache_state='stale' if stale else 'hit', stale=stale)
+        return cast(SourceSuccess, dict(source, cache_state='stale' if stale else 'hit', stale=stale))

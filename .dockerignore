@@ -1,13 +1,13 @@
 # Allowlist: credentials and workspace metadata never enter the build context.
 **
 !Dockerfile
-!Dockerfile.headful
-!Dockerfile.chrome
 !pyproject.toml
 !uv.lock
 !src/
 !src/kagi_crawler/
 !src/kagi_crawler/*.py
+!src/kagi_crawler/sites/
+!src/kagi_crawler/sites/*.py
 # Defense in depth, including files nested in allowlisted directories.
 **/.env*
 **/.envrc

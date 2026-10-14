@@ -8,7 +8,7 @@ Install ONLY isolated worker: uv venv /tmp/kagi-ncn-worker; uv pip sync --python
 Acquire public artifacts explicitly with acquire_model.py. No automatic download.
 
 Frozen 16-case synthetic workload is deliberately not a representative benchmark.
-All positive production BM25 candidates are paired, no top-K restriction. Full
+All positive archived BM25 candidates are paired, no top-K restriction. Full
 canonical windows are diagnosed separately. Same 3/source cap, dedup, metadata,
 wire budget, and exact-byte evidence contracts. No scores leak into evidence.
 The isolated reranked wire envelope deliberately retains identical lexical-pool
@@ -17,6 +17,10 @@ changed ordering. This is not a production HTTP reranker response.
 Model logits are relevance ordering, not support or abstention probabilities.
 Overflow policy is predeclared: any total pair >512 => whole-query lexical
 fallback, including warnings/scopes. No truncation or prefix scoring permitted.
+
+The lexical arm uses selection.py's frozen c7f1cbca candidates/select_order,
+NOT the current production selector. Historical HTTP snapshot digests remain
+hard checks; production selection evolution must not rebless this baseline.
 
 The checked data/results.json records the actual experiment, not a required test
 expectation of model benefit. Recommendation is defer production adoption unless
@@ -38,7 +42,7 @@ import tempfile
 import time
 
 from kagi_crawler.budget import apply_budget, wire_bytes
-from kagi_crawler.evidence import evidence_id, select_highlights
+from kagi_crawler.evidence import evidence_id
 from kagi_crawler.safety import safe_sources
 from selection import candidates, rescore_order, select_order
 
@@ -308,7 +312,7 @@ def main():
                             models[case['id']] = response
                             # Frozen end-to-end replay latency excludes acquisition and gold scoring.
                             started = time.perf_counter()
-                            lexical = select_highlights(deepcopy(canonical), case['query'])
+                            lexical = select_order(deepcopy(canonical), candidates(canonical, case['query'])[0])
                             lexical_selection_ms = (time.perf_counter()-started)*1000
                             started = time.perf_counter()
                             reranked = select_order(deepcopy(canonical), rescore_order(pool, response))
@@ -346,9 +350,7 @@ def main():
         canonical, pool, all_windows = pools[case['id']]
         candidate_diagnostic = measure(case, pool_output(canonical, pool), documents)
         all_diagnostic = measure(case, pool_output(canonical, all_windows), documents)
-        lexical = select_highlights(deepcopy(canonical), case['query'])
         controlled = select_order(deepcopy(canonical), pool)
-        assert lexical == controlled, 'Prototype must equal the unmodified production baseline'
         response = models.get(case['id'])
         arms = [('lexical', controlled)]
         if response:
@@ -363,7 +365,7 @@ def main():
                 final = finalize(deepcopy(selected), budget)
                 finalization_ms = (time.perf_counter()-began)*1000
                 if arm == 'lexical':
-                    assert digest(final) == snapshots[case['id'], budget], 'Frozen HTTP production output drifted'
+                    assert digest(final) == snapshots[case['id'], budget], 'Frozen historical HTTP baseline drifted'
                 measured = measure(case, final, documents)
                 results.append(dict(id=case['id'], query=case['query'], tags=case['tags'], answerable=case['answerable'],
                     arm=arm, budget=budget, wire_bytes=wire_bytes(final), candidate_count=len(pool),

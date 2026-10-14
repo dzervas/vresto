@@ -1,30 +1,26 @@
 """Native Chromium networking; no proxy, routing or separate HTTP client.
 
-User-approved departure from the historical interception spec. DoH encrypts DNS,
+Chromium owns all networking. DoH encrypts DNS,
 not an SSRF boundary; deployment egress, memory and disk limits are required.
 """
+from typing import Protocol, cast
 import asyncio
-import os
-import signal
+import logging
 from pathlib import Path
-import sys
-import tempfile
-import json
-from html.parser import HTMLParser
-from urllib.parse import urljoin
 
 import anyio
-import patchright
 from patchright.async_api import Error, TimeoutError as BrowserTimeout
-from crawl4ai import CrawlerRunConfig
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
-from .transport import FetchError
-from .content_expansion import DOM_WITHIN_LIMIT, expand_content
-from .normalization import main_content_html
+from patchright.async_api import Browser as NativeBrowser
+from .chromium import Chromium
+from .types import BrowserResult
+from .acquisition_policy import AcquisitionOptions
+
+from .acquisition_policy import FetchError
+from .content_expansion import DOM_WITHIN_LIMIT
+from .sites import expand_content, extract_document
 from .native_observation import NativeLoadObservation
 
-_DRIVER_START_LOCK = asyncio.Lock()
 # Inspect the live page, not occurrences in documentation, scripts or hidden
 # CAPTCHA widgets. The cf-mitigated response header is checked separately.
 _CHALLENGE_PAGE = r'''() => {
@@ -38,133 +34,79 @@ _CHALLENGE_PAGE = r'''() => {
         (visibleForm && heading && prompt.test(heading.textContent.trim())));
 }'''
 
-_RUNTIME_ENV = ('PATH', 'HOME', 'TMPDIR', 'LD_LIBRARY_PATH', 'DISPLAY', 'LANG',
-                'PLAYWRIGHT_BROWSERS_PATH', 'FONTCONFIG_FILE', 'FONTCONFIG_PATH')
+class BrowserAdapter(Protocol):
+    """Acquisition's entire browser seam; native objects stay inside the adapter."""
 
-
-class LinkTargets(HTMLParser):
-    """Keep original anchor queries: Crawl4AI link metadata drops ref/utm keys."""
-    def __init__(self, url):
-        super().__init__(convert_charrefs=True)
-        self.base = url
-        self.has_base = False
-        self.targets = []
-        self.truncated = False
-
-    def handle_starttag(self, tag, attrs):
-        href = dict(attrs).get('href')
-        if not href or len(href) > 4096:
-            return
-        if tag == 'base' and not self.has_base:
-            self.base = urljoin(self.base, href)
-            self.has_base = True
-        if tag == 'a':
-            if len(self.targets) < 256:
-                self.targets.append(href)
-            else:
-                self.truncated = True
+    async def start(self) -> None: ...
+    async def acquire(self, url: str, options: AcquisitionOptions) -> BrowserResult: ...
+    async def close(self) -> None: ...
+    def is_connected(self) -> bool: ...
 
 
 class Browser:
-    def __init__(self):
-        self.headful = os.environ.get('KAGI_CRAWLER_HEADFUL') == '1'
-        self.channel = os.environ.get('KAGI_CRAWLER_BROWSER_CHANNEL', 'chromium')
-        if self.channel not in ('chromium', 'chrome'):
-            raise ValueError('browser channel must be chromium or chrome')
-        self.browser = None
-        self.profile = None
+    def __init__(self) -> None:
+        self.runtime = Chromium()
         self.start_lock = asyncio.Lock()
-        self.driver_pid = None
-        self.driver_context = None
 
-    async def start(self):
+    def _diagnostic(self, error, stage, reason):
+        # Only fixed phases/reasons, exception classes and connection state.
+        try:
+            logging.getLogger('kagi_crawler').warning(
+                'acquisition_failure stage=%s type=%s connected=%s reason=%s',
+                stage, type(error).__name__,
+                self.is_connected(), reason)
+        except Exception:
+            # Diagnostics must not replace failures or prevent owned cleanup.
+            pass
+
+    def is_connected(self) -> bool:
+        return self.runtime.browser is not None and self.runtime.browser.is_connected()
+
+    async def start(self) -> None:
         async with self.start_lock:
-            if self.browser is not None:
-                if not self.browser.is_connected():
+            if self.runtime.browser is not None:
+                if not self.is_connected():
                     raise FetchError('browser_unavailable')
                 return
-            # Pinned Chrome 153 default_dns_over_https_config_source.cc reads
-            # browser-wide Local State, not profile prefs or invented DoH flags.
-            # Full Chrome (not headless shell) provides this configuration seam.
-            # Acquisitions use separate incognito contexts, not this fresh,
-            # owned bootstrap profile, deleted when the browser retires.
-            self.profile = tempfile.TemporaryDirectory(prefix='crawler-chrome-')
-            Path(self.profile.name, 'Local State').write_text(json.dumps({
-                'dns_over_https': {'mode': 'secure', 'templates': 'https://1.1.1.1/dns-query'}}))
-            Path(self.profile.name, 'Default').mkdir()
-            Path(self.profile.name, 'Default', 'Preferences').write_text(json.dumps({
-                'plugins': {'always_open_pdf_externally': True}}))
             try:
-                async with _DRIVER_START_LOCK:
-                    node = os.environ.get('PLAYWRIGHT_NODEJS_PATH') or str(Path(patchright.__file__).parent / 'driver' / 'node')
-                    safe_env = {k: os.environ[k] for k in _RUNTIME_ENV if k in os.environ}
-                    with tempfile.TemporaryDirectory(prefix='crawler-driver-') as directory:
-                        wrapper = Path(directory) / 'node'
-                        pidfile = Path(directory) / 'pid'
-                        # Own startup's process group before the driver handshake.
-                        wrapper.write_text(f'#!{sys.executable}\nimport os, sys\nos.setsid()\nopen({str(pidfile)!r}, "w").write(str(os.getpid()))\nos.execve({node!r}, [{node!r}, *sys.argv[1:]], {safe_env!r})\n')
-                        wrapper.chmod(0o700)
-                        previous = os.environ.get('PLAYWRIGHT_NODEJS_PATH')
-                        os.environ['PLAYWRIGHT_NODEJS_PATH'] = str(wrapper)
-                        from patchright.async_api import async_playwright
-                        self.driver_context = async_playwright()
-                        try:
-                            playwright = await self.driver_context.start()
-                            bootstrap = await playwright.chromium.launch_persistent_context(
-                                self.profile.name, channel=self.channel, headless=not self.headful,
-                                no_viewport=self.headful, env=safe_env, ignore_https_errors=False)
-                            # Keep Patchright's own defaults: adding back
-                            # --disable-component-update contradicts its patches.
-                            self.browser = bootstrap.browser
-                            control = await bootstrap.new_page()
-                            await control.goto('chrome://settings/security')
-                            # Chrome 153 settings_secure_dns_handler.cc computes
-                            # the effective resolver setting, including policy.
-                            # WebUI chrome.send exists only in the main world;
-                            # Patchright evaluate deliberately uses an isolated one.
-                            cdp = await bootstrap.new_cdp_session(control)
-                            probe = await cdp.send('Runtime.evaluate', {
-                                'expression': '''(async () => {
-                                    const {sendWithPromise} = await import('chrome://resources/js/cr.js');
-                                    return await sendWithPromise('getSecureDnsSetting');
-                                })()''', 'awaitPromise': True, 'returnByValue': True})
-                            await cdp.detach()
-                            effective = probe.get('result', {}).get('value', {})
-                            if effective.get('mode') != 'secure' or effective.get('config') != 'https://1.1.1.1/dns-query':
-                                raise FetchError('browser_unavailable')
-                            await control.close()
-                        finally:
-                            if self.driver_context is not None and not pidfile.exists():
-                                with anyio.CancelScope(shield=True):
-                                    for _ in range(20):
-                                        if pidfile.exists():
-                                            break
-                                        await asyncio.sleep(0.01)
-                            if pidfile.exists():
-                                self.driver_pid = int(pidfile.read_text())
-                            if previous is None:
-                                os.environ.pop('PLAYWRIGHT_NODEJS_PATH', None)
-                            else:
-                                os.environ['PLAYWRIGHT_NODEJS_PATH'] = previous
-            except BaseException:
+                await self.runtime.start()
+            except BaseException as error:
+                if isinstance(error, Exception):
+                    self._diagnostic(error, 'startup', 'startup_failure')
                 with anyio.CancelScope(shield=True):
                     await self.close()
                 raise
 
-    async def acquire(self, url, options):
+    async def acquire(self, url: str, options: AcquisitionOptions) -> BrowserResult:
         await self.start()
         state = {'challenge': False, 'http_status': None,
-                 'deadline': asyncio.get_running_loop().time() + options.request_timeout}
+                 'deadline': asyncio.get_running_loop().time() + options.request_timeout,
+                 'stage': 'context', 'diagnosed': False}
         try:
             # One duration across navigation, native challenge continuation,
             # JS settling, downloads and conversion. Never extend the deadline.
             async with asyncio.timeout(options.request_timeout):
                 return await self._acquire(url, options, state)
-        except TimeoutError:
+        except TimeoutError as error:
+            if not state['diagnosed']:
+                self._diagnostic(error, state['stage'], 'deadline')
             if state['challenge']:
                 raise FetchError('blocked', reason='challenge_timeout',
                                  http_status=state['http_status']) from None
             raise FetchError('fetch_timeout') from None
+        except FetchError:
+            raise
+        except Error as error:
+            # Context creation is outside _acquire's conversion handler; keep
+            # its existing propagation, but identify the native type here too.
+            if not state['diagnosed']:
+                reason = 'native_timeout' if isinstance(error, BrowserTimeout) else 'native_error'
+                self._diagnostic(error, state['stage'], reason)
+            raise
+        except Exception as error:
+            if not state['diagnosed']:
+                self._diagnostic(error, state['stage'], 'unexpected_exception')
+            raise
 
     @staticmethod
     def _check_status(response):
@@ -234,7 +176,7 @@ class Browser:
             await asyncio.sleep(0.1)
 
     @staticmethod
-    async def _download(download, options):
+    async def _download(download, options) -> BrowserResult:
         filename = await download.path()
         if filename is None or await download.failure():
             raise FetchError('fetch_failed')
@@ -246,144 +188,151 @@ class Browser:
             raise FetchError('unsupported_format')
         return {'url': download.url, 'pdf': data}
 
-    async def _acquire(self, url, options, state):
-        browser = self.browser
+    async def _navigate(self, page, url, options, state):
+        download_ready = asyncio.get_running_loop().create_future()
+        def downloaded(download):
+            if not download_ready.done():
+                download_ready.set_result(download)
+        page.on('download', downloaded)
+        navigation_response = None
+        def responded(response):
+            nonlocal navigation_response
+            if (response.request.is_navigation_request() and response.request.frame == page.main_frame
+                    and response.status not in (301, 302, 303, 307, 308)):
+                navigation_response = response
+                state['http_status'] = response.status
+                state['challenge'] = response.headers.get('cf-mitigated') == 'challenge'
+        page.on('response', responded)
+        state['stage'] = 'navigation'
+        try:
+            response = await page.goto(url, wait_until='domcontentloaded', timeout=min(10, options.request_timeout) * 1000)
+        except Error as error:
+            if navigation_response is not None and not state['challenge']:
+                self._check_status(navigation_response)
+            if 'Download is starting' in str(error):
+                if navigation_response is not None:
+                    self._check_status(navigation_response)
+                    if state['challenge']:
+                        # A downloaded challenge cannot execute JavaScript;
+                        # never turn its bytes into canonical PDF evidence.
+                        raise FetchError('blocked', reason='challenge_download',
+                                         http_status=navigation_response.status)
+                return None, download_ready
+            if not state['challenge'] or not self.is_connected():
+                raise
+            response = navigation_response
+        def latest():
+            return navigation_response or response
+        return latest, download_ready
+
+    async def _render_document(self, page, latest, download_ready, native_loads, options, state) -> BrowserResult:
+        coverage = None
+        while True:
+            state['stage'] = 'response_validation'
+            response = await self._settled_response(page, latest, state)
+            mime = response.headers.get('content-type', '').split(';')[0].lower()
+            if mime not in ('text/html', 'application/xhtml+xml'):
+                if mime in ('application/pdf', 'application/octet-stream') or download_ready.done():
+                    return await self._download(await download_ready, options)
+                data = await response.body()
+                if len(data) > options.response_bytes:
+                    raise FetchError('resource_limit')
+                if data.startswith(b'%PDF-'):
+                    return {'url': response.url, 'pdf': data}
+                raise FetchError('unsupported_format')
+            state['stage'] = 'render'
+            settled, idle, quiet, pending_load = await self._settle_rendered(page, latest, state, options, response, native_loads.pending)
+            if not settled:
+                continue
+            if coverage is None:
+                coverage = await self._expand(page, latest, state, options, response, idle, quiet, pending_load)
+            if not idle or not quiet or pending_load:
+                coverage['partial'] = True
+                if coverage['stop_reason'] in ('settled', 'no_progress'):
+                    coverage['stop_reason'] = 'render_settling_limit'
+            state['stage'] = 'response_validation'
+            if await self._settled_response(page, latest, state) is response:
+                break
+        return await self._serialize_document(page, options, state, coverage)
+
+    async def _expand(self, page, latest, state, options, response, idle, quiet, pending_load):
+        # Reserve serialization/cleanup time. Page-controlled native
+        # expansion can replace the document: validate it again,
+        # including challenge continuation, HTTP errors and downloads,
+        # under the original deadline without expanding it again.
+        async def revalidate():
+            return await self._settled_response(page, latest, state) is response
+        state['stage'] = 'expansion'
+        coverage = await expand_content(page, options, deadline=state['deadline'] - 0.15,
+                                        revalidate=revalidate)
+        coverage['initial_render'] = {'network_idle': idle, 'dom_quiet': quiet,
+                                      'pending_native_load': pending_load,
+                                      'partial': not idle or not quiet or pending_load}
+        return coverage
+
+    async def _serialize_document(self, page, options, state, coverage) -> BrowserResult:
+        # Bound DOM serialization, not browser allocations/resource traffic.
+        state['stage'] = 'dom_serialization'
+        within = await page.evaluate(DOM_WITHIN_LIMIT, options.dom_bytes)
+        if not within:
+            raise FetchError('resource_limit')
+        html = await page.content()
+        final_url = page.url
+        if len(html.encode()) > options.dom_bytes:
+            raise FetchError('resource_limit')
+        state['stage'] = 'extraction'
+        extracted = extract_document(html, final_url, coverage=coverage)
+        markdown = extracted.markdown
+        if len(markdown.encode()) > options.response_bytes:
+            raise FetchError('resource_limit')
+        if not markdown.strip():
+            raise FetchError('unsupported_format')
+        state['stage'] = 'metadata'
+        return {'url': final_url, 'title': await page.title(), 'content': markdown,
+                'links': extracted.links,
+                'links_truncated': extracted.links_truncated, 'coverage': coverage}
+
+    async def _acquire(self, url, options, state) -> BrowserResult:
+        browser = cast(NativeBrowser, self.runtime.browser)  # acquire() awaits successful start().
         # One ephemeral context per document. Cookies, workers, POST/XHR and
         # redirects work natively inside it, but never survive another acquisition.
         context = await browser.new_context(accept_downloads=True, ignore_https_errors=False,
-                                            no_viewport=self.headful)
+                                            no_viewport=self.runtime.headful)
         native_loads = None
         try:
             page = await context.new_page()
             native_loads = NativeLoadObservation(page)
-            download_ready = asyncio.get_running_loop().create_future()
-            def downloaded(download):
-                if not download_ready.done():
-                    download_ready.set_result(download)
-            page.on('download', downloaded)
-            navigation_response = None
-            def responded(response):
-                nonlocal navigation_response
-                if (response.request.is_navigation_request() and response.request.frame == page.main_frame
-                        and response.status not in (301, 302, 303, 307, 308)):
-                    navigation_response = response
-                    state['http_status'] = response.status
-                    state['challenge'] = response.headers.get('cf-mitigated') == 'challenge'
-            page.on('response', responded)
-            try:
-                response = await page.goto(url, wait_until='domcontentloaded', timeout=min(10, options.request_timeout) * 1000)
-            except Error as error:
-                if navigation_response is not None and not state['challenge']:
-                    self._check_status(navigation_response)
-                if 'Download is starting' in str(error):
-                    if navigation_response is not None:
-                        self._check_status(navigation_response)
-                        if state['challenge']:
-                            # A downloaded challenge cannot execute JavaScript;
-                            # never turn its bytes into canonical PDF evidence.
-                            raise FetchError('blocked', reason='challenge_download',
-                                             http_status=navigation_response.status)
-                    return await self._download(await download_ready, options)
-                if not state['challenge'] or not browser.is_connected():
-                    raise
-                response = navigation_response
-            latest = lambda: navigation_response or response
-            coverage = None
-            while True:
-                response = await self._settled_response(page, latest, state)
-                mime = response.headers.get('content-type', '').split(';')[0].lower()
-                if mime not in ('text/html', 'application/xhtml+xml'):
-                    if mime in ('application/pdf', 'application/octet-stream') or download_ready.done():
-                        return await self._download(await download_ready, options)
-                    data = await response.body()
-                    if len(data) > options.response_bytes:
-                        raise FetchError('resource_limit')
-                    if data.startswith(b'%PDF-'):
-                        return {'url': response.url, 'pdf': data}
-                    raise FetchError('unsupported_format')
-                settled, idle, quiet, pending_load = await self._settle_rendered(page, latest, state, options, response, native_loads.pending)
-                if not settled:
-                    continue
-                if coverage is None:
-                    # Reserve serialization/cleanup time. Page-controlled native
-                    # expansion can replace the document: validate it again,
-                    # including challenge continuation, HTTP errors and downloads,
-                    # under the original deadline without expanding it again.
-                    async def revalidate():
-                        return await self._settled_response(page, latest, state) is response
-                    coverage = await expand_content(page, options, deadline=state['deadline'] - 0.15,
-                                                    revalidate=revalidate)
-                    coverage['initial_render'] = {'network_idle': idle, 'dom_quiet': quiet,
-                                                  'pending_native_load': pending_load,
-                                                  'partial': not idle or not quiet or pending_load}
-                if not idle or not quiet or pending_load:
-                    coverage['partial'] = True
-                    if coverage['stop_reason'] in ('settled', 'no_progress'):
-                        coverage['stop_reason'] = 'render_settling_limit'
-                if await self._settled_response(page, latest, state) is response:
-                    break
-            # Bound DOM serialization, not browser allocations/resource traffic.
-            within = await page.evaluate(DOM_WITHIN_LIMIT, options.dom_bytes)
-            if not within:
-                raise FetchError('resource_limit')
-            html = await page.content()
-            final_url = page.url
-            if len(html.encode()) > options.dom_bytes:
-                raise FetchError('resource_limit')
-            links = LinkTargets(final_url)
-            links.feed(html)
-            # Local Crawl4AI scraping/Markdown conversion only: no networking.
-            config = CrawlerRunConfig(word_count_threshold=0)
-            params = config.__dict__.copy()
-            params.pop('url', None)
-            scraped = config.scraping_strategy.scrap(final_url, main_content_html(html), **params)
-            cleaned_html = scraped['cleaned_html'] if isinstance(scraped, dict) else scraped.cleaned_html
-            markdown = DefaultMarkdownGenerator().generate_markdown(
-                input_html=cleaned_html, base_url=links.base).raw_markdown
-            if len(markdown.encode()) > options.response_bytes:
-                raise FetchError('resource_limit')
-            if not markdown.strip():
-                raise FetchError('unsupported_format')
-            return {'url': final_url, 'title': await page.title(), 'content': markdown,
-                    'links': [urljoin(links.base, href) for href in links.targets],
-                    'links_truncated': links.truncated, 'coverage': coverage}
-        except BrowserTimeout:
+            latest, download_ready = await self._navigate(page, url, options, state)
+            if latest is None:
+                return await self._download(await download_ready, options)
+            return await self._render_document(page, latest, download_ready, native_loads, options, state)
+        except BrowserTimeout as error:
+            self._diagnostic(error, state['stage'], 'native_timeout')
+            state['diagnosed'] = True
             if state['challenge']:
                 raise FetchError('blocked', reason='challenge_timeout',
                                  http_status=state['http_status']) from None
             raise FetchError('fetch_timeout') from None
-        except Error:
+        except Error as error:
+            self._diagnostic(error, state['stage'], 'native_error')
+            state['diagnosed'] = True
             code = 'fetch_failed' if browser.is_connected() else 'browser_unavailable'
             raise FetchError(code) from None
         finally:
-            if native_loads is not None:
-                native_loads.close()
-            with anyio.CancelScope(shield=True):
-                await context.close()
+            previous_stage = state['stage']
+            state['stage'] = 'cleanup'
+            try:
+                if native_loads is not None:
+                    native_loads.close()
+                with anyio.CancelScope(shield=True):
+                    await context.close()
+            except Exception as error:
+                self._diagnostic(error, 'cleanup', 'cleanup_failure')
+                state['diagnosed'] = True
+                raise
+            else:
+                # Successful cleanup must not relabel the primary failure.
+                state['stage'] = previous_stage
 
-    async def close(self):
-        browser, self.browser = self.browser, None
-        try:
-            if browser is not None:
-                try:
-                    async with asyncio.timeout(2):
-                        await browser.close()
-                except Exception:
-                    pass
-        finally:
-            if self.driver_pid is not None:
-                try:
-                    os.killpg(self.driver_pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                self.driver_pid = None
-            if self.driver_context is not None:
-                context, self.driver_context = self.driver_context, None
-                try:
-                    async with asyncio.timeout(2):
-                        await context.__aexit__()
-                except Exception:
-                    pass
-            if self.profile is not None:
-                self.profile.cleanup()
-                self.profile = None
+    async def close(self) -> None:
+        await self.runtime.close()

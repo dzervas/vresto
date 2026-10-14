@@ -134,3 +134,51 @@ async def test_invalid_freshness_controls_are_rejected(tmp_path, controls):
         result = await session.call_tool('fetch', {'urls': ['https://example.org'], **controls})
         assert result.isError
         assert body(result)['error']['code'] == 'invalid_input'
+
+
+@pytest.mark.parametrize('document_type', ['html', 'pdf'])
+async def test_explicit_scope_rejects_before_pdf_parsing_and_caching(tmp_path, monkeypatch, document_type):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from kagi_crawler import acquisition as manager_module
+    from kagi_crawler.acquisition import Acquisition
+    from kagi_crawler.cache import CachedAcquisition, DocumentCache
+    from kagi_crawler.acquisition_policy import FetchError
+
+    requested = 'https://example.org/docs/seed'
+    final = 'https://example.org/outside'
+    result = {'url': final, 'pdf': b'not parsed'} if document_type == 'pdf' else {
+        'url': final, 'title': 'Outside', 'content': 'Public text',
+        'links': [], 'links_truncated': False, 'coverage': {}}
+    parser = AsyncMock(return_value=('Outside', 'Public text', {}))
+    monkeypatch.setattr(manager_module, 'parse_pdf', parser)
+    manager = Acquisition()
+    manager.browser = SimpleNamespace(acquire=AsyncMock(return_value=result), close=AsyncMock())
+    manager.startup = asyncio.get_running_loop().create_future()
+    manager.startup.set_result(True)
+    cache = DocumentCache(tmp_path / 'cache')
+    cached = CachedAcquisition(manager, cache)
+    checked = []
+
+    def scope(url):
+        checked.append(url)
+        raise FetchError('scope_rejected')
+
+    try:
+        rejected = await cached.fetch_many([requested], scope=scope)
+        assert rejected['sources'] == [{'requested_url': requested, 'error': {'code': 'scope_rejected'}}]
+        assert checked == [final]
+        parser.assert_not_awaited()
+        assert cache.lookup(requested) is None
+        # Scope is per call, not ambient state that leaks into ordinary fetches.
+        ordinary = await cached.fetch_many([requested])
+        assert ordinary['sources'][0]['resolved_url'] == final
+        assert cache.lookup(requested) is not None
+        assert parser.await_count == (1 if document_type == 'pdf' else 0)
+        # A refresh rejected by scope must not fall back to that cached document.
+        refreshed = await cached.fetch_many([requested], freshness='refresh', scope=scope)
+        assert refreshed['sources'][0]['error']['code'] == 'scope_rejected'
+    finally:
+        await manager.close()

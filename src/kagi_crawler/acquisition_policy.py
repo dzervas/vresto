@@ -1,9 +1,9 @@
 """Acquisition options and input screening, NOT destination/network isolation.
 
-User-approved departure from the original interception spec: Chromium owns all
-networking. Literal URL checks neither resolve DNS nor constrain native redirects,
+Chromium owns all networking. Literal URL checks neither resolve DNS nor constrain native redirects,
 subresources, workers or sockets. Operators must enforce egress externally.
 """
+from .types import ErrorCode, ErrorDetails
 from dataclasses import dataclass
 import ipaddress
 import socket
@@ -11,11 +11,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 class FetchError(Exception):
-    def __init__(self, code, *, reason=None, http_status=None):
-        self.code = code
+    def __init__(self, code: ErrorCode, *, reason: str | None = None, http_status: int | None = None) -> None:
+        self.code: ErrorCode = code
         # Only fixed classifications and the main HTTP status, never raw
         # headers, challenge tokens, page bodies or exception strings.
-        self.details = {}
+        self.details: ErrorDetails = {}
         if reason is not None:
             self.details['reason'] = reason
         if http_status is not None:
@@ -45,7 +45,7 @@ class AcquisitionOptions:
     pdf_memory_bytes: int = 1536 * 1024 * 1024
     fixture_destinations: tuple[tuple[str, int, str], ...] = ()
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not 0.01 <= self.expansion_timeout <= 10:
             raise ValueError('expansion duration must be 0.01–10 seconds')
         if type(self.expansion_actions) is not int or not 0 <= self.expansion_actions <= 32:
@@ -61,10 +61,10 @@ class AcquisitionOptions:
 
 
 class DestinationPolicy:
-    def __init__(self, options):
+    def __init__(self, options: AcquisitionOptions) -> None:
         self.options = options
 
-    def url(self, value):
+    def url(self, value: str) -> str:
         try:
             if not isinstance(value, str) or len(value) > 4096 or any(ord(c) <= 32 or ord(c) == 127 for c in value) or '\\' in value:
                 raise ValueError()

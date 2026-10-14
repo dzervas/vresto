@@ -61,7 +61,7 @@ import psutil
 import uvicorn
 
 from kagi_crawler.server import Settings, create_app
-from kagi_crawler.transport import AcquisitionOptions
+from kagi_crawler.acquisition_policy import AcquisitionOptions
 
 
 class Clock:
