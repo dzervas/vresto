@@ -1,0 +1,415 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "c01",
+      "query": "site:docs.python.org/3/library/asyncio-task.html TaskGroup cancellation swallow CancelledError",
+      "sources": [],
+      "expected": [],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "discovery_only",
+      "note": "Historical discovery-only call returned no result URLs; not a passage-selection failure."
+    },
+    {
+      "id": "c02",
+      "query": "Python asyncio TaskGroup cancellation",
+      "sources": [
+        "8648139190e53478",
+        "6d3a7cdc1b3ba01d",
+        "5649ec7d0dec788f"
+      ],
+      "expected": [
+        "might misbehave if a coroutine swallows",
+        "it is necessary to also call `uncancel()` to completely remove the cancellation state."
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c03",
+      "query": "site:docs.python.org/3.12/library/asyncio-task.html TaskGroup cancellation CancelledError uncancel",
+      "sources": [],
+      "expected": [],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "unavailable",
+      "note": "Recorded search returned no result URLs; no canonical source to label. Version-qualified discovery failure, excluded from recall."
+    },
+    {
+      "id": "c04",
+      "query": "How to configure Python uv workspaces with multiple packages",
+      "sources": [
+        "ea84d5718b376dff",
+        "2a60a156d6b5b574",
+        "501cd36a942f38d1",
+        "80b0188a9e09370a",
+        "7cb05c83f85fe998"
+      ],
+      "expected": [
+        "[tool.uv.workspace]\nmembers = [\"packages/*\"]",
+        "bird-feeder = { workspace = true }",
+        "the workspace shares a single lockfile"
+      ],
+      "response_budget_bytes": 40000,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c05",
+      "query": "Chromium headless new mode vs old headless differences",
+      "sources": [
+        "f153b471bf605e05",
+        "ddb1123abce7d3d6",
+        "2e697fc856a0f413",
+        "d6a62e40e6de9a16",
+        "4e5edf5d8200fd20"
+      ],
+      "expected": [
+        "From Chrome 132:",
+        "`--headless=old` now prints a helpful error message",
+        "`chrome-headless-shell` (to retain old Headless functionality)"
+      ],
+      "response_budget_bytes": 40000,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c06",
+      "query": "BM25 parameters k1 and b meaning",
+      "sources": [
+        "999fa5964cb1abbd",
+        "00391a0eb278d076",
+        "4874c4235dae9f13",
+        "48ace3dacc6cebcd",
+        "fed6b86fd491460b"
+      ],
+      "expected": [
+        "The parameter `k1` controls how quickly the saturation occurs.",
+        "With a higher `k1` (say, 2.0), the function saturates slowly",
+        "When `b = 0`, the denominator reduces to `f + k1`, and length normalization is disabled entirely."
+      ],
+      "response_budget_bytes": 40000,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c07",
+      "query": "Rust tokio select! cancellation safety",
+      "sources": [
+        "b4a98f510f7d19e0",
+        "29f790675e6c22b4",
+        "a1a500572f5534e7",
+        "fc88d1b054464516"
+      ],
+      "expected": [
+        "Cancellation safety describes what happens when a future is dropped before it completes.",
+        "tokio::sync::mpsc::Receiver::recv",
+        "tokio::io::AsyncReadExt::read_exact",
+        "tokio::io::AsyncWriteExt::write_all",
+        "use a queue for fairness and cancellation makes you lose your place in the queue"
+      ],
+      "response_budget_bytes": 40000,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c08",
+      "query": "NixOS 26.05 release notes",
+      "sources": [
+        "eb89422bbc81d929",
+        "7433ac4e6a588763",
+        "7fab2bc8978006b9",
+        "788f793bf054053e",
+        "e10529936cc9d78a"
+      ],
+      "expected": [
+        "NixOS 26.05 “Yarara”",
+        "Sat May 30 2026",
+        "2026-12-31"
+      ],
+      "response_budget_bytes": 40000,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c09",
+      "query": "Task cancellation CancelledError uncancel",
+      "sources": [
+        "d3abcd0fb805d4d8"
+      ],
+      "expected": [
+        "might misbehave if a coroutine swallows",
+        "it is necessary to also call `uncancel()` to completely remove the cancellation state."
+      ],
+      "response_budget_bytes": 262144,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text. Historical unqueried/full-text call: intent-derived selection probe (not full-text fidelity scoring)."
+    },
+    {
+      "id": "c10",
+      "query": "TaskGroup cancellation CancelledError uncancel",
+      "sources": [
+        "d3abcd0fb805d4d8"
+      ],
+      "expected": [
+        "might misbehave if a coroutine swallows",
+        "it is necessary to also call `uncancel()` to completely remove the cancellation state."
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c11",
+      "query": "cancel all tasks TaskGroup main_task cancel",
+      "sources": [
+        "6d3a7cdc1b3ba01d"
+      ],
+      "expected": [
+        "There is no `TaskGroup.cancel()` function.",
+        "main_task.cancel()"
+      ],
+      "response_budget_bytes": 262144,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text. Historical unqueried/full-text call: intent-derived selection probe (not full-text fidelity scoring)."
+    },
+    {
+      "id": "c12",
+      "query": "TaskGroup cancel uncancel cancel_called TaskGroup._abort",
+      "sources": [
+        "2988167ece827e39"
+      ],
+      "expected": [
+        "uncancel",
+        "cancel_called",
+        "TaskGroup._abort"
+      ],
+      "response_budget_bytes": 262144,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text. Historical unqueried/full-text call: intent-derived selection probe (not full-text fidelity scoring)."
+    },
+    {
+      "id": "c13",
+      "query": "uncancel",
+      "sources": [
+        "2988167ece827e39"
+      ],
+      "expected": [
+        "uncancel"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c14",
+      "query": "cancel_called TaskGroup._abort",
+      "sources": [
+        "2988167ece827e39"
+      ],
+      "expected": [
+        "cancel_called",
+        "TaskGroup._abort"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c15",
+      "query": "TaskGroup._abort",
+      "sources": [
+        "2988167ece827e39"
+      ],
+      "expected": [
+        "TaskGroup._abort"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c16",
+      "query": "Albert Einstein thinking",
+      "sources": [
+        "5cc9e3a18b934801"
+      ],
+      "expected": [
+        "The world as we have created it is a process of our thinking.",
+        "Albert Einstein"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text. Historical unqueried/full-text call: intent-derived selection probe (not full-text fidelity scoring)."
+    },
+    {
+      "id": "c17",
+      "query": "Albert Einstein thinking",
+      "sources": [
+        "5cc9e3a18b934801"
+      ],
+      "expected": [
+        "The world as we have created it is a process of our thinking.",
+        "Albert Einstein"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c18",
+      "query": "zzyy_unlisted_feature_918274",
+      "sources": [
+        "5cc9e3a18b934801"
+      ],
+      "expected": [],
+      "response_budget_bytes": 4096,
+      "expectation_kind": "absent",
+      "note": "The literal query is absent from the frozen rendered quotes; expected is deliberately empty."
+    },
+    {
+      "id": "c19",
+      "query": "Dummy PDF",
+      "sources": [
+        "c712e96563e8f8b0"
+      ],
+      "expected": [
+        "Dummy PDF file"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text. Historical unqueried/full-text call: intent-derived selection probe (not full-text fidelity scoring)."
+    },
+    {
+      "id": "c20",
+      "query": "Dummy PDF",
+      "sources": [
+        "c712e96563e8f8b0"
+      ],
+      "expected": [
+        "Dummy PDF file"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c21",
+      "query": "TaskGroup cancellation CancelledError",
+      "sources": [
+        "f9a30a382ba760d1"
+      ],
+      "expected": [
+        "it will be swallowed and the cancellation count decremented back down to 0.",
+        "All child tasks are already cancelled by this point",
+        "Arthur Tacca"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Discourse capture contains only the final two rendered posts (partial coverage), not the historical whole thread. Probe the available cancellation-count qualification and speaker attribution; no absent _abort label invented."
+    },
+    {
+      "id": "c22",
+      "query": "TaskGroup cancellation CancelledError uncancel",
+      "sources": [
+        "d3abcd0fb805d4d8",
+        "2988167ece827e39"
+      ],
+      "expected": [
+        "might misbehave if a coroutine swallows",
+        "it is necessary to also call `uncancel()` to completely remove the cancellation state.",
+        "uncancel",
+        "cancel_called"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c23",
+      "query": "Official Python asyncio TaskGroup documentation explaining cancellation and why coroutines should not swallow CancelledError",
+      "sources": [
+        "8648139190e53478",
+        "47e66a270c50ed16",
+        "46181ffbfad92e3f"
+      ],
+      "expected": [
+        "might misbehave if a coroutine swallows",
+        "it is necessary to also call `uncancel()` to completely remove the cancellation state."
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text."
+    },
+    {
+      "id": "c24",
+      "query": "Brave Shields ignoreDefaultArgs disable-component-update",
+      "sources": [
+        "f136c2064f36e758"
+      ],
+      "expected": [
+        "ignoreDefaultArgs",
+        "--disable-component-update"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text. Historical unqueried/full-text call: intent-derived selection probe (not full-text fidelity scoring)."
+    },
+    {
+      "id": "c25",
+      "query": "Brave executablePath chromium.launch",
+      "sources": [
+        "a572f764ce74b0aa"
+      ],
+      "expected": [
+        "executablePath",
+        "chromium.launch"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Probe actual issue content: Brave executablePath configuration. The historical intent mentioned extensions/headless but this URL is the Brave support issue."
+    },
+    {
+      "id": "c26",
+      "query": "jack post text author date",
+      "sources": [
+        "2da49e2f7e72bf7b"
+      ],
+      "expected": [
+        "just setting up my twttr",
+        "jack (@jack) — 8:50 PM · Mar 21, 2006"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Exa returned SOURCE_NOT_AVAILABLE, but the fresh canonical X public preview does contain the target post and author/date. Replies are partial; labels use the acquired target post, not Exa failure or unrelated replies."
+    },
+    {
+      "id": "c27",
+      "query": "Bill Gates AMA",
+      "sources": [
+        "d0195146bb1b18fa"
+      ],
+      "expected": [],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "unavailable",
+      "note": "Public content unavailable in Exa reference and frozen acquisition; no wall text is accepted as answer evidence."
+    },
+    {
+      "id": "c28",
+      "query": "sqlite3 threadsafety SQLite threading mode SQLITE_THREADSAFE connection transaction",
+      "sources": [
+        "86f8f63e6ad5267b"
+      ],
+      "expected": [
+        "| single-thread | 0 | 0 | Threads may not share the module |",
+        "| multi-thread | 1 | 2 | Threads may share the module, but not connections |",
+        "| serialized | 3 | 1 | Threads may share the module, connections and cursors |",
+        "Changed in version 3.11: Set _threadsafety_ dynamically instead of hard-coding it to `1`.",
+        "sqlite3.connect(\"tutorial.db\")"
+      ],
+      "response_budget_bytes": 65536,
+      "expectation_kind": "answer",
+      "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text. Historical unqueried/full-text call: intent-derived selection probe (not full-text fidelity scoring)."
+    }
+  ]
+}

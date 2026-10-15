@@ -1,6 +1,8 @@
 """Opt-in real HTTP corpus freezing; run with project Python and browser setup.
 
 PYTHONPATH=src python scripts/evaluation/freeze.py --output /tmp/corpus.json
+Real-page intent cases: PYTHONPATH=src python scripts/evaluation/freeze.py --real-pages
+(See highlights.py for corpus/expectation fields and browser setup.)
 Then deliberately replace data/corpus.json to version a new acquisition. Normal
 replay/tests never refresh this file. HTML fixtures are exact preparations from
 existing tests at c7f1cbca; labels in queries.json predate this acquisition.
@@ -138,8 +140,14 @@ async def capture(output, cache_directory):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, required=True)
-    args = parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix='ncn-freeze-') as temp:
-        asyncio.run(capture(args.output, Path(temp)))
+    if len(sys.argv) > 1 and sys.argv[1] == '--real-pages':
+        # Real acquisitions bypass the synthetic HTTP fixture server entirely.
+        from highlights import main as highlight_main
+        sys.argv[1] = 'freeze'
+        highlight_main()
+    else:
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument('--output', type=Path, required=True)
+        args = parser.parse_args()
+        with tempfile.TemporaryDirectory(prefix='ncn-freeze-') as temp:
+            asyncio.run(capture(args.output, Path(temp)))

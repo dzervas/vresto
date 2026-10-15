@@ -1,6 +1,9 @@
 """Optional measured rescore-only experiment, never a production reranker.
 
 Model-free: PYTHONPATH=src python scripts/evaluation/run.py --output /tmp/lexical.json
+Real-page production selector: PYTHONPATH=src python scripts/evaluation/run.py highlights score
+  --save-baseline eval/corpus/baseline.json (or --compare that path).
+See highlights.py for literal labels, byte metrics and opt-in acquisition.
 CPU paired: add --worker-python /tmp/kagi-ncn-worker/bin/python
   --model-dir /tmp/kagi-ncn-model --library-path "$(cat /tmp/kn8-library-path)".
 Install ONLY isolated worker: uv venv /tmp/kagi-ncn-worker; uv pip sync --python
@@ -447,4 +450,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == 'highlights':
+        # Real canonical pages use today's production selector, not the frozen
+        # historical selection.py arm used by the synthetic model experiment.
+        from highlights import main as highlight_main
+        sys.argv.pop(1)
+        highlight_main()
+    else:
+        main()
