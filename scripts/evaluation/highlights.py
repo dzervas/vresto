@@ -136,6 +136,11 @@ def score(corpus, labels):
             if len(discovery) != len(sources):
                 raise ValueError(f"Discovery/source count mismatch: {case['id']}")
             sources = [{**row, **source} for row, source in zip(discovery, sources)]
+        # Mirror Retrieval._finalize: private traversal metadata never reaches
+        # selection or the wire budget in production.
+        for source in sources:
+            source.pop('link_targets', None)
+            source.pop('links_truncated', None)
         data = {key: sources, 'content_mode': 'full_text'}
         selected = apply_budget(select_highlights(data, case['query'], case['response_budget_bytes']),
                                 case['response_budget_bytes'])
