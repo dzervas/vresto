@@ -38,7 +38,7 @@ import platform
 import signal
 import time
 
-from kagi_crawler.budget import wire_bytes
+from historical import wire_bytes
 from run import (DATA, Worker, digest, finalize, load_corpus, measure, pool_output,
                  percentile)
 from selection import candidates, embedding_order, select_order
@@ -258,7 +258,7 @@ def main():
             historical_runner_hashes=baseline['runner_hashes'],
             scope='ncn corpus/gold/results unchanged; historical hashes refer to pinned ncn code, NOT current evolved experiment files; reranker latency frozen, historical lexical selector latency paired in current runner'),
         runner_hashes={name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-            for name in ('embedding_run.py','run.py','worker.py','selection.py','acquire_model.py')},
+            for name in ('embedding_run.py','run.py','worker.py','selection.py','historical.py','acquire_model.py')},
         host=dict(platform=platform.platform(),python=platform.python_version(),cpu_affinity=sorted(os.sched_getaffinity(0))),
         acquisition_seconds=corpus['acquisition_seconds'], contracts=corpus['contracts'],
         workload='Frozen synthetic English HTML: 14 acquired documents/16 original queries plus 2 separately reported predeclared context-eligible paraphrase queries; no multilingual-support inference',

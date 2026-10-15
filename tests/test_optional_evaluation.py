@@ -33,6 +33,29 @@ def test_model_free_replay_keeps_gold_and_budget_contracts(tmp_path):
     assert missed['candidate_coverage'] == 0 and missed['all_window_coverage'] == 1
 
 
+@pytest.mark.parametrize('runner', ['run.py', 'embedding_run.py'])
+def test_historical_replay_does_not_import_production_code(tmp_path, runner):
+    # Exercise the real CLI with production imports unavailable, including its
+    # helper dependency closure. The separate highlights CLI stays production.
+    program = '''
+import builtins
+import runpy
+import sys
+original_import = builtins.__import__
+def isolated_import(name, *args, **kwargs):
+    if name == 'kagi_crawler' or name.startswith('kagi_crawler.'):
+        raise AssertionError('Historical replay imported production code: ' + name)
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = isolated_import
+sys.path.insert(0, str(__import__('pathlib').Path(sys.argv[1]).parent))
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+'''
+    subprocess.run([sys.executable, '-c', program,
+        str(ROOT / 'scripts/evaluation' / runner),
+        '--output', str(tmp_path / 'result.json')], check=True)
+
+
 @pytest.mark.parametrize('tamper', ['gold_version', 'snapshot_digest'])
 def test_replay_refuses_invalid_frozen_gold_or_historical_snapshot(tmp_path, tamper):
     corpus = json.loads((ROOT / 'scripts/evaluation/data/corpus.json').read_text())

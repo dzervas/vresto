@@ -44,9 +44,7 @@ import subprocess
 import tempfile
 import time
 
-from kagi_crawler.budget import apply_budget, wire_bytes
-from kagi_crawler.evidence import evidence_id
-from kagi_crawler.safety import safe_sources
+from historical import apply_budget, wire_bytes, evidence_id, safe_sources
 from selection import candidates, rescore_order, select_order
 
 DATA = Path(__file__).parent / 'data'
@@ -401,7 +399,7 @@ def main():
     output = dict(schema_version=1, corpus_sha256=hashlib.sha256(args.corpus.read_bytes()).hexdigest(),
         baseline_revision=corpus['baseline_revision'], contracts=corpus['contracts'], model=model,
         runner_hashes={name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-            for name in ('run.py', 'worker.py', 'selection.py', 'freeze.py', 'acquire_model.py')},
+            for name in ('run.py', 'worker.py', 'selection.py', 'historical.py', 'freeze.py', 'acquire_model.py')},
         host=dict(platform=platform.platform(), python=platform.python_version(), cpu_affinity=sorted(os.sched_getaffinity(0))),
         acquisition_seconds=corpus['acquisition_seconds'], summary=summary, cases=results,
         bounded_representation=artifacts,

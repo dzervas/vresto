@@ -4,13 +4,13 @@ No production hooks. All positive BM25 windows (no top32 cutoff) are paired;
 only their ordering changes. Model-free replay checks the archived historical
 HTTP snapshot digests, NOT parity with the evolved production selector. Keep
 this copy explicit so a later baseline change cannot silently change this
-experiment. Shared token/segmentation helpers must retain the historical recipe;
+experiment. historical.py freezes the complete helper dependency closure;
 snapshot digests fail closed on drift. PDF evaluation is outside this workload.
 """
 from collections import Counter
 import math
-from kagi_crawler.evidence import (tokens, document_passages, evidence_id,
-                                  page_references, pdf_section)
+from historical import (tokens, document_passages, evidence_id,
+                        page_references, pdf_section)
 
 def candidates(data, query):
     key = 'sources' if 'sources' in data else 'results'
