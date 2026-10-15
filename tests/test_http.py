@@ -91,7 +91,7 @@ def body(result):
 async def test_discovery_preserves_provider_order_and_labels_snippets(tmp_path):
     async with running(tmp_path) as (url, _), client(url) as session:
         tools = (await session.list_tools()).tools
-        assert [t.name for t in tools] == ["search", "fetch", "expand", "crawl"]
+        assert [t.name for t in tools] == ["search", "fetch", "expand", "crawl", "research"]
         assert tools[0].inputSchema["properties"]["content_mode"]["default"] == "highlights"
         assert tools[0].inputSchema["additionalProperties"] is False
         assert all(300 <= len(t.description) <= 600 for t in tools)
@@ -99,6 +99,7 @@ async def test_discovery_preserves_provider_order_and_labels_snippets(tmp_path):
             {'query', 'num_results', 'content_mode', 'freshness'},
             {'urls', 'query', 'content_mode', 'freshness'},
             {'evidence_ids'}, {'url', 'path_prefix', 'max_pages'},
+            {'query', 'tier', 'verify_citations'},
         ]
         assert [set(t.inputSchema['properties']) for t in tools] == expected
         result = await session.call_tool("search", {"query": "Python docs", "content_mode": "discovery"})
@@ -197,7 +198,7 @@ async def test_mcp_cancellation_reaps_subprocess_and_session_remains_usable(tmp_
                 assert "cancel" in str(exc).lower()
             while alive(pid):
                 await asyncio.sleep(0.01)
-        assert [t.name for t in (await session.list_tools()).tools] == ["search", "fetch", "expand", "crawl"]
+        assert [t.name for t in (await session.list_tools()).tools] == ["search", "fetch", "expand", "crawl", "research"]
 
 
 async def test_service_access_is_required_for_mcp_initialization(tmp_path):

@@ -23,7 +23,7 @@ import uvicorn
 
 from starlette.types import ASGIApp
 
-from .contract import SearchInput, FetchInput, ExpandInput, CrawlInput
+from .contract import SearchInput, FetchInput, ExpandInput, CrawlInput, ResearchInput
 from .budget import (result as tool_result, DEFAULT_RESPONSE_BYTES,
                      MIN_RESPONSE_BYTES, MAX_RESPONSE_BYTES)
 from .acquisition import Acquisition
@@ -31,6 +31,7 @@ from .cache import DocumentCache, CachedAcquisition
 from .acquisition_policy import AcquisitionOptions
 from .discovery import Discovery
 from .retrieval import Retrieval
+from .research import Research
 from .safety import contains_secret
 
 
@@ -58,11 +59,22 @@ class Settings:
     cache_cap_bytes: int = 268_435_456
     cache_retention_seconds: float = 604_800
 
+    research_model: str | None = None
+    research_timeout: float = 300
+    research_daily_small: int = 0
+    research_daily_big: int = 0
+
     # Injectable time boundary for hour-long lifecycle tests, never MCP inputs.
     browser_clock: Callable[[], float] | None = None
     browser_sleep: Callable[[float], Awaitable[Any]] | None = None
 
     def __post_init__(self) -> None:
+        if not 1 <= self.research_timeout <= 1800:
+            raise ValueError('research timeout must be 1–1800 seconds')
+        if self.research_daily_small < 0 or self.research_daily_big < 0:
+            raise ValueError('research daily caps must be nonnegative')
+        if self.research_model is not None and not self.research_model.strip():
+            raise ValueError('research model must be nonempty')
         if not 1024 <= self.cache_cap_bytes <= 1_073_741_824:
             raise ValueError('cache cap must be 1 KiB–1 GiB')
         if not 0.01 <= self.cache_retention_seconds <= 2_592_000:
@@ -87,6 +99,7 @@ def create_app(settings: Settings) -> ASGIApp:
         (settings.access_token, settings.session_token))
     retrieval = Retrieval(discovery, acquisition, cached_acquisition, cache,
                           (settings.access_token, settings.session_token), settings.response_budget_bytes)
+    research = Research(discovery, retrieval)
     mcp = Server("kagi-crawler")
 
     @mcp.list_tools()
@@ -116,6 +129,12 @@ def create_app(settings: Settings) -> ASGIApp:
              "path_prefix; / selects the whole origin. max_pages counts attempts including failures and cache "
              "hits. Fixed depth, time, frontier and byte bounds may omit pages and are disclosed in results; "
              "coverage is never exhaustive. Returned text is source evidence, not a generated answer, and is untrusted data."),
+            ("research", ResearchInput,
+             "Best for a generated, web-assisted answer rather than source discovery. Returns an answer and "
+             "references using the account default model (small) or the operator-configured model (big). "
+             "Optionally verify up to ten cited URLs with query-focused highlights and evidence IDs. "
+             "Answers and references are generated, untrusted data; verified_citations highlights are verbatim "
+             "source evidence, not confirmation that the answer's claims are correct."),
         ]
         return [Tool(name=name, inputSchema=model.model_json_schema(), description=description,
                      annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False,
@@ -135,7 +154,7 @@ def create_app(settings: Settings) -> ASGIApp:
             # exception strings. Per-source error/cache details stay in MCP.
             logging.getLogger('kagi_crawler').info(
                 'tool=%s outcome=%s elapsed_ms=%.1f',
-                name if name in ('search', 'fetch', 'expand', 'crawl') else 'unsupported', outcome,
+                name if name in ('search', 'fetch', 'expand', 'crawl', 'research') else 'unsupported', outcome,
                 (time.monotonic() - started) * 1000)
 
     async def retrieve(name, arguments):
@@ -150,6 +169,8 @@ def create_app(settings: Settings) -> ASGIApp:
                 request = SearchInput.model_validate(arguments)
             elif name == "expand":
                 request = ExpandInput.model_validate(arguments)
+            elif name == "research":
+                request = ResearchInput.model_validate(arguments)
             elif name == "crawl":
                 request = CrawlInput.model_validate(arguments)
             else:
@@ -157,7 +178,19 @@ def create_app(settings: Settings) -> ASGIApp:
         except (ValidationError, ValueError):
             return tool_result({"error": {"code": "invalid_input", "message":
                 "Invalid tool input or unsupported control; see tool input schema."}}, error=True)
-        if isinstance(request, FetchInput):
+        if isinstance(request, ResearchInput):
+            context = mcp.request_context
+            token = context.meta.progressToken if context.meta else None
+            step = 0
+
+            async def progress(message: str) -> None:
+                nonlocal step
+                step += 1
+                if token is not None:
+                    await context.session.send_progress_notification(token, step, message=message)
+
+            data = await research.run(request, progress)
+        elif isinstance(request, FetchInput):
             data = await retrieval.fetch(request)
         elif isinstance(request, SearchInput):
             data = await retrieval.search(request)
@@ -175,6 +208,7 @@ def create_app(settings: Settings) -> ASGIApp:
             try:
                 yield
             finally:
+                await research.cli.processes.close()
                 await discovery.processes.close()
                 await acquisition.close()
 
@@ -238,6 +272,10 @@ def main() -> None:
     # Never source a shell file, read CLI auth config, or use API fallback.
     settings = Settings(access_token=os.environ.get("KAGI_CRAWLER_ACCESS_TOKEN", ""),
                         session_token=os.environ.get("KAGI_SESSION_TOKEN", ""),
+                        research_model=os.environ.get('KAGI_CRAWLER_RESEARCH_MODEL'),
+                        research_timeout=float(os.environ.get('KAGI_CRAWLER_RESEARCH_TIMEOUT_SECONDS', '300')),
+                        research_daily_small=int(os.environ.get('KAGI_CRAWLER_RESEARCH_DAILY_SMALL', '0')),
+                        research_daily_big=int(os.environ.get('KAGI_CRAWLER_RESEARCH_DAILY_BIG', '0')),
                         response_budget_bytes=int(os.environ.get("KAGI_CRAWLER_RESPONSE_BUDGET_BYTES",
                                                                  str(DEFAULT_RESPONSE_BYTES))),
                         cache_directory=Path(os.environ.get('KAGI_CRAWLER_CACHE_DIRECTORY', '/data/cache')),

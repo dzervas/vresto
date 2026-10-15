@@ -198,8 +198,8 @@ Both search and fetch accept opt-in `content_mode: "summary"`: per-source Kagi
 subscriber Summarizer output of our canonical Markdown, labelled `generated`,
 not evidence. Search fixes length to `overview`; fetch uses `digest`; type is
 always `summary`. With a query, summaries include the existing verbatim highlights
-and evidence IDs; without one, fetch returns summaries only. No cross-source
-answer synthesis is performed. Each source retains its content_version. Failures
+and evidence IDs; without one, fetch returns summaries only. Summary mode performs no cross-source
+answer synthesis. Each source retains its content_version. Failures
 add `summary_error` (`summary_unavailable` plus a fixed CLI/deadline reason) while
 preserving available highlights and other sources; no paid API fallback occurs.
 
@@ -221,6 +221,55 @@ This opt-in can make one allowance-consuming upstream call per uncached source;
 allowance accounting, rate limits, latency and real-session response compatibility
 remain unverified. Flags and `data.markdown` are verified against the pinned CLI
 source, not a live Kagi session.
+
+### Research (generated answers)
+
+`research({"query":"How do retry limits work?","tier":"small","verify_citations":false})`
+uses Kagi Assistant with web access and the account's default model. `tier: "big"`
+uses the single operator-configured `KAGI_CRAWLER_RESEARCH_MODEL` slug with
+`--model ... --once --web-access`; without it, big returns `invalid_input` with
+reason `research_model_not_configured`. Model selection is not a per-call control.
+The JSON response labels `answer.text` as generated, includes generated
+`references` (footnote ID, title, URL), tier, model when known, and `thread_deleted`.
+These are untrusted generated content, **not evidence**. Research is not cached.
+
+`verify_citations: true` fetches at most ten cited URLs through the normal
+public-fetch policy/cache and query-focused highlight path. `verified_citations`
+contains verbatim highlights with expandable evidence IDs or per-source errors.
+This verifies source text, not the truth of the answer or its citation entailment.
+The answer has response-budget priority, followed by references and evidence;
+answer truncation, reference omissions and atomic evidence omissions are disclosed.
+
+Research owns a separate CLI pool: one running, two waiting, ten-second queue
+wait (`research_queue_full` / `research_queue_timeout`).
+`KAGI_CRAWLER_RESEARCH_TIMEOUT_SECONDS` defaults to 300 (1–1800), including
+admission, generation and optional citation fetching; cleanup has an additional
+shielded ten-second allowance. Stdout/stderr share the existing 1 MiB invocation
+cap. MCP progress notifications report generation/verification phases when the
+caller supplies a progress token (MCP 1.26 lowlevel request context/session API).
+The session token is confined to the isolated CLI environment, not argv or logs;
+credential echoes in generated output are rejected.
+
+Optional `KAGI_CRAWLER_RESEARCH_DAILY_SMALL` / `KAGI_CRAWLER_RESEARCH_DAILY_BIG`
+nonnegative call caps default to 0 (unlimited). These count admitted attempts,
+including failures, per UTC day **in this service process**, reset on restart,
+and do not coordinate replicas or measure actual Kagi AI spend. A hit returns
+`research_daily_cap`. No extra `kagi usage` calls are made.
+
+**Unofficial subscriber automation:** Assistant may consume your account's AI
+allowance, be restricted, or change without notice. Calls create account history.
+After each call we attempt `assistant thread delete ID` whenever the CLI returned
+a safe thread ID, including when answer validation fails. Cleanup failure never
+fails a successful answer: inspect `thread_deleted: false`. The pinned CLI only
+emits the ID on successful JSON output; errors, malformed output, cancellation
+or timeout may leave unidentified history that we cannot safely delete. We never
+enumerate/delete unrelated threads. The CLI's `--once` attempts temporary custom
+assistant deletion after both prompt success and failure; cleanup errors fail the
+CLI call, and killing it can interrupt that cleanup. Check account history/custom
+assistants after failed calls. Flags, JSON (`message.markdown`,
+`message.references_markdown`, `thread.id`) and cleanup are source-verified at
+cb64cf51; live model availability, output compatibility, allowance/rate accounting
+and successful server-side deletion still require a live Kagi session.
 
 New HTML acquisitions conservatively remove semantic controls and decorative
 permalinks/images, and recognize explicit API signatures and attributed article

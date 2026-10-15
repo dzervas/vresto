@@ -15,6 +15,9 @@ ErrorCode = Literal[
     'discovery_failed', 'discovery_timeout', 'discovery_output_limit',
     'discovery_queue_full', 'discovery_queue_timeout', 'discovery_cli_version',
     'discovery_parse_error', 'summary_unavailable',
+    'research_failed', 'research_timeout', 'research_output_limit',
+    'research_queue_full', 'research_queue_timeout', 'research_cli_version',
+    'research_parse_error', 'research_daily_cap',
 ]
 
 

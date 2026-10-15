@@ -136,3 +136,16 @@ class CrawlInput(BaseModel):
     def validate_scope(self):
         self.traversal()
         return self
+
+
+class ResearchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    query: str = Field(min_length=1, max_length=4096)
+    tier: Literal["small", "big"] = "small"
+    verify_citations: bool = False
+
+    @model_validator(mode="after")
+    def validate_query(self):
+        if not self.query.strip():
+            raise ValueError("empty query")
+        return self
