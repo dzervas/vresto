@@ -314,8 +314,9 @@ def _redundant(candidate, selected):
             continue
         overlap = max(0, min(candidate['end'], previous['end']) -
                       max(candidate['start'], previous['start']))
-        shorter = min(candidate['end'] - candidate['start'], previous['end'] - previous['start'])
-        if (overlap >= 0.8 * shorter and
+        # Sliding windows without new terms or constraints do not justify
+        # growing a selected quote merely to include unrelated edge context.
+        if (overlap > 0 and
                 candidate['terms'] <= previous['terms'] and
                 candidate['qualifications'] <= previous['qualifications']):
             return True
@@ -393,7 +394,7 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
     selected = []
     selected_counts = Counter()
     covered = set()
-    duplicates = {}
+    admitted = []
     maximum = max((p['score'] for p in ranked), default=1)
 
     def update_selection(output, coverage):
@@ -426,11 +427,44 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
                 return False
         return True
 
+    def overlaps(candidate, previous):
+        return (candidate['index'] == previous['index'] and
+                candidate['version'] == previous['version'] and
+                candidate['start'] < previous['end'] and previous['start'] < candidate['end'])
+
+    def render_selection(output, selection):
+        # Rebuild attribution as well as quotes: replacing an owning range must
+        # not leave another source's duplicate_of pointing at its old range.
+        duplicates = {}
+        for source in output[key]:
+            if 'error' not in source:
+                source['highlights'] = []
+                source.pop('duplicate_evidence', None)
+        for passage in selection:
+            index = passage['index']
+            source = output[key][index]
+            start, end = passage['start'], passage['end']
+            canonical = cast(SourceSuccess, {**source, 'content': data_original_texts[index]})
+            identifier = evidence_id(canonical, start, end)
+            reference = {'url': source['resolved_url'], 'section': passage['section'],
+                         'start': start, 'end': end, 'evidence_id': identifier,
+                         **page_references(source, start, end)}
+            identity = (source['content_version'], start, end)
+            if identity in duplicates:
+                source.setdefault('duplicate_evidence', []).append(dict(reference,
+                    duplicate_of=duplicates[identity]))
+            else:
+                source['highlights'].append(dict(reference, text=canonical['content'][start:end]))
+                duplicates[identity] = identifier
+
     # First admit one useful fitting candidate from each source, then extras.
     # A nonfitting best candidate never prevents trying its smaller alternatives.
     for first_pass in (True, False):
         cap = 1 if first_pass else 3
-        pending = [p for p in ranked if selected_counts[p['index']] < cap and p not in selected]
+        pending = [p for p in ranked if p not in admitted and
+                   (selected_counts[p['index']] < cap or
+                    (not first_pass and any(overlaps(p, old) for old in selected)))]
+        deferred = []
         rerank = True
         while pending:
             # Marginal rank changes only when admitted evidence covers new
@@ -457,35 +491,61 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
                         data = trial
                         sources = data[key]
                 continue
-            source = sources[index]
-            start, end = candidate['start'], candidate['end']
-            canonical = cast(SourceSuccess, {**source, 'content': data_original_texts[index]})
-            identifier = evidence_id(canonical, start, end)
-            reference = {'url': source['resolved_url'], 'section': candidate['section'],
-                         'start': start, 'end': end, 'evidence_id': identifier,
-                         **page_references(source, start, end)}
-            identity = (source['content_version'], start, end)
+            replaced = [old for old in selected if overlaps(candidate, old)]
+            replacement = candidate
+            if replaced:
+                # Sliding documentation windows may each carry a distinct
+                # warning at opposite ends. Their contiguous union retains all
+                # qualifications, not just the overlapping query terms. Even a
+                # small overlap is packed once rather than emitted twice.
+                start = min(p['start'] for p in [candidate, *replaced])
+                end = max(p['end'] for p in [candidate, *replaced])
+                quote = data_original_texts[index][start:end]
+                # Expansion labels exact known ranges, not synthetic unions.
+                section = candidate['section']
+                if sources[index].get('document_type') == 'pdf':
+                    section = pdf_section(sources[index], start, end)
+                elif (start, end) != (candidate['start'], candidate['end']):
+                    section = next((p['section'] for p in replaced
+                                    if (p['start'], p['end']) == (start, end)), None)
+                replacement = dict(candidate, start=start, end=end, section=section,
+                    terms=terms & _passage_bag(quote).keys(), qualifications=_qualifications(quote))
+            trial_selected = [p for p in selected if p not in replaced]
+            # Keep the first selected slot stable when a later window replaces it.
+            position = selected.index(replaced[0]) if replaced else len(trial_selected)
+            trial_selected.insert(position, replacement)
             trial = deepcopy(data)
             target = trial[key][index]
-            if identity in duplicates:
-                target.setdefault('duplicate_evidence', []).append(dict(reference,
-                    duplicate_of=duplicates[identity]))
-            else:
-                target['highlights'].append(dict(reference, text=canonical['content'][start:end]))
             target['selection_omitted_highlight_count'] -= 1
-            update_selection(trial, covered | candidate['terms'])
+            if replaced:
+                target['redundant_highlight_count'] = target.get('redundant_highlight_count', 0) + len(replaced)
+            trial_covered = set().union(*(p['terms'] for p in trial_selected))
+            render_selection(trial, trial_selected)
+            update_selection(trial, trial_covered)
+            # Recount the complete wire shape, including regenerated IDs and
+            # duplicate references. Reject the union atomically if it cannot fit;
+            # never trade an admitted warning for a smaller replacement quote.
             if not fits(trial):
                 continue
             data = trial
             sources = data[key]
-            selected.append(candidate)
-            selected_counts[index] += 1
-            rerank = bool(candidate['terms'] - covered)
-            covered |= candidate['terms']
-            duplicates.setdefault(identity, identifier)
+            selected = trial_selected
+            admitted.append(candidate)
+            selected_counts[index] += 1 - len(replaced)
+            rerank = bool(trial_covered - covered)
+            covered = trial_covered
+            if selected_counts[index] < cap:
+                resumed = [p for p in deferred if p['index'] == index]
+                pending.extend(resumed)
+                deferred = [p for p in deferred if p['index'] != index]
+                rerank = rerank or bool(resumed)
             if selected_counts[index] == cap:
-                # Capped candidates remain in the original omission count, but
-                # cannot be admitted in this pass and need no more ranking work.
-                pending = [p for p in pending if p['index'] != index]
+                # At the cap, replacements can still free slots. Defer disjoint
+                # extras so merging two selected windows can admit one later.
+                capped = [p for p in pending if p['index'] == index and
+                          (first_pass or not any(overlaps(p, old) for old in selected))]
+                deferred.extend(capped)
+                pending = [p for p in pending if p['index'] != index or
+                           (not first_pass and any(overlaps(p, old) for old in selected))]
     update_selection(data, covered)
     return data

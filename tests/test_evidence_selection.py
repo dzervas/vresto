@@ -300,10 +300,11 @@ def test_mandatory_and_unsupported_constraints_survive_overlap(monkeypatch):
         slices(monkeypatch, [(0, boundary, 'Claim'), (0, len(text), 'Constraint')])
         data = evidence.select_highlights({'sources': [source(text)]}, 'api', 16384)
         selected = data['sources'][0]
-        assert len(selected['highlights']) == 2
-        assert any(constraint in h['text'] for h in selected['highlights'])
+        assert len(selected['highlights']) == 1
+        assert selected['highlights'][0]['text'] == text
+        assert constraint in selected['highlights'][0]['text']
         assert selected['selection_omitted_highlight_count'] == 0
-        assert not selected.get('redundant_highlight_count')
+        assert selected['redundant_highlight_count'] == 1
         for quote in selected['highlights']:
             assert quote['text'] == text[quote['start']:quote['end']]
         bounded = apply_budget(data, 16384)
@@ -381,3 +382,135 @@ def test_metadata_only_overflow_omits_unselected_source_with_original_indices():
     assert bounded['selection']['uncovered_query_terms'] == ['other_identifier']
     assert selected['sources'][1]['selection_omitted_highlight_count'] == 1
     assert wire_bytes(bounded) <= 4096
+
+
+def test_partial_overlap_unions_both_warnings_and_frees_a_slot(monkeypatch):
+    left = 'Warning: alpha must not retry.\n'
+    middle = 'alpha supports scheduling. ' * 30 + '\n'
+    right = 'Caution: beta requires cleanup in version 2.3.\n'
+    tail = 'gamma reports cancellation.\ndelta stops siblings.\n'
+    text = left + middle + right + tail
+    end = len(left + middle + right)
+    split = end + len('gamma reports cancellation.\n')
+    slices(monkeypatch, [(0, len(left + middle), 'Left'), (len(left), end, 'Right'),
+                         (end, split, 'Gamma'), (split, len(text), 'Delta')])
+    original = {'sources': [source(text)]}
+    selected = evidence.select_highlights(original, 'alpha beta gamma delta', 8192)
+    quotes = selected['sources'][0]['highlights']
+    assert len(quotes) == 3
+    union = next(q for q in quotes if q['start'] == 0)
+    assert union['end'] == end
+    assert union['text'] == left + middle + right
+    assert 'must not retry' in union['text'] and 'requires cleanup' in union['text']
+    assert selected['selection']['uncovered_query_terms'] == []
+    assert selected['sources'][0]['selection_omitted_highlight_count'] == 0
+    assert selected['sources'][0]['redundant_highlight_count'] == 1
+    assert all(a['end'] <= b['start'] or b['end'] <= a['start']
+               for i, a in enumerate(quotes) for b in quotes[i + 1:])
+    assert apply_budget(selected, 8192)['sources'][0]['highlights'] == quotes
+    assert original['sources'][0]['content'] == text
+    class Cache:
+        def lookup(self, url, version):
+            return original['sources'][0]
+    expanded = evidence.expand_evidence(Cache(), [union['evidence_id']])
+    assert expanded['sources'][0]['highlights'] == [union]
+
+
+def test_replacing_duplicate_owner_rebuilds_exact_range_references(monkeypatch):
+    text = 'alpha works. ' * 40 + '\n'
+    boundary = len(text)
+    text += 'Warning: alpha must not retry.\n'
+    slices(monkeypatch, [(0, boundary, 'Claim'), (0, len(text), 'Warning')])
+    originals = [source(text), source(text, 'https://other.test/docs')]
+    selected = evidence.select_highlights({'sources': originals}, 'alpha', 8192)
+    owner, duplicate = selected['sources']
+    assert len(owner['highlights']) == 1
+    assert not duplicate['highlights']
+    quote = owner['highlights'][0]
+    reference = duplicate['duplicate_evidence'][0]
+    assert quote['text'] == text
+    assert reference['duplicate_of'] == quote['evidence_id']
+    assert (reference['start'], reference['end']) == (0, len(text))
+    class Cache:
+        def lookup(self, url, version):
+            return next((s for s in originals if s['requested_url'] == url and
+                         s['content_version'] == version), None)
+    for identifier in (quote['evidence_id'], reference['evidence_id'], reference['duplicate_of']):
+        canonical, start, end = evidence.resolve_evidence(Cache(), identifier)
+        assert canonical['content'][start:end] == text
+    bounded = apply_budget(selected, 8192)
+    assert bounded['sources'] == selected['sources']
+    assert wire_bytes(bounded) <= 8192
+
+
+def test_nonfitting_union_keeps_admitted_qualification_and_recounts_bytes(monkeypatch):
+    from kagi_crawler import budget
+
+    left = 'Warning: alpha must not retry.\n'
+    middle = 'alpha works. ' * 20 + '\n'
+    right = 'Caution: alpha requires cleanup. ' + '界\\" ' * 1800 + '\n'
+    text = left + middle + right
+    slices(monkeypatch, [(0, len(left + middle), 'Left'), (len(left), len(text), 'Right')])
+    attempts = []
+    def probe(data, limit):
+        bounded = apply_budget(data, limit)
+        attempts.append((deepcopy(data['sources'][0]['highlights']), bounded))
+        return bounded
+    monkeypatch.setattr(budget, 'apply_budget', probe)
+    selected = evidence.select_highlights({'sources': [source(text)]}, 'alpha', 4096)
+    quotes = selected['sources'][0]['highlights']
+    assert len(quotes) == 1
+    assert quotes[0]['text'] == left + middle
+    union_attempts = [(qs, b) for qs, b in attempts if any(q['text'] == text for q in qs)]
+    assert union_attempts
+    assert all(b['sources'][0]['highlights'] != qs for qs, b in union_attempts)
+    assert selected['sources'][0]['selection_omitted_highlight_count'] == 1
+    bounded = apply_budget(selected, 4096)
+    assert bounded['sources'][0]['highlights'] == quotes
+    assert wire_bytes(bounded) <= 4096
+
+
+def test_merge_at_cap_retries_disjoint_candidates_in_freed_slot(monkeypatch):
+    first = 'alpha works.\n'
+    second = 'alpha retries.\n'
+    third = 'alpha schedules.\n'
+    ballast = 'Warning: cleanup is required. ' + 'background ' * 200 + '\n'
+    tail = 'alpha completes. ' + 'context ' * 50 + '\n'
+    text = first + ballast + second + third + tail
+    b = len(first + ballast)
+    c = b + len(second)
+    d = c + len(third)
+    slices(monkeypatch, [(0, len(first), 'First'), (b, c, 'Second'),
+                         (c, d, 'Third'), (d, len(text), 'Tail'), (0, c, 'Union')])
+    selected = evidence.select_highlights({'sources': [source(text)]}, 'alpha', 16384)
+    quotes = selected['sources'][0]['highlights']
+    assert len(quotes) == 3
+    assert any(q['text'] == first + ballast + second for q in quotes)
+    assert any(q['text'] == third for q in quotes)
+    assert any(q['text'] == tail for q in quotes)
+    assert selected['sources'][0]['selection_omitted_highlight_count'] == 0
+    assert selected['sources'][0]['redundant_highlight_count'] == 2
+
+
+def test_fitting_union_is_charged_once_with_utf8_and_escaping(monkeypatch):
+    left = 'Warning: alpha must not retry.\n'
+    middle = 'alpha ' + '界\\" ' * 250 + '\n'
+    right = 'Caution: beta requires cleanup.\n'
+    text = left + middle + right
+    slices(monkeypatch, [(0, len(left + middle), 'Left'), (len(left), len(text), 'Right')])
+    original = {'sources': [source(text)]}
+    roomy = evidence.select_highlights(original, 'alpha beta')
+    limit = max(4096, wire_bytes(apply_budget(roomy, 65536)))
+    selected = evidence.select_highlights(original, 'alpha beta', limit)
+    quotes = selected['sources'][0]['highlights']
+    assert len(quotes) == 1
+    assert quotes[0]['text'] == text
+    assert (quotes[0]['start'], quotes[0]['end']) == (0, len(text))
+    assert quotes[0]['evidence_id'] == evidence.evidence_id(source(text), 0, len(text))
+    bounded = apply_budget(selected, limit)
+    assert bounded['sources'][0]['highlights'] == quotes
+    assert wire_bytes(bounded) <= limit
+    # Charging the shared middle twice would evict evidence at this same limit.
+    doubled = deepcopy(selected)
+    doubled['sources'][0]['highlights'].append(deepcopy(quotes[0]))
+    assert apply_budget(doubled, limit)['sources'][0]['highlights'] != doubled['sources'][0]['highlights']
