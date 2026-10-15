@@ -13,6 +13,8 @@ fallback, not inferred code languages or API/raw-content requests.
 Fixtures: tests/sites/github/{issue,review,thread,blob}.{html,url,md}, captured
 2026-10-14 logged out/headless (anonymous hidden form/transport tokens and
 short-lived signed image queries stripped).
+cancellation.{html,url,md} was captured 2026-10-15 with the same stripping;
+its timeline's Load more button was exhausted before capture (70 bodies).
 discussion.html/md and browser tests are synthetic expansion regressions.
 Refresh (URLs in adjacent .url files):
 uv run --locked python scripts/capture_fixture.py URL tests/sites/github/NAME --settle 3
@@ -72,9 +74,23 @@ def _body_copy(body, *, conversation=False):
     # GitHub's copy widgets are controls inside rendered Markdown, not prose.
     for control in result.xpath('.//clipboard-copy | .//button | .//svg'):
         control.drop_tree()
+    # Embedded source permalinks use highlight tables with blob-code cells,
+    # unlike React/legacy Markdown's highlighted pre or plain pre/code blocks.
+    # They are code, not data tables: omit line numbers and retain indentation.
+    for table in result.xpath('.//table[' + _class('highlight') + ']'):
+        cells = table.xpath('.//td[' + _class('blob-code') + ']')
+        if cells:
+            code = '\n'.join(cell.text_content() for cell in cells)
+            tail = table.tail
+            attributes = dict(table.attrib)
+            table.clear()
+            table.tag = 'pre'
+            table.attrib.update(attributes)
+            table.text = code
+            table.tail = tail
     # GitHub uses highlight-source-X wrappers instead of language-X on pre/code.
     for pre in result.xpath('.//pre'):
-        for parent in pre.iterancestors():
+        for parent in (pre, *pre.iterancestors()):
             match = re.search(r'(?:^|\s)highlight-source-([\w+#.-]+)', parent.get('class', ''))
             if match:
                 pre.set('class', 'language-' + match[1])
