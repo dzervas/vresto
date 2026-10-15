@@ -77,6 +77,33 @@ class Discovery:
         if request.personalized is not None:
             args.append("--personalized" if request.personalized else "--no-personalized")
         args.extend(["--", request.query])
+        stdout = await self._invoke(args)
+        try:
+            data = SearchResponse.model_validate(json.loads(stdout))
+            results = [{"provider_rank": r.rank, "url": r.url, "title": r.title,
+                        "provider_snippet": r.snippet} for r in data.data[:request.num_results]]
+            if any(secret in value for r in results for value in (r["url"], r["title"], r["provider_snippet"])
+                   for secret in (self.settings.session_token, self.settings.access_token)):
+                raise ValueError("credential echoed by upstream")
+        except (ValueError, ValidationError, UnicodeDecodeError):
+            raise DiscoveryError("discovery_parse_error") from None
+        # Microck HTML parser emits rank=null and can silently parse [] after markup
+        # changes. Preserve array order without inventing ranks or verified absence.
+        warnings = []
+        if not results:
+            warnings.append("empty_results_may_indicate_upstream_markup_change")
+        if any(r["provider_rank"] is None for r in results):
+            warnings.append("provider_rank_unavailable")
+        return {"content_mode": "discovery", "postfilters": ["result_limit"],
+                "discovery_limits": {"concurrency": self.processes.CONCURRENCY,
+                    "queue_capacity": self.processes.QUEUE_CAPACITY,
+                    "queue_wait_seconds": self.processes.QUEUE_WAIT,
+                    "request_deadline_seconds": self.settings.timeout,
+                    "invocation_output_bytes": self.settings.max_output_bytes},
+                "date_semantics": "provider_update_date_not_verified_publication",
+                "warnings": warnings, "results": results}
+
+    async def _invoke(self, args: list[str]) -> bytes:
         with TemporaryDirectory(prefix="kagi-discovery-") as home:
             env = {"PATH": os.defpath, "HOME": home, "KAGI_CONFIG": home + "/config.toml",
                    "KAGI_SESSION_TOKEN": self.settings.session_token, "RUST_LOG": "off"}
@@ -103,27 +130,19 @@ class Discovery:
                 code = "discovery_parse_error"
             # Never forward message, suggestions, stderr or exception details.
             raise DiscoveryError(code)
+        return stdout
+
+    async def summarize(self, text: str, length: str) -> str:
+        async with self.processes.admission():
+            # Equals form keeps dash-leading Markdown literal to Clap.
+            stdout = await self._invoke(["--error-format", "json", "summarize", "--subscriber",
+                "--text=" + text, "--length", length, "--summary-type", "summary"])
         try:
-            data = SearchResponse.model_validate(json.loads(stdout))
-            results = [{"provider_rank": r.rank, "url": r.url, "title": r.title,
-                        "provider_snippet": r.snippet} for r in data.data[:request.num_results]]
-            if any(secret in value for r in results for value in (r["url"], r["title"], r["provider_snippet"])
-                   for secret in (self.settings.session_token, self.settings.access_token)):
-                raise ValueError("credential echoed by upstream")
-        except (ValueError, ValidationError, UnicodeDecodeError):
+            # Pinned CLI main.rs prints SubscriberSummarizeResponse as JSON;
+            # data.markdown is generated Markdown, not the HTML output field.
+            value = json.loads(stdout)["data"]["markdown"]
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("empty summary")
+            return value
+        except (ValueError, KeyError, TypeError, UnicodeDecodeError):
             raise DiscoveryError("discovery_parse_error") from None
-        # Microck HTML parser emits rank=null and can silently parse [] after markup
-        # changes. Preserve array order without inventing ranks or verified absence.
-        warnings = []
-        if not results:
-            warnings.append("empty_results_may_indicate_upstream_markup_change")
-        if any(r["provider_rank"] is None for r in results):
-            warnings.append("provider_rank_unavailable")
-        return {"content_mode": "discovery", "postfilters": ["result_limit"],
-                "discovery_limits": {"concurrency": self.processes.CONCURRENCY,
-                    "queue_capacity": self.processes.QUEUE_CAPACITY,
-                    "queue_wait_seconds": self.processes.QUEUE_WAIT,
-                    "request_deadline_seconds": self.settings.timeout,
-                    "invocation_output_bytes": self.settings.max_output_bytes},
-                "date_semantics": "provider_update_date_not_verified_publication",
-                "warnings": warnings, "results": results}

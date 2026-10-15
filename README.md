@@ -179,7 +179,7 @@ Search defaults to acquired highlights, not provider snippets. Result counts are
 limits, not guarantees. Search accepts query, num_results, content_mode and freshness;
 fetch accepts urls, optional query/content_mode and freshness. Expand accepts only
 evidence_ids; crawl accepts url, path_prefix and optional max_pages, deriving the
-exact origin from url. Summary/answer generation is not offered. Kagi filters,
+exact origin from url. Kagi filters,
 per-call response budgets, cache ages, refresh/cache_only and traversal tuning
 are not public controls; unsupported inputs are rejected. Provider dates mean
 **update dates**, not verified publication dates. Postfilters, per-source errors, budget omissions and partial
@@ -194,6 +194,34 @@ new query terms or qualifications. Exact-document duplicates retain independent
 attribution and evidence IDs. Covered/uncovered query terms describe lexical
 representation, not whether the question is answered.
 
+Both search and fetch accept opt-in `content_mode: "summary"`: per-source Kagi
+subscriber Summarizer output of our canonical Markdown, labelled `generated`,
+not evidence. Search fixes length to `overview`; fetch uses `digest`; type is
+always `summary`. With a query, summaries include the existing verbatim highlights
+and evidence IDs; without one, fetch returns summaries only. No cross-source
+answer synthesis is performed. Each source retains its content_version. Failures
+add `summary_error` (`summary_unavailable` plus a fixed CLI/deadline reason) while
+preserving available highlights and other sources; no paid API fallback occurs.
+
+Summaries share discovery's CLI pool (2 running, 8 waiting, 10-second admission
+wait), bounded stdout/stderr, isolated credential environment and pinned-version
+check. Two workers run after acquisition, using only time remaining in the
+request's 120-second deadline (including search discovery). Inputs are capped at
+60 KiB UTF-8 to stay below per-argument OS limits: prefer the last section boundary,
+then a paragraph boundary, otherwise a UTF-8-safe prefix. The CLI's `--filter`
+reads separate items per line, not a multiline document. The summary discloses
+`summary_input_truncated`; it may therefore describe only part of the version.
+Summary records are cached by (content_version, length, type), share the document
+cache's byte cap/retention/eviction and are not evidence or canonical text.
+
+Generated summaries count toward the response budget **before highlight
+admission**. Under pressure, omit atomic highlights before shortening summaries;
+summary shortening sets `response_truncated`. Whole sources may still be omitted.
+This opt-in can make one allowance-consuming upstream call per uncached source;
+allowance accounting, rate limits, latency and real-session response compatibility
+remain unverified. Flags and `data.markdown` are verified against the pinned CLI
+source, not a live Kagi session.
+
 New HTML acquisitions conservatively remove semantic controls and decorative
 permalinks/images, and recognize explicit API signatures and attributed article
 headers as passage boundaries. Uncertain structure and technical qualifications
@@ -205,9 +233,9 @@ remain. Existing cached canonical text and historical evidence IDs are unchanged
 | Fetch URLs / expand evidence IDs | 1–10 | Separate tools, maximum 10 each |
 | Serialized response bytes | 12,288 | 4,096–262,144; operator `KAGI_CRAWLER_RESPONSE_BUDGET_BYTES` only |
 | Acquisition request deadline | 120 s | `KAGI_CRAWLER_DEADLINE_SECONDS`: 0.01–600 s, one deadline across composed pages |
-| Discovery concurrency / waiting | 2 / 8 | Fixed independent CLI pool; excess is `discovery_queue_full` |
+| Discovery concurrency / waiting | 2 / 8 | Fixed shared discovery/summary CLI pool; excess is `discovery_queue_full` |
 | Discovery admission wait / deadline | 10 s / 120 s | Fixed wait (`discovery_queue_timeout`); request deadline includes admission, version check and search (`discovery_timeout`) |
-| CLI stdout + stderr | 1 MiB | Per invocation, at most two concurrent discovery jobs |
+| CLI stdout + stderr | 1 MiB | Per invocation, at most two concurrent CLI jobs |
 | Browser concurrency | 4 | `KAGI_CRAWLER_BROWSER_CONCURRENCY`: 1–8 tabs; one active page per (scheme, host, port), shared across clients |
 | Waiting queue | 8 | `KAGI_CRAWLER_QUEUE_CAPACITY`: 1–32; excess is `queue_full` |
 | Queue wait | 10 s | `KAGI_CRAWLER_QUEUE_WAIT_SECONDS`: 0.01–30 s; `queue_timeout` or request timeout |

@@ -34,10 +34,8 @@ async def test_search_rejects_removed_controls(tmp_path, extra):
     ('fetch', {'urls': ['https://example.org'], 'traversal': {}}),
     ('expand', {'evidence_ids': ['bad'], 'response_budget_bytes': 4096}),
     ('crawl', {'url': 'https://example.org', 'path_prefix': '/', 'max_depth': 2}),
-    ('search', {'query': 'docs', 'content_mode': 'summary'}),
-    ('fetch', {'urls': ['https://example.org'], 'content_mode': 'summary'}),
 ])
-async def test_removed_and_unimplemented_controls_are_rejected(tmp_path, tool, arguments):
+async def test_removed_controls_are_rejected(tmp_path, tool, arguments):
     async with running(tmp_path) as (url, _), client(url) as session:
         result = await session.call_tool(tool, arguments)
         assert result.isError

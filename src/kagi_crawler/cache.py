@@ -91,10 +91,13 @@ class DocumentCache:
 
     def store(self, source: SourceSuccess) -> None:
         record = {k: v for k, v in source.items() if k not in ('cache_state', 'stale', 'refresh_error')}
+        path = self._path(source['requested_url'], source['content_version'])
+        self._write(path, record, source['fetched_at'])
+
+    def _write(self, path: Path, record: dict, fetched_at: str) -> None:
         payload = json.dumps(record, ensure_ascii=False, separators=(',', ':')).encode()
         if len(payload) > self.cap_bytes:
-            return  # Acquisition succeeds even if a single document cannot fit.
-        path = self._path(source['requested_url'], source['content_version'])
+            return
         self._prune(reserve=len(payload), replacing=path)
         temporary = path.with_suffix('.tmp')
         with temporary.open('wb') as file:
@@ -103,9 +106,26 @@ class DocumentCache:
             os.fsync(file.fileno())
         # mtime is the persisted acquisition time, not read/access time. Index
         # scans need only stat(), never load the whole capped corpus into RAM.
-        fetched = datetime.fromisoformat(source['fetched_at']).timestamp()
+        fetched = datetime.fromisoformat(fetched_at).timestamp()
         os.utime(temporary, (fetched, fetched))
         temporary.replace(path)
+
+    def _summary_path(self, version: str, length: str) -> Path:
+        key = json.dumps([version, length, 'summary'])
+        return self.directory / ('summary-' + hashlib.sha256(key.encode()).hexdigest() + '.json')
+
+    def summary(self, version: str, length: str) -> dict | None:
+        self._prune()
+        path = self._summary_path(version, length)
+        try:
+            return json.loads(path.read_bytes())
+        except (OSError, ValueError):
+            return None
+
+    def store_summary(self, version: str, length: str, summary: dict, fetched_at: str) -> None:
+        # Summary records share the canonical cache's byte cap, retention and
+        # oldest-acquisition eviction policy, not an unbounded parallel cache.
+        self._write(self._summary_path(version, length), summary, fetched_at)
 
 
 class CachedAcquisition:

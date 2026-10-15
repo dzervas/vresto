@@ -123,6 +123,19 @@ def apply_budget(data: ToolData, limit: int) -> ToolData:
             source['highlights'].pop()
             source['omitted_highlight_count'] = source.get('omitted_highlight_count', 0) + 1
 
+    # Generated prose is preferred to quotes in summary mode. Only after
+    # atomic highlights are gone may summaries be shortened, with disclosure.
+    while wire_bytes(output) > limit:
+        candidates = [s for s in sources if isinstance(s.get('summary'), dict)
+                      and len(s['summary'].get('text', '')) > 64]
+        if not candidates:
+            break
+        coverage['partial_coverage'] = True
+        for source in candidates:
+            summary = source['summary']
+            summary['text'] = summary['text'][:max(64, len(summary['text']) // 2)]
+            summary['response_truncated'] = True
+
     # Never chop attribution/error/version metadata to manufacture a fit. Retain
     # small failures and successes where possible by dropping the largest record.
     while sources and wire_bytes(output) > limit:

@@ -14,7 +14,7 @@ ErrorCode = Literal[
     'unsupported_format', 'pdf_parse_failed', 'upstream_authentication',
     'discovery_failed', 'discovery_timeout', 'discovery_output_limit',
     'discovery_queue_full', 'discovery_queue_timeout', 'discovery_cli_version',
-    'discovery_parse_error',
+    'discovery_parse_error', 'summary_unavailable',
 ]
 
 

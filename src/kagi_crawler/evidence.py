@@ -454,11 +454,11 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
     for index, source in enumerate(sources):
         source.pop('content', None)
         if 'error' not in source:
-            source.update(highlights=[], content_mode='highlights',
+            source.update(highlights=[], content_mode='summary' if source.get('summary') or source.get('summary_error') else 'highlights',
                 relevance='lexical_match' if totals[index] else 'no_lexical_match')
             if totals[index]:
                 source['selection_omitted_highlight_count'] = totals[index]
-    data['content_mode'] = 'highlights'
+    data['content_mode'] = 'summary' if any(s.get('summary') or s.get('summary_error') for s in sources) else 'highlights'
     data['selection'] = {'method': 'bm25_marginal_query_coverage', 'max_highlights_per_source': 3,
         'relevance_semantics': 'lexical_overlap_not_answer_verification',
         'deduplication': 'same_source_version_overlap_and_exact_versions_with_attributed_references',

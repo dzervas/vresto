@@ -1,5 +1,6 @@
 """Search/fetch/expand/crawl orchestration returning final public, budgeted tool data."""
 from copy import deepcopy
+import asyncio
 
 from .acquisition import Acquisition
 from .budget import DEFAULT_RESPONSE_BYTES, apply_budget
@@ -8,6 +9,7 @@ from .contract import CrawlInput, ExpandInput, FetchInput, SearchInput, FetchReq
 from .discovery import Discovery, DiscoveryError
 from .evidence import expand_evidence, select_highlights
 from .safety import safe_sources
+from .summaries import add_summaries
 from .traversal import Traversal
 from .types import ToolData
 
@@ -44,7 +46,8 @@ class Retrieval:
             source.pop('link_targets', None)
             source.pop('links_truncated', None)
         data = safe_sources(data, self.secrets)
-        highlights = (request.content_mode == 'highlights' or
+        highlights = ((request.content_mode == 'summary' and request.query is not None) or
+                      request.content_mode == 'highlights' or
                       (isinstance(request, FetchRequest) and request.content_mode is None and request.query))
         if highlights and 'error' not in data:
             assert request.query is not None  # Validated highlight mode requires a query.
@@ -52,11 +55,18 @@ class Retrieval:
             # Selection adds normalized query terms; those can newly match a
             # credential even when the original input's case did not.
             data = safe_sources(data, self.secrets)
+        if request.content_mode == 'summary' and 'error' not in data:
+            data['content_mode'] = 'summary'
+            for source in data.get('sources', data.get('results', [])):
+                source.pop('content', None)
+                if 'error' not in source:
+                    source['content_mode'] = 'summary'
         return apply_budget(data, request.response_budget_bytes)
 
     async def fetch(self, request: FetchInput | FetchRequest) -> ToolData:
         if isinstance(request, FetchInput):
             request = FetchRequest(**request.model_dump(), response_budget_bytes=self.response_budget_bytes)
+        deadline = asyncio.get_running_loop().time() + self.acquisition.options.deadline
         data: ToolData
         if request.evidence_ids is not None:
             try:
@@ -75,11 +85,15 @@ class Retrieval:
                     data = dict(await self.cached_acquisition.fetch_many(request.urls, freshness=request.freshness,
                                                                max_age_seconds=request.max_age_seconds))
             data['acquisition_limits'] = self._acquisition_limits(request.traversal.max_pages if request.traversal else 10)
+        if request.content_mode == 'summary':
+            data = safe_sources(data, self.secrets)
+            await add_summaries(data, self.discovery, self.cache, self.secrets, 'digest', deadline)
         return self._finalize(data, request)
 
     async def search(self, request: SearchInput | SearchRequest) -> ToolData:
         if isinstance(request, SearchInput):
             request = SearchRequest(**request.model_dump(), response_budget_bytes=self.response_budget_bytes)
+        deadline = asyncio.get_running_loop().time() + self.acquisition.options.deadline
         data: ToolData
         try:
             data = dict(await self.discovery.search(request))
@@ -93,6 +107,9 @@ class Retrieval:
                                    zip(data['results'], acquired['sources'])]
                 data['content_mode'] = 'full_text'
                 data['acquisition_limits'] = self._acquisition_limits(20)
+            if request.content_mode == 'summary':
+                data = safe_sources(data, self.secrets)
+                await add_summaries(data, self.discovery, self.cache, self.secrets, 'overview', deadline)
             return self._finalize(data, request)
         except DiscoveryError as error:
             messages = {

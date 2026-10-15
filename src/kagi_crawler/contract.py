@@ -25,7 +25,7 @@ class FetchRequest(BudgetInput):
                     "Exclusive with URLs, query, content_mode, traversal and freshness controls; "
                     "only response_budget_bytes applies. Context sections may be omitted atomically.")
     traversal: TraversalInput | None = None
-    content_mode: Literal["full_text", "highlights"] | None = Field(default=None,
+    content_mode: Literal["full_text", "highlights", "summary"] | None = Field(default=None,
         description="Defaults to highlights when query is supplied, otherwise full_text.")
     query: str | None = Field(default=None, min_length=1, max_length=4096)
     freshness: Literal['ordinary', 'refresh', 'fresh_only', 'cache_only'] = 'ordinary'
@@ -55,7 +55,7 @@ class SearchRequest(BudgetInput):
     # Structured sources distinguish provider snippets from acquired evidence;
     # no generated highlights or inferred publication dates/provider parity.
     num_results: int = Field(default=10, ge=1, le=20)
-    content_mode: Literal["discovery", "highlights", "full_text"] = "highlights"
+    content_mode: Literal["discovery", "highlights", "full_text", "summary"] = "highlights"
     freshness: Literal['ordinary', 'refresh', 'fresh_only', 'cache_only'] = 'ordinary'
     max_age_seconds: float = Field(default=3600, ge=0, le=2_592_000)
     region: str | None = Field(default=None, pattern=r"^(?:[a-z]{2}|no_region)$")
@@ -86,7 +86,7 @@ class SearchInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     query: str = Field(min_length=1, max_length=4096)
     num_results: int = Field(default=10, ge=1, le=20)
-    content_mode: Literal["discovery", "highlights", "full_text"] = "highlights"
+    content_mode: Literal["discovery", "highlights", "full_text", "summary"] = "highlights"
     freshness: Literal["ordinary", "fresh_only"] = "ordinary"
 
     @model_validator(mode="after")
@@ -100,7 +100,7 @@ class FetchInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     urls: list[str] = Field(min_length=1, max_length=10)
     query: str | None = Field(default=None, min_length=1, max_length=4096)
-    content_mode: Literal["highlights", "full_text"] | None = Field(default=None,
+    content_mode: Literal["highlights", "full_text", "summary"] | None = Field(default=None,
         description="Defaults to highlights with a query, otherwise full_text.")
     freshness: Literal["ordinary", "fresh_only"] = "ordinary"
 
