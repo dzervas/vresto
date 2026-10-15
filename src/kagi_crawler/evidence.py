@@ -532,8 +532,8 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
 
     # In shared-budget search results, a large first pick can crowd out every
     # quote from another source even when a compact alternative would fit both.
-    # Rank this diversity pass by utility per source footprint, including MCP's
-    # two copies of attribution and retained metadata, not just quote length.
+    # Rank this diversity pass by utility per serialized structured source
+    # footprint, including attribution and retained metadata, not just quote length.
     # If even the canonical texts fit, there is no pressure to trade relevance
     # for compact first picks (including single-source fetch vs composed search).
     if limit is not None and len(totals) > 1:

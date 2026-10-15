@@ -16,11 +16,14 @@ def test_shared_error_codes_keep_exact_wire_strings(error_type):
         error = error_type(code)
         assert str(error) == code
         response = result({'error': {'code': error.code}}, error=True)
-        assert response.content[0].text.encode() == b'{"error":{"code":"' + code.encode() + b'"}}'
+        assert response.content == []
+        assert response.isError is True
         assert response.structuredContent == {'error': {'code': code}}
 
 
 def test_fetch_details_keep_exact_wire_order():
     error = FetchError('blocked', reason='challenge', http_status=403)
     response = result({'error': {'code': error.code, **error.details}}, error=True)
-    assert response.content[0].text == '{"error":{"code":"blocked","reason":"challenge","http_status":403}}'
+    assert response.content == []
+    assert response.isError is True
+    assert response.structuredContent == {'error': {'code': 'blocked', 'reason': 'challenge', 'http_status': 403}}

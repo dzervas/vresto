@@ -126,7 +126,7 @@ def test_api_definitions_localize_unqualified_parent_without_losing_signature_wa
         assert 'Do not swallow CancelledError' in quote and 'Changed in version 3.12' in quote
         assert 'operation_0' not in quote and 'Task.done' not in quote
     assert '¶' not in content
-    # Fixed public wire envelope, including duplicated text/structuredContent
+    # Fixed public wire envelope, including the single structuredContent copy
     # serialization and an exact version-bound reference, not just quote bytes.
     start, end, title = matches[0]
     source = {'requested_url': BASE, 'resolved_url': BASE, 'content': content,

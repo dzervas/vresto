@@ -167,7 +167,9 @@ async def server(cache, cli, clock, *, default_queue=False):
 
 
 def data(result):
-    value = json.loads(result.content[0].text)
+    assert result.content == []
+    value = result.structuredContent
+    assert isinstance(value, dict)
     assert not result.isError, value.get('error')
     assert 'fixture-session' not in result.model_dump_json()
     assert 'fixture-access' not in result.model_dump_json()

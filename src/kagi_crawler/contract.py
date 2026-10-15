@@ -12,7 +12,7 @@ class BudgetInput(BaseModel):
     response_budget_bytes: int = Field(default=DEFAULT_RESPONSE_BYTES,
         ge=MIN_RESPONSE_BYTES, le=MAX_RESPONSE_BYTES,
         description="Shared UTF-8 byte limit for the serialized MCP tool result, including "
-                    "text and structuredContent copies and metadata; not a token count. "
+                    "one structuredContent copy, content=[] and isError; not a token count. "
                     "Transport JSON-RPC envelope excluded. Truncation/omissions are explicit.")
 
 

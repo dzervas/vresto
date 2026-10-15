@@ -7,7 +7,7 @@ from aiohttp import web
 import pytest
 
 
-async def test_discovery_shared_budget_includes_large_metadata_and_both_mcp_copies(tmp_path):
+async def test_discovery_shared_budget_includes_large_metadata_and_single_structured_copy(tmp_path):
     payload = {'data': [{'url': f'https://example.org/{i}', 'title': 'Technical title ' * 200,
                          'snippet': 'Qualification: do not enable legacy mode. ' * 200,
                          'rank': i + 1} for i in range(10)]}

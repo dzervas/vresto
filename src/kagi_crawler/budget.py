@@ -14,29 +14,32 @@ from typing import cast
 from copy import deepcopy
 import json
 
-from mcp.types import CallToolResult, TextContent
+from mcp.types import CallToolResult
 
 from .types import ToolData, ToolResult
 
 # 4 KiB retains attributed fixture content; 64 KiB bounds shared-context output;
-# 256 KiB fits the intact 183,149-byte multilingual fixture (including both MCP
-# copies). These are byte safety caps, not production sizing or token claims.
+# 256 KiB fits the intact multilingual fixture. These are byte safety caps,
+# not production sizing or token claims.
 MIN_RESPONSE_BYTES = 4096
 DEFAULT_RESPONSE_BYTES = 65536
 MAX_RESPONSE_BYTES = 262144
 
 
 def result(data: ToolData | ToolResult, *, error: bool = False) -> CallToolResult:
-    # Compact JSON reduces duplication overhead. The budget counts the escaped
-    # text copy AND structuredContent, wrappers and isError, but not transport
-    # JSON-RPC id/envelope, HTTP headers or client-specific tokenizer overhead.
-    return CallToolResult(content=[TextContent(type="text", text=json.dumps(
-        data, ensure_ascii=False, separators=(",", ":")))],
-        structuredContent=cast(ToolData, data), isError=error)
+    # Count one serialized structuredContent copy plus the CallToolResult fields
+    # content=[] and isError; exclude the JSON-RPC envelope and HTTP headers.
+    # This is compact UTF-8 wire JSON, not tokens or model-visible text: pi
+    # pretty-prints structuredContent with 2-space indentation, which is larger.
+    # MCP 1.26's lowlevel Server passes explicit CallToolResult through unchanged,
+    # before dict-to-text mirroring and output-schema validation.
+    return CallToolResult(content=[], structuredContent=cast(ToolData, data), isError=error)
 
 
 def wire_bytes(data: ToolData | ToolResult) -> int:
-    return len(result(data).model_dump_json(exclude_none=True).encode("utf-8"))
+    # Match the server's top-level error flag as well as its serialization.
+    return len(result(data, error='error' in data).model_dump_json(
+        by_alias=True, exclude_none=True).encode("utf-8"))
 
 
 def apply_budget(data: ToolData, limit: int) -> ToolData:

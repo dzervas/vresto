@@ -63,14 +63,19 @@ else:
 # mismatch on pre/post-optimization code. Timing/cancellation tests retain their
 # independent watchdogs and explicit observer overrides.
 @asynccontextmanager
-async def client(url, token="client-secret", calls=None, timeout=AcquisitionOptions.deadline + 5):
+async def client(url, token="client-secret", calls=None, timeout=AcquisitionOptions.deadline + 5, wire=None):
     async def observe(request):
         if calls is not None and request.method == "POST":
             data = json.loads(request.content)
             if data.get("method") == "tools/call":
                 calls.append(data["id"])
+    async def observe_response(response):
+        if wire is not None and response.headers.get('content-type', '').startswith('application/json'):
+            wire.append(await response.aread())
+    # Even a no-op response hook changes cancellation timing; observe only on request.
     async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"},
-                                 event_hooks={"request": [observe]}, timeout=timeout) as http:
+                                 event_hooks={"request": [observe],
+                                              "response": [observe_response] if wire is not None else []}, timeout=timeout) as http:
         async with streamable_http_client(url, http_client=http) as (r, w, _):
             async with ClientSession(r, w) as session:
                 await session.initialize()
@@ -78,7 +83,9 @@ async def client(url, token="client-secret", calls=None, timeout=AcquisitionOpti
 
 
 def body(result):
-    return json.loads(result.content[0].text)
+    assert result.content == []
+    assert isinstance(result.structuredContent, dict)
+    return result.structuredContent
 
 
 async def test_discovery_preserves_provider_order_and_labels_snippets(tmp_path):
@@ -349,3 +356,35 @@ async def test_search_rejects_credentials_before_any_cli_or_upstream_work(tmp_pa
         assert body(result)['error']['code'] == 'invalid_input'
         assert not marker.exists()  # External executable never receives client input.
         assert token not in result.model_dump_json() + caplog.text
+
+
+@pytest.mark.parametrize('outcome', ['success', 'invalid_input', 'discovery_failed'])
+async def test_structured_only_result_is_unchanged_on_http_wire(tmp_path, outcome):
+    from kagi_crawler.budget import wire_bytes
+
+    snippet = '漢字 "quoted"\nqualification: do not enable legacy mode.'
+    source = cli_response(json.dumps({'data': [{'url': 'https://example.org/',
+        'title': 'Guide', 'snippet': snippet, 'rank': 1}]}))
+    if outcome == 'discovery_failed':
+        source = cli_response('upstream unavailable', failed=True)
+    arguments = {'query': '' if outcome == 'invalid_input' else 'docs', 'content_mode': 'discovery'}
+    wire = []
+    async with running(tmp_path, source=source) as (url, _), client(url, wire=wire) as session:
+        assert all(tool.outputSchema is None for tool in (await session.list_tools()).tools)
+        result = await session.call_tool('search', arguments)
+        # Inspect actual HTTP response bytes, not just the SDK-decoded object.
+        raw = next(json.loads(packet)['result'] for packet in reversed(wire)
+                   if 'result' in json.loads(packet))
+        assert raw == result.model_dump(exclude_none=True, by_alias=True)
+        assert set(raw) == {'content', 'structuredContent', 'isError'}
+        assert raw['content'] == []
+        assert raw['isError'] is (outcome != 'success')
+        # SDK transport uses the same compact UTF-8 serialization as the gate,
+        # including isError=true (one byte shorter than false) for failures.
+        encoded = json.dumps(raw, ensure_ascii=False, separators=(',', ':')).encode()
+        assert encoded in wire[-1]
+        assert len(encoded) == wire_bytes(raw['structuredContent'])
+        if outcome == 'success':
+            assert raw['structuredContent']['results'][0]['provider_snippet'] == snippet
+        else:
+            assert raw['structuredContent']['error']['code'] == outcome

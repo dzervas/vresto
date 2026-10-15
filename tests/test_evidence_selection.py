@@ -159,9 +159,10 @@ def test_oversized_top_candidate_is_skipped_for_fitting_alternative(monkeypatch)
 @pytest.mark.parametrize('key', ['sources', 'results'])
 @pytest.mark.parametrize('reverse', [False, True])
 def test_shared_budget_first_pick_leaves_room_for_other_sources(monkeypatch, key, reverse):
-    large = 'alpha beta gamma\n\n' + 'background ' * 170 + '\n\n'
+    # Keep both large quotes jointly over budget with one structured copy.
+    large = 'alpha beta gamma\n\n' + 'background ' * 500 + '\n\n'
     compact = 'alpha compact.\n'
-    answer = 'beta answer.\n\n' + 'explanation ' * 100 + '\n'
+    answer = 'beta answer.\n\n' + 'explanation ' * 300 + '\n'
     documents = [source(large + compact, 'https://example.test/a'),
                  source(answer, 'https://example.test/b')]
     def passages(document):
@@ -351,7 +352,7 @@ def test_tight_budget_suppression_metadata_cannot_evict_admitted_quote(monkeypat
     admitted['sources'][0].pop('redundant_highlight_count')
     admitted['sources'][0]['selection_omitted_highlight_count'] = 2
     admitted['selection']['partial_coverage'] = True
-    padding = (4096 - wire_bytes(apply_budget(admitted, 4096))) // 2
+    padding = 4096 - wire_bytes(apply_budget(admitted, 4096))
     assert padding > 0
     original['fixture_metadata'] = admitted['fixture_metadata'] = 'x' * padding
     assert 4094 <= wire_bytes(apply_budget(admitted, 4096)) <= 4096

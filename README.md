@@ -250,8 +250,15 @@ not downloaded resource traffic. Every page uses queue, document/parser limits
 and the shared deadline. No immediate acquisition retries: rate-limited
 origins back off for five seconds; later requests may try again.
 
-The byte budget includes the text and structuredContent copies plus substantive
-metadata, **not tokens**, HTTP headers or the JSON-RPC envelope. Highlights retain
+Tool responses are structured-only MCP `CallToolResult` objects:
+`content=[]`, `structuredContent=<data>`, and `isError` (true for tool errors).
+There is no text copy or pointer; clients must read `structuredContent`. Pi shows
+its JSON to the model when `content` is empty, pretty-printed with 2-space indentation.
+
+The byte budget counts compact serialized UTF-8 `structuredContent` (including
+substantive metadata) plus the `content=[]` and `isError` result fields,
+**not tokens**, HTTP headers or the JSON-RPC envelope. Pi's pretty-printed
+model-visible text is larger than this wire representation. Highlights retain
 whole qualified passages; full text can be explicitly truncated. Output bounds
 were fixture-measured beside `budget.py`; queue/time/byte limits are conservative
 containment, not inferred Exa parity. Cache limits are operator allowances,
