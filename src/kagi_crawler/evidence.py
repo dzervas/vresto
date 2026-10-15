@@ -396,7 +396,7 @@ def _redundant(candidate, selected):
 
 def select_highlights(data: ToolData, query: str, limit: int | None = None) -> ToolData:
     from copy import deepcopy
-    from .budget import apply_budget
+    from .budget import apply_budget, wire_bytes
 
     # Acquisition/cache dictionaries and canonical text are never changed by
     # selection, including unsuccessful admission probes.
@@ -530,8 +530,27 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
                 source['highlights'].append(dict(reference, text=canonical['content'][start:end]))
                 duplicates[identity] = identifier
 
+    # In shared-budget search results, a large first pick can crowd out every
+    # quote from another source even when a compact alternative would fit both.
+    # Rank this diversity pass by utility per source footprint, including MCP's
+    # two copies of attribution and retained metadata, not just quote length.
+    # If even the canonical texts fit, there is no pressure to trade relevance
+    # for compact first picks (including single-source fetch vs composed search).
+    if limit is not None and len(totals) > 1:
+        full = {**data, key: [dict(source, content=text) for source, text in
+                             zip(sources, data_original_texts)]}
+        if wire_bytes(full) > limit:
+            empty_size = wire_bytes({key: []})
+            for passage in ranked:
+                trial = {key: [dict(source) for source in sources]}
+                render_selection(trial, [passage])
+                footprint = {key: [trial[key][passage['index']]]}
+                passage['first_pick_bytes'] = wire_bytes(footprint) - empty_size
+
     # First admit one useful fitting candidate from each source, then extras.
     # A nonfitting best candidate never prevents trying its smaller alternatives.
+    # Density orders first picks only; the exact fits() gate remains authoritative
+    # and later evidence still competes on relevance, not brevity.
     for first_pass in (True, False):
         cap = 1 if first_pass else 3
         pending = [p for p in ranked if p not in admitted and
@@ -548,7 +567,8 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
                 # Penalize coverage too: sidebars repeat many distinct terms.
                 pending = sorted(pending, key=lambda p: (
                     -((p['score'] / maximum + sum(inverse[t] for t in sorted(p['terms'] - covered)
-                        if t not in _COVERAGE_STOPWORDS)) * p['link_density_penalty']),
+                        if t not in _COVERAGE_STOPWORDS)) * p['link_density_penalty'] /
+                        (p.get('first_pick_bytes', 1) if first_pass else 1)),
                     p['index'], p['start'], p['end']), reverse=True)
                 rerank = False
             candidate = pending.pop()

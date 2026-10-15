@@ -156,6 +156,51 @@ def test_oversized_top_candidate_is_skipped_for_fitting_alternative(monkeypatch)
     assert data['selection']['partial_coverage']
 
 
+@pytest.mark.parametrize('key', ['sources', 'results'])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_shared_budget_first_pick_leaves_room_for_other_sources(monkeypatch, key, reverse):
+    large = 'alpha beta gamma\n\n' + 'background ' * 170 + '\n\n'
+    compact = 'alpha compact.\n'
+    answer = 'beta answer.\n\n' + 'explanation ' * 100 + '\n'
+    documents = [source(large + compact, 'https://example.test/a'),
+                 source(answer, 'https://example.test/b')]
+    def passages(document):
+        if document['resolved_url'].endswith('/a'):
+            return iter([(0, len(large), 'Large'),
+                         (len(large), len(large + compact), 'Compact')])
+        return iter([(0, len(answer), 'Answer')])
+    monkeypatch.setattr(evidence, 'document_passages', passages)
+    original = {key: documents[::-1] if reverse else documents}
+    before = deepcopy(original)
+    selected = evidence.select_highlights(original, 'alpha beta gamma', 8192)
+    quotes = {s['resolved_url']: s['highlights'] for s in selected[key]}
+    assert [h['section'] for h in quotes['https://example.test/a']] == ['Compact']
+    assert [h['text'] for h in quotes['https://example.test/b']] == [answer]
+    assert original == before
+    bounded = apply_budget(selected, 8192)
+    assert wire_bytes(bounded) <= 8192
+    assert bounded['budget']['omitted_source_indices'] == []
+    assert bounded['selection']['partial_coverage']
+    assert sum(s.get('selection_omitted_highlight_count', 0) for s in bounded[key]) == 1
+    # Without a shared cap, ordinary relevance (and the large quote) survives.
+    roomy = evidence.select_highlights(original, 'alpha beta gamma')
+    assert any(h['section'] == 'Large' for s in roomy[key] for h in s['highlights'])
+    assert evidence.select_highlights(original, 'alpha beta gamma', 65536) == roomy
+
+
+def test_first_pick_density_counts_retained_attribution_not_just_quote_bytes(monkeypatch):
+    quote = 'alpha is available.\n'
+    text = quote + 'Unrelated background. ' * 500
+    slices(monkeypatch, [(0, len(quote), 'Reference')])
+    documents = [source(text, 'https://example.test/' + 'long-path/' * 100),
+                 source(text, 'https://example.test/short')]
+    selected = evidence.select_highlights({'sources': documents}, 'alpha', 16384)
+    owner = selected['sources'][1]['highlights'][0]
+    assert owner['text'] == quote
+    assert selected['sources'][0]['duplicate_evidence'][0]['duplicate_of'] == owner['evidence_id']
+    assert wire_bytes(apply_budget(selected, 16384)) <= 16384
+
+
 def test_budget_fallback_preserves_metadata_duplicates_and_exact_ids(monkeypatch):
     text = 'api api api ' + '界\\\" ' * 2000 + '\n'
     boundary = len(text)
@@ -171,8 +216,10 @@ def test_budget_fallback_preserves_metadata_duplicates_and_exact_ids(monkeypatch
     assert bounded['budget']['omitted_source_indices'] == []
     assert wire_bytes(bounded) <= 6144
     assert all(s['title'] == original['sources'][i]['title'] for i, s in enumerate(data['sources']))
-    quote = data['sources'][0]['highlights'][0]
-    assert data['sources'][1]['duplicate_evidence'][0]['duplicate_of'] == quote['evidence_id']
+    owner = next(s for s in data['sources'] if s['highlights'])
+    duplicate = next(s for s in data['sources'] if s.get('duplicate_evidence'))
+    quote = owner['highlights'][0]
+    assert duplicate['duplicate_evidence'][0]['duplicate_of'] == quote['evidence_id']
     assert quote['text'] == text[quote['start']:quote['end']]
     assert 'Warning' in quote['text'] and 'uncancel' in quote['text']
     class Cache:
