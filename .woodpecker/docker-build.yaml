@@ -12,6 +12,9 @@ when:
         - pyproject.toml
         - src
 
+matrix:
+  arch: [amd64, arm64]
+
 labels:
   platform: linux/${arch}
 
