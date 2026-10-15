@@ -7,7 +7,7 @@ import pytest
 
 from kagi_crawler.acquisition import Acquisition
 from kagi_crawler.cache import CachedAcquisition, DocumentCache
-from kagi_crawler.contract import SearchInput
+from kagi_crawler.contract import SearchRequest
 from kagi_crawler.discovery import Discovery
 from kagi_crawler.retrieval import Retrieval
 from kagi_crawler.server import Settings
@@ -15,40 +15,41 @@ from test_http import cli_response
 
 
 @asynccontextmanager
-async def retrieval(tmp_path, *, source):
+async def retrieval(tmp_path, *, source, acquisition_options=None, response_budget_bytes=65536,
+                    **cache_settings):
     fixture = tmp_path / 'cli.py'
     fixture.write_text(source)
     settings = Settings(access_token='client-secret', session_token='subscriber-secret',
-                        command=(sys.executable, str(fixture)), cache_directory=tmp_path / 'cache')
+                        command=(sys.executable, str(fixture)), cache_directory=tmp_path / 'cache', **cache_settings)
     discovery = Discovery(settings)
-    acquisition = Acquisition()
+    acquisition = Acquisition(acquisition_options)
     cache = DocumentCache(settings.cache_directory, settings.cache_cap_bytes,
                           settings.cache_retention_seconds)
     secrets = (settings.access_token, settings.session_token)
     try:
-        yield Retrieval(discovery, acquisition, CachedAcquisition(acquisition, cache, secrets), cache, secrets)
+        yield Retrieval(discovery, acquisition, CachedAcquisition(acquisition, cache, secrets), cache, secrets, response_budget_bytes)
     finally:
         await discovery.processes.close()
         await acquisition.close()
 
 
 async def search(service, arguments):
-    return await service.search(SearchInput.model_validate(arguments))
+    return await service.search(SearchRequest.model_validate(arguments))
 
 
-async def test_subscriber_controls_are_forwarded_and_update_dates_disclosed(tmp_path):
+async def test_query_is_a_literal_argument_and_update_dates_disclosed(tmp_path):
     source = '''import json, sys
 if "--version" in sys.argv:
     print("kagi 0.22.0")
 else:
-    expected = ["--error-format", "json", "search", "--format", "json", "--limit", "3", "--region", "gb", "--lens", "2", "--from-date", "2026-01-01", "--to-date", "2026-02-01", "--order", "recency", "--verbatim", "--no-personalized", "--", "--query ; $(oops)"]
-    assert sys.argv[1:] == expected
-    print(json.dumps({"data": [{"t": 0, "rank": 4, "url": "https://example.org/docs", "title": "Docs", "snippet": "Text"}]}))
+    assert sys.argv[1:] == ["--error-format", "json", "search", "--format", "json", "--limit", "3", "--", "--query ; $(oops)"]
+    print(json.dumps({"data": [{"rank": 4, "url": "https://example.org/docs", "title": "Docs", "snippet": "Text"}]}))
 '''
+    from kagi_crawler.contract import SearchInput
+
     async with retrieval(tmp_path, source=source) as service:
-        result = await search(service, {"query": "--query ; $(oops)", "num_results": 3,
-            "region": "gb", "lens": 2, "from_date": "2026-01-01", "to_date": "2026-02-01",
-            "order": "recency", "verbatim": True, "personalized": False, "content_mode": "discovery"})
+        result = await service.search(SearchInput(query="--query ; $(oops)", num_results=3,
+                                                 content_mode="discovery"))
         assert "error" not in result
         assert result["results"][0]["provider_rank"] == 4
         assert result["date_semantics"] == "provider_update_date_not_verified_publication"
@@ -120,23 +121,6 @@ else:
         assert result["results"][0]["title"] == "Isolated"
 
 
-@pytest.mark.parametrize("window,order", [("day", "default"), ("week", "website"),
-                                          ("month", "trackers"), ("year", "recency")])
-async def test_relative_time_order_and_personalization_controls(tmp_path, window, order):
-    source = f'''import sys
-if "--version" in sys.argv:
-    print("kagi 0.22.0")
-else:
-    assert sys.argv[1:] == ["--error-format", "json", "search", "--format", "json", "--limit", "10", "--time", {window!r}, "--order", {order!r}, "--personalized", "--", "x"]
-    print('{{"data": []}}')
-'''
-    async with retrieval(tmp_path, source=source) as service:
-        result = await search(service, {"query": "x", "time": window,
-                                                    "order": order, "personalized": True})
-        assert "error" not in result
-        assert result["results"] == []
-
-
 @pytest.mark.parametrize('tool', ['search', 'fetch'])
 @pytest.mark.parametrize('mode', ['full_text', 'highlights'])
 async def test_acquired_workflow_screens_before_selection_without_mutating_canonical(tmp_path, monkeypatch, tool, mode):
@@ -145,7 +129,7 @@ async def test_acquired_workflow_screens_before_selection_without_mutating_canon
     from unittest.mock import AsyncMock
 
     from kagi_crawler.budget import wire_bytes
-    from kagi_crawler.contract import FetchInput
+    from kagi_crawler.contract import FetchRequest
 
     text = '# Retries\n\nRetries require version 2. Never retry version 1.\n'
     source = {'requested_url': 'https://example.org/docs', 'resolved_url': 'https://example.org/docs',
@@ -165,10 +149,10 @@ async def test_acquired_workflow_screens_before_selection_without_mutating_canon
         arguments = {'query': 'retries', 'content_mode': mode, 'response_budget_bytes': 4096}
         if tool == 'fetch':
             arguments['urls'] = [s['requested_url'] for s in canonical['sources']]
-            data = await service.fetch(FetchInput.model_validate(arguments))
+            data = await service.fetch(FetchRequest.model_validate(arguments))
             sources = data['sources']
         else:
-            data = await service.search(SearchInput.model_validate(arguments))
+            data = await service.search(SearchRequest.model_validate(arguments))
             sources = data['results']
         assert fetch.await_count == 1
         assert sources[1] == {'error': {'code': 'fetch_failed'}}
@@ -196,12 +180,12 @@ async def test_normalized_query_terms_are_screened_after_highlight_selection(tmp
 async def test_evidence_validation_returns_final_error_without_http(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
 
-    from kagi_crawler.contract import FetchInput
+    from kagi_crawler.contract import FetchRequest
 
     async with retrieval(tmp_path, source=cli_response('{"data": []}')) as service:
         fetch = AsyncMock()
         monkeypatch.setattr(service.cached_acquisition, 'fetch_many', fetch)
-        data = await service.fetch(FetchInput(evidence_ids=['malformed']))
+        data = await service.fetch(FetchRequest(evidence_ids=['malformed']))
         assert data == {'error': {'code': 'invalid_input', 'message':
             'Invalid tool input or unsupported control; see tool input schema.'}}
         fetch.assert_not_awaited()

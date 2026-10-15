@@ -4,7 +4,7 @@
 
 Paths below are relative to `src/kagi_crawler/`.
 
-- `retrieval.py`: search/fetch workflow, evidence selection, redaction and final budget; `Retrieval.search(SearchInput)` / `.fetch(FetchInput)` return tool data.
+- `retrieval.py`: search/fetch workflow, evidence selection, redaction and final budget; `Retrieval.search(SearchInput)` / `.fetch(FetchInput)` / `.expand(ExpandInput)` / `.crawl(CrawlInput)` return tool data; internal `SearchRequest`/`FetchRequest` retain operational controls.
 - `acquisition.py`: browser lifecycle, bounded origin-aware concurrent queue and shared deadline; `Acquisition.fetch_many(urls, scope=...)`, request/warmup/close lifecycle.
 - `acquisition_policy.py`: acquisition limits, literal URL screening and classified failures; `AcquisitionOptions`, `DestinationPolicy.url`, `FetchError` (not network isolation).
 - `browser.py`: native navigation, challenge continuation, render settling and serialization; `BrowserAdapter` exposes start/acquire/close/is_connected, returning `BrowserResult`.
@@ -21,7 +21,7 @@ Paths below are relative to `src/kagi_crawler/`.
 - `pdf.py` / `pdf_worker.py`: bounded PDF parsing in an isolated worker; `parse_pdf` returns text/title/page metadata; worker takes a service-owned file path and emits bounded JSON on stdout.
 - `types.py`: shared result/coverage TypedDicts and `ErrorCode`; public wire shapes and private acquisition metadata are explicit.
 - `server.py`: settings, MCP/HTTP auth, validation, logging and lifespan; `create_app(Settings)` / CLI `main`; authenticated `GET /health` reports coarse state/counters without starting Chrome.
-- `contract.py`: validated public search/fetch inputs; `SearchInput`, `FetchInput` and their schema bounds.
+- `contract.py`: validated public search/fetch/expand/crawl inputs and internal request controls; keep advanced freshness/traversal tests at the Retrieval/cache seam, not in MCP schemas.
 - `safety.py`: credential detection/redaction helpers used at output and cache boundaries.
 - `native_observation.py`: pending native fetch/XHR tracking without interception; `NativeLoadObservation(page)` / `.close()` owns page listeners.
 - `headful.py`: private Xvfb lifecycle and service launcher; CLI `main` owns display cleanup.

@@ -7,6 +7,7 @@ import pytest
 
 @pytest.mark.parametrize('repetitions', [1, 100])
 async def test_initial_pdf_highlight_preserves_both_neighbor_qualifications_atomically(tmp_path, repetitions):
+    from retrieval_helpers import running, client
     async def handler(request):
         return web.Response(content_type='application/pdf', body=pdf_bytes([
             'Experimental only. Never use this interface in production. ' * repetitions,
@@ -23,7 +24,7 @@ async def test_initial_pdf_highlight_preserves_both_neighbor_qualifications_atom
         assert quote['text'] == full['content'][quote['start']:quote['end']]
         assert quote['start'] == full['pdf']['references'][0]['start']
         assert quote['end'] == full['pdf']['references'][2]['end']
-        expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+        expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
         assert expanded['highlights'] == [quote]
         assert expanded['context'] == []
         budget = 8192 if repetitions == 1 else 4096
@@ -38,6 +39,7 @@ async def test_initial_pdf_highlight_preserves_both_neighbor_qualifications_atom
 
 
 async def test_pdf_wire_expansion_preserves_canonical_quote_pages_context_and_budget(tmp_path):
+    from retrieval_helpers import running, client
     hits = []
     async def handler(request):
         hits.append(request.path)
@@ -52,7 +54,7 @@ async def test_pdf_wire_expansion_preserves_canonical_quote_pages_context_and_bu
         selected = body(await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe'}))['sources'][0]
         quote = selected['highlights'][0]
         assert quote['pages'] == [2, 3, 4]
-        expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+        expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
         assert expanded['content_version'] == full['content_version']
         assert expanded['cache_state'] == 'retained_version'
         assert expanded['highlights'] == [quote]
@@ -60,7 +62,7 @@ async def test_pdf_wire_expansion_preserves_canonical_quote_pages_context_and_bu
         assert [context['pages'] for context in expanded['context']] == [[1], [5]]
         for context in expanded['context']:
             assert context['text'] == full['content'][context['start']:context['end']]
-        bounded = await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']], 'response_budget_bytes': 4096})
+        bounded = await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']], 'response_budget_bytes': 4096})
         assert len(bounded.model_dump_json(exclude_none=True).encode()) <= 4096
         data = body(bounded)
         retained = data['sources'][0]

@@ -7,6 +7,7 @@ from dataclasses import replace
 
 
 async def test_related_pages_are_opt_in_scoped_and_cached(tmp_path):
+    from retrieval_helpers import running, client
     seen = []
     async def handler(request):
         seen.append(request.path)
@@ -28,6 +29,7 @@ async def test_related_pages_are_opt_in_scoped_and_cached(tmp_path):
 
 
 async def test_exact_origin_escape_is_excluded_after_native_redirect_contact(tmp_path):
+    from retrieval_helpers import running, client
     forbidden = []
     async def sink(request):
         forbidden.append(request.path)
@@ -52,6 +54,7 @@ async def test_exact_origin_escape_is_excluded_after_native_redirect_contact(tmp
 
 @pytest.mark.parametrize('redirect', ['/outside', '/docs-other', '/docs/%2e%2e/outside'])
 async def test_traversal_excludes_out_of_scope_redirect_after_contact(tmp_path, redirect):
+    from retrieval_helpers import running, client
     seen = []
     async def handler(request):
         seen.append(request.path)
@@ -69,6 +72,7 @@ async def test_traversal_excludes_out_of_scope_redirect_after_contact(tmp_path, 
 
 
 async def test_failed_pages_count_toward_attempt_limit_and_share_highlight_budget(tmp_path):
+    from retrieval_helpers import running, client
     seen = []
     async def handler(request):
         seen.append(request.path)
@@ -87,6 +91,7 @@ async def test_failed_pages_count_toward_attempt_limit_and_share_highlight_budge
 
 
 async def test_allowed_redirect_alias_is_not_reacquired_as_a_cycle(tmp_path):
+    from retrieval_helpers import running, client
     seen = []
     async def handler(request):
         seen.append(request.path)
@@ -102,6 +107,7 @@ async def test_allowed_redirect_alias_is_not_reacquired_as_a_cycle(tmp_path):
 
 
 async def test_traversal_document_scope_does_not_intercept_subrequests(tmp_path):
+    from retrieval_helpers import running, client
     forbidden = []
     async def sink(request):
         forbidden.append(request.path)
@@ -118,6 +124,7 @@ async def test_traversal_document_scope_does_not_intercept_subrequests(tmp_path)
 
 
 async def test_zero_depth_and_cached_redirect_never_widen_path_scope(tmp_path):
+    from retrieval_helpers import running, client
     seen = []
     async def handler(request):
         seen.append(request.path)
@@ -138,6 +145,7 @@ async def test_zero_depth_and_cached_redirect_never_widen_path_scope(tmp_path):
 
 
 async def test_frontier_and_total_bytes_are_disclosed(tmp_path):
+    from retrieval_helpers import running, client
     seen = []
     async def handler(request):
         seen.append(request.path)
@@ -156,6 +164,7 @@ async def test_frontier_and_total_bytes_are_disclosed(tmp_path):
 
 
 async def test_deadline_keeps_partial_sources_and_stops_next_page(tmp_path):
+    from retrieval_helpers import running, client
     seen, release = [], asyncio.Event()
     async def handler(request):
         seen.append(request.path)
@@ -179,18 +188,19 @@ async def test_deadline_keeps_partial_sources_and_stops_next_page(tmp_path):
 
 
 async def test_traversal_preserves_meaningful_query_and_blank_parameters(tmp_path):
+    from retrieval_helpers import running, client
     seen = []
     async def handler(request):
         seen.append(request.raw_path)
         return web.Response(content_type='text/html', text='<h1>Guide</h1><p>Public technical documentation with version constraints and useful guidance.</p><a href="/docs/page?ref=v2&amp;empty=">Version</a>')
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
-        data = body(await session.call_tool('fetch', {'urls': [base + '/docs'],
-            'traversal': {'origin': base, 'path_prefix': '/docs'}}))
+        data = body(await session.call_tool('crawl', {'url': base + '/docs', 'path_prefix': '/docs'}))
         assert seen == ['/docs', '/docs/page?ref=v2&empty=']
         assert data['sources'][1]['requested_url'].endswith('?ref=v2&empty=')
 
 
 async def test_traversal_queue_pressure_uses_existing_shared_permit(tmp_path):
+    from retrieval_helpers import running, client
     entered, release = asyncio.Event(), asyncio.Event()
     async def handler(request):
         entered.set()
@@ -230,8 +240,7 @@ async def test_cancelled_traversal_releases_tab_and_retains_cached_seed(tmp_path
     before, calls = browser_pids(), []
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, calls=calls) as session:
         await session.call_tool('fetch', {'urls': [base + '/docs']})
-        task = asyncio.create_task(session.call_tool('fetch', {'urls': [base + '/docs'],
-            'traversal': {'origin': base, 'path_prefix': '/docs'}}))
+        task = asyncio.create_task(session.call_tool('crawl', {'url': base + '/docs', 'path_prefix': '/docs'}))
         await asyncio.wait_for(entered.wait(), 5)
         await session.send_notification(types.ClientNotification(types.CancelledNotification(
             method='notifications/cancelled', params=types.CancelledNotificationParams(requestId=calls[-1]))))
@@ -241,7 +250,7 @@ async def test_cancelled_traversal_releases_tab_and_retains_cached_seed(tmp_path
             assert 'cancel' in str(exc).lower()
         await asyncio.wait_for(disconnected.wait(), 5)
         assert len(browser_pids() - before) == 1
-        cached = body(await session.call_tool('fetch', {'urls': [base + '/docs'], 'freshness': 'cache_only'}))
+        cached = body(await session.call_tool('fetch', {'urls': [base + '/docs'], 'freshness': 'ordinary'}))
         assert cached['sources'][0]['cache_state'] == 'hit'
     assert browser_pids() == before
 
@@ -259,10 +268,10 @@ async def test_evidence_expansion_rejects_traversal_before_visiting_pages(tmp_pa
             {'origin': base, 'path_prefix': '/docs'} if traversal else None}
         if include_urls:
             args['urls'] = [base + '/docs/not-contacted']
-        result = await session.call_tool('fetch', args)
+        result = await session.call_tool('expand', args)
         assert result.isError
         assert body(result)['error']['code'] == 'invalid_input'
-        expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))
+        expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))
         assert expanded['content_mode'] == 'evidence_expansion'
         assert expanded['sources'][0]['highlights'] == [quote]
         assert 'link_targets' not in expanded['sources'][0]
@@ -270,6 +279,7 @@ async def test_evidence_expansion_rejects_traversal_before_visiting_pages(tmp_pa
 
 
 async def test_traversed_pdf_keeps_page_references_and_expands_same_version(tmp_path):
+    from retrieval_helpers import running, client
     from test_pdf import pdf_bytes
     seen = []
     async def handler(request):
@@ -288,7 +298,7 @@ async def test_traversed_pdf_keeps_page_references_and_expands_same_version(tmp_
         quote = source['highlights'][0]
         assert quote['pages'] == [1, 2]
         assert 'legacy mode is not supported.' in quote['text']
-        expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']], 'response_budget_bytes': 4096}))
+        expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']], 'response_budget_bytes': 4096}))
         assert expanded['sources'][0]['highlights'] == [quote]
         assert expanded['sources'][0]['pdf'] == source['pdf']
         assert expanded['sources'][0]['content_version'] == source['content_version']
@@ -304,11 +314,9 @@ async def test_traversed_pdf_keeps_page_references_and_expands_same_version(tmp_
     {'origin': 'https://example.org/path', 'path_prefix': '/docs'},
     {'origin': 'https://example.org', 'path_prefix': '//docs'},
     {'origin': 'https://example.org', 'path_prefix': '/docs', 'max_depth': 4}])
-async def test_traversal_rejects_invalid_bounds_and_requires_explicit_scope(tmp_path, traversal):
-    async with running(tmp_path) as (url, _), client(url) as session:
-        result = await session.call_tool('fetch', {'urls': ['https://example.org/docs'], 'traversal': traversal})
-        assert result.isError
-        assert body(result)['error']['code'] == 'invalid_input'
+def test_internal_traversal_rejects_invalid_bounds_and_requires_explicit_scope(traversal):
+    from pydantic import ValidationError
+    from kagi_crawler.contract import FetchRequest
 
-
-
+    with pytest.raises(ValidationError):
+        FetchRequest(urls=['https://example.org/docs'], traversal=traversal)

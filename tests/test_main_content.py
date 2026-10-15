@@ -20,8 +20,8 @@ async def test_documentation_budget_spent_on_technical_content_not_navigation(tm
         <footer><nav><a href="/privacy">Privacy menu</a><a href="/about">About menu</a></nav>
         <p id="note">1. Do not use connect_safe with unsupported transports.</p>
         <p>Copyright Example Authors. Licensed under Apache-2.0.</p></footer>''')
-    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
-        result = await session.call_tool('fetch', {'urls': [base], 'response_budget_bytes': 4096})
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options, response_budget_bytes=4096) as (url, _), client(url) as session:
+        result = await session.call_tool('fetch', {'urls': [base]})
         assert not result.isError, body(result)
         source = body(result)['sources'][0]
         assert 'error' not in source, source
@@ -51,8 +51,8 @@ async def test_discussion_preserves_answers_timeline_and_removes_repeated_contro
         return web.Response(content_type='text/html', text=f'''<nav><a href="/issues">Repository navigation</a></nav>
             <main>{controls}{content}{controls}</main>
             <footer role="navigation"><a href="/terms">Footer navigation</a><a href="/help">Help menu</a></footer>''')
-    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
-        source = body(await session.call_tool('fetch', {'urls': [base], 'response_budget_bytes': 4096}))['sources'][0]
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options, response_budget_bytes=4096) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
         content = source['content']
         for clutter in ['Repository navigation', 'Footer navigation', 'Metadata controls', 'Copy link', 'Subscribe']:
             assert clutter not in content
@@ -102,7 +102,7 @@ async def test_search_fetch_share_canonical_offsets_and_old_ids_expand_original_
             old_quote = old_selected['highlights'][0]
             assert 'Legacy navigation control' in original['content']
             revision = 'semantic'
-            current = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'refresh'}))['sources'][0]
+            current = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
             assert 'Legacy navigation control' not in current['content']
             assert current['content_version'] != original['content_version']
             fetched = body(await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe'}))['sources'][0]
@@ -112,13 +112,13 @@ async def test_search_fetch_share_canonical_offsets_and_old_ids_expand_original_
             for quote in fetched['highlights']:
                 assert current['content'][quote['start']:quote['end']] == quote['text']
                 assert 'requires version 2.4 only' in quote['text'] and 'Do not use retries in 2.3' in quote['text']
-            expanded = body(await session.call_tool('fetch', {'evidence_ids': [old_quote['evidence_id']]}))['sources'][0]
+            expanded = body(await session.call_tool('expand', {'evidence_ids': [old_quote['evidence_id']]}))['sources'][0]
             assert expanded['content_version'] == original['content_version']
             assert expanded['highlights'] == [old_quote]
             assert 'Legacy navigation control' in str(expanded['context'])
             assert visits == ['/', '/']
         async with running(tmp_path, acquisition_options=options, source=cli) as (url, _), client(url) as session:
-            retained = body(await session.call_tool('fetch', {'evidence_ids': [old_quote['evidence_id']]}))['sources'][0]
+            retained = body(await session.call_tool('expand', {'evidence_ids': [old_quote['evidence_id']]}))['sources'][0]
             assert retained['highlights'] == [old_quote]
             assert retained['content_version'] == original['content_version']
             assert 'Legacy navigation control' in str(retained['context'])

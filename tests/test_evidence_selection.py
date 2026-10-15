@@ -292,10 +292,11 @@ def test_no_fuzzy_deduplication_across_documents():
 
 
 async def test_public_fetch_and_composed_search_fit_equal_wire_budgets(tmp_path):
+    from retrieval_helpers import running, client
     import json
     from aiohttp import web
     from test_fetch import site
-    from test_http import running, client, body, cli_response
+    from test_http import body, cli_response
 
     async def handler(request):
         return web.Response(content_type='text/html', text=(
@@ -336,7 +337,7 @@ async def test_public_fetch_and_composed_search_fit_equal_wire_budgets(tmp_path)
                     assert all(h['section'] != 'Ballast' for h in quotes)
                     for quote in quotes:
                         assert quote['text'] == canonical[index]['content'][quote['start']:quote['end']]
-                        expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))
+                        expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))
                         assert expanded['sources'][0]['highlights'][0]['text'] == quote['text']
 
 

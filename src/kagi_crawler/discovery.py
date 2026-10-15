@@ -9,7 +9,7 @@ import anyio
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
-from .contract import SearchInput
+from .contract import SearchRequest
 from .types import ErrorCode, ToolResult
 
 if TYPE_CHECKING:
@@ -57,7 +57,7 @@ class Discovery:
 
         self.processes = Processes(settings)
 
-    async def search(self, request: SearchInput) -> ToolResult:
+    async def search(self, request: SearchRequest) -> ToolResult:
         try:
             with anyio.fail_after(self.settings.timeout):
                 async with self.processes.admission():
@@ -65,7 +65,7 @@ class Discovery:
         except TimeoutError:
             raise DiscoveryError('discovery_timeout') from None
 
-    async def _search(self, request: SearchInput) -> ToolResult:
+    async def _search(self, request: SearchRequest) -> ToolResult:
         args = ["--error-format", "json", "search", "--format", "json",
                 "--limit", str(request.num_results)]
         for name in ("region", "lens", "time", "from_date", "to_date", "order"):

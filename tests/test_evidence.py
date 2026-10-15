@@ -37,7 +37,7 @@ async def test_default_search_acquires_ten_and_returns_verbatim_qualified_eviden
                 assert 'content' not in source
                 assert 'error' not in source, source
                 assert source['highlights']
-                full = body(await session.call_tool('fetch', {'urls': [source['url']], 'freshness': 'cache_only'}))['sources'][0]
+                full = body(await session.call_tool('fetch', {'urls': [source['url']], 'freshness': 'ordinary'}))['sources'][0]
                 assert full['content_version'] == source['content_version']
                 assert hashlib.sha256(full['content'].encode()).hexdigest() == source['content_version']
                 highlight = source['highlights'][0]
@@ -78,13 +78,14 @@ async def test_query_selection_reuses_canonical_versions_and_discloses_absence(t
         assert full['content'][payload[2]:payload[3]] == first['highlights'][0]['text']
         assert hashlib.sha256(first['highlights'][0]['text'].encode()).hexdigest() == payload[4]
         version = '2.5'
-        changed = body(await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe', 'freshness': 'refresh'}))['sources'][0]
+        changed = body(await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe', 'freshness': 'fresh_only'}))['sources'][0]
         assert changed['content_version'] != first['content_version']
         assert changed['highlights'][0]['evidence_id'] != old_id
 
 
 @pytest.mark.parametrize('heading', ['v2.4', '2.4', '2.4.1-rc.2', 'v2026.10'])
 async def test_numeric_version_ancestry_survives_selection_ids_and_atomic_budget(tmp_path, heading):
+    from retrieval_helpers import running, client
     async def handler(request):
         return web.Response(content_type='text/html', text=f'''<h1>{heading}</h1>
         <p>Release reference for client behavior.</p>
@@ -100,7 +101,7 @@ async def test_numeric_version_ancestry_survives_selection_ids_and_atomic_budget
         assert 'Linux only' in quote['text'] and 'Never use' in quote['text']
         assert 'Do not disable validation.' in quote['text']
         assert quote['text'] == full['content'][quote['start']:quote['end']]
-        expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+        expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
         assert expanded['highlights'][0]['text'] == quote['text']
         small = await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe', 'response_budget_bytes': 4096})
         data = body(small)
@@ -125,6 +126,7 @@ async def test_parent_version_scope_is_not_detached_from_matching_child(tmp_path
 
 
 async def test_highlight_limits_are_explicit_and_quotes_are_atomic(tmp_path):
+    from retrieval_helpers import running, client
     async def handler(request):
         html = ''.join(f'<h2>option_safe {i}</h2><p>option_safe version 2.{i} only. Do not use version 1.</p>'
                        for i in range(6))
@@ -165,7 +167,7 @@ async def test_search_explicit_modes_and_twelve_pages_have_no_hidden_cap(tmp_pat
             result = body(await session.call_tool('search', {'query': 'option_safe', 'num_results': 12, 'content_mode': 'full_text'}))
             assert len(result['results']) == 12 and len(visits) == 12
             assert all('option_safe' in s.get('content', '') for s in result['results']), [s.get('error') for s in result['results']]
-            assert result['acquisition_limits']['request_deadline_seconds'] == 30
+            assert result['acquisition_limits']['request_deadline_seconds'] == 120
             assert result['acquisition_limits']['post_acquisition_document_bytes'] == 2 * 1024 * 1024
             assert result['acquisition_limits']['returned_page_limit'] == 20
 
@@ -187,6 +189,7 @@ async def test_exact_document_duplicates_keep_attribution_but_different_qualific
 
 
 async def test_encoded_credential_echo_never_becomes_highlights_or_cached_evidence(tmp_path, caplog):
+    from retrieval_helpers import running, client
     async def handler(request):
         return web.Response(content_type='text/html', text='<h1>connect_safe</h1><p>connect_safe reflected subscriber%2Dsecret.</p>')
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:

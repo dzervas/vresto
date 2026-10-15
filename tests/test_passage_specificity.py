@@ -24,6 +24,7 @@ def documentation():
 
 
 async def test_documentation_fetch_returns_compact_qualified_canonical_passages_at_64k(tmp_path):
+    from retrieval_helpers import running, client
     async def handler(request):
         return web.Response(content_type='text/html', text=documentation())
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
@@ -49,7 +50,7 @@ async def test_documentation_fetch_returns_compact_qualified_canonical_passages_
             assert len(highlight['text']) < 8000
             assert highlight['text'] == full['content'][highlight['start']:highlight['end']]
             assert highlight['section'] == 'Task Object'
-            expanded = body(await session.call_tool('fetch', {'evidence_ids': [highlight['evidence_id']]}))['sources'][0]
+            expanded = body(await session.call_tool('expand', {'evidence_ids': [highlight['evidence_id']]}))['sources'][0]
             assert expanded['highlights'] == [highlight]
 
 
@@ -68,9 +69,8 @@ async def test_heading_poor_composed_search_is_specific_without_losing_source_di
     async with site(handler) as (base, options):
         payload = {'data': [{'url': base + '/' + name, 'title': name, 'rank': i + 1}
                             for i, name in enumerate(['discussion-a', 'discussion-b'])]}
-        async with running(tmp_path, source=cli_response(json.dumps(payload)), acquisition_options=options) as (url, _), client(url, timeout=60) as session:
-            result = await session.call_tool('search', {'query': QUERY, 'num_results': 2,
-                                                       'response_budget_bytes': 65536})
+        async with running(tmp_path, source=cli_response(json.dumps(payload)), acquisition_options=options, response_budget_bytes=65536) as (url, _), client(url, timeout=60) as session:
+            result = await session.call_tool('search', {'query': QUERY, 'num_results': 2})
             data = body(result)
             assert len(result.model_dump_json(exclude_none=True).encode()) <= 65536
             assert len(data['results']) == 2
@@ -81,12 +81,12 @@ async def test_heading_poor_composed_search_is_specific_without_losing_source_di
                 assert CAVEAT in best['text']
                 assert 'Python 3.12 only' in best['text']
                 assert 'does not make cancellation' in best['text']
-                full = body(await session.call_tool('fetch', {'urls': [source['url']], 'freshness': 'cache_only'}))['sources'][0]
+                full = body(await session.call_tool('fetch', {'urls': [source['url']], 'freshness': 'ordinary'}))['sources'][0]
                 assert full['content'][best['start']:best['end']] == best['text']
                 fetched = body(await session.call_tool('fetch', {'urls': [source['url']], 'query': QUERY,
-                                                                'freshness': 'cache_only', 'response_budget_bytes': 65536}))['sources'][0]
+                                                                'freshness': 'ordinary'}))['sources'][0]
                 assert fetched['highlights'] == source['highlights']
-                absent = body(await session.call_tool('fetch', {'urls': [source['url']], 'query': 'xyzzymissing', 'freshness': 'cache_only'}))['sources'][0]
+                absent = body(await session.call_tool('fetch', {'urls': [source['url']], 'query': 'xyzzymissing', 'freshness': 'ordinary'}))['sources'][0]
                 assert absent['relevance'] == 'no_lexical_match' and absent['highlights'] == []
 
 
@@ -99,9 +99,8 @@ async def test_unrelated_parent_warning_does_not_scope_every_child_passage(tmp_p
             '<p>Warning: do not use the obsolete debug operation.</p>' +
             '<h3>TaskGroup</h3><p>' + CAVEAT + '</p>' +
             '<p>Changed in version 3.12: this applies to the documented release.</p>'))
-    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
-        source = body(await session.call_tool('fetch', {'urls': [base], 'query': QUERY,
-                                                      'response_budget_bytes': 65536}))['sources'][0]
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options, response_budget_bytes=65536) as (url, _), client(url, timeout=60) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base], 'query': QUERY}))['sources'][0]
         assert source['highlights'], source
         quote = source['highlights'][0]
         assert quote['section'] == 'TaskGroup'
@@ -122,7 +121,7 @@ async def test_long_scoped_section_never_detaches_its_release_heading(tmp_path, 
         quote = source['highlights'][0]
         assert 'Python 3.12 only' in quote['text']
         assert CAVEAT in quote['text']
-        full = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+        full = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'ordinary'}))['sources'][0]
         assert full['content'][quote['start']:quote['end']] == quote['text']
 
 
@@ -140,20 +139,21 @@ async def test_window_evidence_survives_refresh_restart_and_reports_eviction(tmp
             quote = original['highlights'][0]
             assert CAVEAT in quote['text'] and 'Python 3.12 only' in quote['text']
             release = '3.13'
-            refreshed = body(await session.call_tool('fetch', {'urls': [base], 'query': QUERY, 'freshness': 'refresh'}))['sources'][0]
+            refreshed = body(await session.call_tool('fetch', {'urls': [base], 'query': QUERY, 'freshness': 'fresh_only'}))['sources'][0]
             assert refreshed['content_version'] != original['content_version']
-            expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+            expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert expanded['highlights'] == [quote]
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
-            expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+            expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert expanded['highlights'] == [quote]
             assert expanded['content_version'] == original['content_version']
         async with running(tmp_path, acquisition_options=options, cache_cap_bytes=1024) as (url, _), client(url) as session:
-            evicted = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+            evicted = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert evicted['error']['code'] == 'evidence_unavailable'
 
 
 async def test_linked_documentation_headings_do_not_turn_url_versions_into_release_scopes(tmp_path):
+    from retrieval_helpers import running, client
     async def handler(request):
         html = documentation().replace('Asyncio reference</h1>',
             '<a title="Link to this heading" href="https://docs.python.org/3.12/library/asyncio-task.html">Asyncio reference</a></h1>')
@@ -193,7 +193,7 @@ async def test_every_citable_claim_keeps_its_attached_warning(tmp_path, heading)
             claims = [h for h in source['highlights'] if claim in h['text']]
             assert claims
             assert all(warning in h['text'] for h in claims)
-            full = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+            full = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'ordinary'}))['sources'][0]
             for h in claims:
                 assert len(h['text']) < 5000
                 assert h['text'] == full['content'][h['start']:h['end']]
@@ -208,7 +208,7 @@ async def test_shorter_fence_marker_cannot_expose_a_code_heading_as_a_section(tm
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
         full = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
         assert '````python\nsample = 1\n```\n# Misleading section' in full['content'].replace('  \n', '\n')
-        selected = body(await session.call_tool('fetch', {'urls': [base], 'query': 'fence_probe', 'freshness': 'cache_only'}))['sources'][0]
+        selected = body(await session.call_tool('fetch', {'urls': [base], 'query': 'fence_probe', 'freshness': 'ordinary'}))['sources'][0]
         assert selected['highlights']
         for h in selected['highlights']:
             assert h['section'] == 'Code reference'
@@ -227,11 +227,11 @@ async def test_scoped_reference_windows_do_not_crowd_out_compact_cancellation_ca
             '<h2>Task Object</h2><p>This object is not thread-safe.</p>' + reference +
             '<p>TaskGroup uses these operations internally.</p>'))
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
-            source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Tasks', 'rank': 1}]}))) as (url, _), client(url, timeout=60) as session:
+            source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Tasks', 'rank': 1}]})), response_budget_bytes=65536) as (url, _), client(url, timeout=60) as session:
         for tool, arguments, key in [('fetch', {'urls': [base]}, 'sources'), ('search', {'num_results': 1}, 'results')]:
-            source = body(await session.call_tool(tool, {**arguments, 'query': QUERY, 'response_budget_bytes': 65536}))[key][0]
+            source = body(await session.call_tool(tool, {**arguments, 'query': QUERY}))[key][0]
             assert any(qualified_caveat in h['text'] for h in source['highlights'])
-            full = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+            full = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'ordinary'}))['sources'][0]
             for h in source['highlights']:
                 assert h['text'] == full['content'][h['start']:h['end']]
                 if h['section'] == 'Task Object':
@@ -248,7 +248,7 @@ async def test_bare_identifier_query_matches_qualified_names_without_dropping_qu
         source = body(await session.call_tool('fetch', {'urls': [base], 'query': 'CancelledError'}))['sources'][0]
         assert source['highlights']
         assert all('Do not swallow asyncio.CancelledError' in h['text'] for h in source['highlights'])
-        qualified = body(await session.call_tool('fetch', {'urls': [base], 'query': 'asyncio.TaskGroup', 'freshness': 'cache_only'}))['sources'][0]
+        qualified = body(await session.call_tool('fetch', {'urls': [base], 'query': 'asyncio.TaskGroup', 'freshness': 'ordinary'}))['sources'][0]
         assert qualified['highlights']
         assert all('other.TaskGroup' not in h['text'] for h in qualified['highlights'])
 
@@ -259,6 +259,7 @@ async def test_attached_warning_qualifies_claims_across_intervening_explanation(
     # separates the propagation claim from its attached Warning heading.
     claim = 'TaskGroup cancellation propagates to unfinished tasks.'
     caveat = 'Do not swallow CancelledError; if suppression is desired also call uncancel.'
+    from retrieval_helpers import running, client
     async def handler(request):
         return web.Response(content_type='text/html', text=(
             '<h1>TaskGroup</h1>' + ''.join('<p>' + 'Background scheduling. ' * 30 + '</p>' for _ in range(4)) +
@@ -268,7 +269,7 @@ async def test_attached_warning_qualifies_claims_across_intervening_explanation(
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
             source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Tasks', 'rank': 1}]}))) as (url, _), client(url, timeout=60) as session:
         full = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
-        for tool, arguments, key in [('fetch', {'urls': [base], 'freshness': 'cache_only'}, 'sources'),
+        for tool, arguments, key in [('fetch', {'urls': [base], 'freshness': 'ordinary'}, 'sources'),
                                      ('search', {'num_results': 1}, 'results')]:
             source = body(await session.call_tool(tool, {**arguments, 'query': 'TaskGroup cancellation'}))[key][0]
             claims = [h for h in source['highlights'] if claim in h['text']]
@@ -277,9 +278,9 @@ async def test_attached_warning_qualifies_claims_across_intervening_explanation(
             for h in claims:
                 assert h['section'] == 'TaskGroup'
                 assert h['text'] == full['content'][h['start']:h['end']]
-                expanded = body(await session.call_tool('fetch', {'evidence_ids': [h['evidence_id']]}))['sources'][0]
+                expanded = body(await session.call_tool('expand', {'evidence_ids': [h['evidence_id']]}))['sources'][0]
                 assert expanded['highlights'] == [h]
-        small = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only',
+        small = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'ordinary',
             'query': 'TaskGroup cancellation', 'response_budget_bytes': 4096}))
         assert small['budget']['partial_coverage']
         assert all(not source.get('highlights') for source in small['sources'])

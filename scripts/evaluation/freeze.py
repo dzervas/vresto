@@ -65,11 +65,11 @@ async def capture(output, cache_directory):
     snapshots = []
     started = time.perf_counter()
     async with site(handler) as (base, options):
-        async with running(cache_directory, acquisition_options=options) as (url, _), client(url, timeout=120) as session:
+        async with running(cache_directory, acquisition_options=options, response_budget_bytes=262144) as (url, _), client(url, timeout=120) as session:
             for m in manifest:
                 target = base + '/' + m['id']
                 fetched = body(await session.call_tool('fetch', {'urls': [target],
-                    'response_budget_bytes': 262144, 'freshness': 'fresh_only'}))
+                    'freshness': 'fresh_only'}))
                 source = fetched['sources'][0]
                 assert 'error' not in source, source
                 assert not source.get('truncated_fields'), source.get('truncated_fields')
@@ -79,14 +79,17 @@ async def capture(output, cache_directory):
             for case in queries:
                 targets = [documents[d]['requested_url'] for d in case['documents']]
                 canonical = body(await session.call_tool('fetch', {'urls': targets,
-                    'freshness': 'cache_only', 'response_budget_bytes': 262144}))
+                    'freshness': 'ordinary'}))
                 assert not canonical['budget']['partial_coverage'] or any(s['coverage']['partial'] for s in canonical['sources'])
                 assert all(not s.get('truncated_fields') for s in canonical['sources'])
                 canonical.pop('budget')
                 gold = compile_gold(case, documents)
                 for budget in (65536, 16384, 4096):
-                    live = body(await session.call_tool('fetch', {'urls': targets, 'query': case['query'],
-                        'freshness': 'cache_only', 'response_budget_bytes': budget}))
+                    # Budgets are operator settings, not model-facing controls.
+                    async with running(cache_directory, acquisition_options=options,
+                            response_budget_bytes=budget) as (budget_url, _), client(budget_url) as budget_session:
+                        live = body(await budget_session.call_tool('fetch', {'urls': targets,
+                            'query': case['query'], 'freshness': 'ordinary'}))
                     # Replay current server ordering, not the archived lexical
                     # experiment: reject unsafe sources before budgeted selection.
                     replay = deepcopy(canonical)
@@ -101,27 +104,26 @@ async def capture(output, cache_directory):
                     # Expand every ID, including duplicate attribution, through the actual cache.
                     for source in live['sources']:
                         for quote in source.get('highlights', []) + source.get('duplicate_evidence', []):
-                            expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']],
-                                'response_budget_bytes': 262144}))['sources'][0]
+                            expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
                             assert expanded['content_version'] == source['content_version']
                             assert expanded['highlights'][0]['evidence_id'] == quote['evidence_id']
                     snapshots.append(dict(id=case['id'], budget=budget, production_sha256=digest(live)))
                 case['gold'] = gold
             # Deliberately changed fixture acquisition; old references still resolve.
             old = body(await session.call_tool('fetch', {'urls': [documents['J']['requested_url']],
-                'query': 'connect_safe', 'freshness': 'cache_only'}))['sources'][0]
+                'query': 'connect_safe', 'freshness': 'ordinary'}))['sources'][0]
             quote = old['highlights'][0]
             html['J'] = html['J'].replace('2.4', '2.5')
             new = body(await session.call_tool('fetch', {'urls': [documents['J']['requested_url']],
-                'freshness': 'refresh'}))['sources'][0]
+                'freshness': 'fresh_only'}))['sources'][0]
             assert new['content_version'] != old['content_version']
-            expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+            expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert expanded['highlights'] == [quote]
-        async with running(cache_directory, acquisition_options=options) as (url, _), client(url) as session:
-            expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+        async with running(cache_directory, acquisition_options=options, response_budget_bytes=262144) as (url, _), client(url) as session:
+            expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert expanded['highlights'] == [quote]
         async with running(cache_directory, acquisition_options=options, cache_cap_bytes=1024) as (url, _), client(url) as session:
-            expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+            expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert expanded['error']['code'] == 'evidence_unavailable'
     # A capture may include uncommitted production changes. Do not attribute
     # its snapshots to the fixture preparation revision or invent an exact commit.

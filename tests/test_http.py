@@ -58,12 +58,12 @@ else:
             await asyncio.gather(watcher, return_exceptions=True)
 
 
-# Observe bounded service responses rather than preempting the canonical 30s
+# Observe bounded service responses rather than preempting the canonical 120s
 # deadline with a 5s transport timeout. Native fixture latency reproduced that
 # mismatch on pre/post-optimization code. Timing/cancellation tests retain their
 # independent watchdogs and explicit observer overrides.
 @asynccontextmanager
-async def client(url, token="client-secret", calls=None, timeout=AcquisitionOptions.deadline + 5, wire=None):
+async def client(url, token="client-secret", calls=None, timeout=Settings.timeout + AcquisitionOptions.deadline + 5, wire=None):
     async def observe(request):
         if calls is not None and request.method == "POST":
             data = json.loads(request.content)
@@ -91,12 +91,16 @@ def body(result):
 async def test_discovery_preserves_provider_order_and_labels_snippets(tmp_path):
     async with running(tmp_path) as (url, _), client(url) as session:
         tools = (await session.list_tools()).tools
-        assert [t.name for t in tools] == ["search", "fetch"]
+        assert [t.name for t in tools] == ["search", "fetch", "expand", "crawl"]
         assert tools[0].inputSchema["properties"]["content_mode"]["default"] == "highlights"
         assert tools[0].inputSchema["additionalProperties"] is False
-        assert 'Native Chromium networking' in tools[1].description
-        assert 'not SSRF protection' in tools[1].description
-        assert 'Stateless GET/HEAD only' not in tools[1].description
+        assert all(300 <= len(t.description) <= 600 for t in tools)
+        expected = [
+            {'query', 'num_results', 'content_mode', 'freshness'},
+            {'urls', 'query', 'content_mode', 'freshness'},
+            {'evidence_ids'}, {'url', 'path_prefix', 'max_pages'},
+        ]
+        assert [set(t.inputSchema['properties']) for t in tools] == expected
         result = await session.call_tool("search", {"query": "Python docs", "content_mode": "discovery"})
         assert not result.isError
         data = body(result)
@@ -193,7 +197,7 @@ async def test_mcp_cancellation_reaps_subprocess_and_session_remains_usable(tmp_
                 assert "cancel" in str(exc).lower()
             while alive(pid):
                 await asyncio.sleep(0.01)
-        assert [t.name for t in (await session.list_tools()).tools] == ["search", "fetch"]
+        assert [t.name for t in (await session.list_tools()).tools] == ["search", "fetch", "expand", "crawl"]
 
 
 async def test_service_access_is_required_for_mcp_initialization(tmp_path):

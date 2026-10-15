@@ -19,7 +19,7 @@ async def test_expansion_returns_exact_quote_and_surrounding_sections_without_vi
         requested = base + '/manual?version=2.4&lang=en'
         original = body(await session.call_tool('fetch', {'urls': [requested], 'query': 'connect_safe'}))['sources'][0]
         quote = original['highlights'][0]
-        result = await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]})
+        result = await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]})
         assert not result.isError, body(result)
         data = body(result)
         expanded = data['sources'][0]
@@ -35,7 +35,7 @@ async def test_expansion_returns_exact_quote_and_surrounding_sections_without_vi
         # a whole-request validation failure; preserve the successful reference.
         missing = 'p1.' + base64.urlsafe_b64encode(json.dumps(
             [requested, '0' * 64, 0, 1, '0' * 64], separators=(',', ':')).encode()).decode().rstrip('=')
-        mixed = await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id'], missing]})
+        mixed = await session.call_tool('expand', {'evidence_ids': [quote['evidence_id'], missing]})
         assert not mixed.isError
         outcomes = body(mixed)
         assert outcomes['sources'][0]['highlights'] == [quote]
@@ -60,23 +60,23 @@ async def test_old_evidence_survives_refresh_restart_and_neighbor_version_evicti
             original = body(await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe'}))['sources'][0]
             quote = original['highlights'][0]
             version = '9.9'
-            current = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'refresh'}))['sources'][0]
+            current = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
             assert current['content_version'] != original['content_version']
-            result = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+            result = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert result['highlights'] == [quote]
             assert result['fetched_at'] == original['fetched_at']
             assert '9.9' not in str(result['highlights'])
         # A new server instance uses only the same mounted canonical cache.
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
-            restarted = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+            restarted = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert restarted['highlights'] == [quote]
             assert visits == ['/', '/']
         # Lowering the public operator cap at restart evicts the oldest version.
         async with running(tmp_path, acquisition_options=options, cache_cap_bytes=1024) as (url, _), client(url) as session:
-            evicted = await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]})
+            evicted = await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]})
             assert not evicted.isError
             assert body(evicted)['sources'][0]['error']['code'] == 'evidence_unavailable'
-            retained = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+            retained = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'ordinary'}))['sources'][0]
             assert retained['content_version'] == current['content_version']
             assert '9.9' in retained['content']
             assert visits == ['/', '/']
@@ -85,13 +85,13 @@ async def test_old_evidence_survives_refresh_restart_and_neighbor_version_evicti
 @pytest.mark.parametrize('extra', [
     {'urls': ['https://example.org/']}, {'urls': None}, {'query': 'connect_safe'},
     {'query': None}, {'content_mode': 'full_text'}, {'content_mode': None},
-    {'freshness': 'cache_only'}, {'freshness': 'refresh'}, {'max_age_seconds': 3600},
+    {'freshness': 'ordinary'}, {'freshness': 'fresh_only'}, {'max_age_seconds': 3600},
 ])
 async def test_expansion_rejects_url_relevance_and_freshness_controls_before_visiting(tmp_path, extra):
     identifier = 'p1.' + base64.urlsafe_b64encode(json.dumps(
         ['https://example.org/', '0' * 64, 0, 1, '0' * 64], separators=(',', ':')).encode()).decode().rstrip('=')
     async with running(tmp_path) as (url, _), client(url) as session:
-        result = await session.call_tool('fetch', dict(extra, evidence_ids=[identifier]))
+        result = await session.call_tool('expand', dict(extra, evidence_ids=[identifier]))
         assert result.isError
         assert body(result)['error']['code'] == 'invalid_input'
 
@@ -99,7 +99,7 @@ async def test_expansion_rejects_url_relevance_and_freshness_controls_before_vis
 @pytest.mark.parametrize('ids', [[], ['bad'], ['p1.%%%'], ['p1.W10'], ['p2.abc'], [None], 'p1.invalid', ['p1.' + 'x' * 32768]])
 async def test_malformed_expansion_ids_are_validation_errors(tmp_path, ids):
     async with running(tmp_path) as (url, _), client(url) as session:
-        result = await session.call_tool('fetch', {'evidence_ids': ids})
+        result = await session.call_tool('expand', {'evidence_ids': ids})
         assert result.isError
         assert body(result)['error']['code'] == 'invalid_input'
 
@@ -117,13 +117,14 @@ async def test_tampered_retained_quote_is_invalid_not_current_text(tmp_path):
         payload = json.loads(base64.urlsafe_b64decode(identifier[3:] + '=' * (-len(identifier[3:]) % 4)))
         payload[2] += 1
         forged = 'p1.' + base64.urlsafe_b64encode(json.dumps(payload, separators=(',', ':')).encode()).decode().rstrip('=')
-        result = await session.call_tool('fetch', {'evidence_ids': [identifier, forged]})
+        result = await session.call_tool('expand', {'evidence_ids': [identifier, forged]})
         assert result.isError
         assert body(result)['error']['code'] == 'invalid_input'
         assert visits == ['/']
 
 
 async def test_expansion_shared_budget_omits_whole_context_not_quotes(tmp_path):
+    from retrieval_helpers import running, client
     visits = []
     async def handler(request):
         visits.append(request.path)
@@ -135,9 +136,9 @@ async def test_expansion_shared_budget_omits_whole_context_not_quotes(tmp_path):
         for path in ['/one', '/two']:
             source = body(await session.call_tool('fetch', {'urls': [base + path], 'query': 'connect_safe'}))['sources'][0]
             quotes.append(source['highlights'][0])
-        full = body(await session.call_tool('fetch', {'evidence_ids': [q['evidence_id'] for q in quotes]}))
+        full = body(await session.call_tool('expand', {'evidence_ids': [q['evidence_id'] for q in quotes]}))
         assert all(len(s['context']) == 2 for s in full['sources'])
-        result = await session.call_tool('fetch', {'evidence_ids': [q['evidence_id'] for q in quotes], 'response_budget_bytes': 4096})
+        result = await session.call_tool('expand', {'evidence_ids': [q['evidence_id'] for q in quotes], 'response_budget_bytes': 4096})
         data = body(result)
         assert not result.isError
         assert len(result.model_dump_json(exclude_none=True).encode()) <= 4096
@@ -152,17 +153,18 @@ async def test_expansion_shared_budget_omits_whole_context_not_quotes(tmp_path):
 
 
 async def test_oversized_expansion_quote_omits_source_instead_of_shortening_it(tmp_path):
+    from retrieval_helpers import running, client
     async def handler(request):
         return web.Response(content_type='text/html', text='<h2>connect_safe</h2><p>' +
             'connect_safe requires version 2.4 only. Never use retries in 2.3. ' * 80 + '</p>')
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
         original = body(await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe'}))['sources'][0]
         quote = original['highlights'][0]
-        limited = await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']], 'response_budget_bytes': 4096})
+        limited = await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']], 'response_budget_bytes': 4096})
         data = body(limited)
         assert len(limited.model_dump_json(exclude_none=True).encode()) <= 4096
         assert data['sources'] == []
         assert data['budget']['omitted_source_indices'] == [0]
         assert data['budget']['partial_coverage']
-        intact = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+        intact = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
         assert intact['highlights'] == [quote]

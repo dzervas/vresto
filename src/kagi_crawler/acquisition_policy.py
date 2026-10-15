@@ -25,7 +25,7 @@ class FetchError(Exception):
 
 @dataclass(frozen=True)
 class AcquisitionOptions:
-    deadline: float = 30
+    deadline: float = 120
     request_timeout: float = 20
     queue_wait: float = 10
     queue_capacity: int = 8
@@ -55,8 +55,8 @@ class AcquisitionOptions:
             raise ValueError('expansion actions must be 0–32')
         if not 0.01 <= self.expansion_wait <= 1:
             raise ValueError('expansion settle wait must be 0.01–1 second')
-        if not 0.01 <= self.deadline <= 120:
-            raise ValueError('acquisition deadline must be 0.01–120 seconds')
+        if not 0.01 <= self.deadline <= 600:
+            raise ValueError('acquisition deadline must be 0.01–600 seconds')
         if not 0.01 <= self.queue_wait <= 30:
             raise ValueError('queue wait must be 0.01–30 seconds')
         if type(self.queue_capacity) is not int or not 1 <= self.queue_capacity <= 32:

@@ -179,7 +179,7 @@ async def test_discovery_does_not_extend_hour_idle_and_same_session_recovers(tmp
         assert browser_pids() - before == warm
         clock.advance(1)
         await eventually(lambda: browser_pids() == before)
-        cached = body(await session.call_tool('fetch', {'urls': [base + '/cached'], 'freshness': 'cache_only'}))['sources'][0]
+        cached = body(await session.call_tool('fetch', {'urls': [base + '/cached'], 'freshness': 'ordinary'}))['sources'][0]
         assert cached['content'] == original['content']
         assert cached['fetched_at'] == original['fetched_at']
         assert cached['content_version'] == original['content_version']

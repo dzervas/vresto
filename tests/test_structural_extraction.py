@@ -369,15 +369,14 @@ async def test_public_http_structural_labels_scopes_and_historical_expansion(tmp
             '<button>Subscribe</button></div>'))
 
     async with site(handler) as (base, options):
-        async with running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
-            full = body(await session.call_tool('fetch', {'urls': [base], 'response_budget_bytes': 65536}))['sources'][0]
+        async with running(tmp_path, acquisition_options=options, response_budget_bytes=65536) as (url, _), client(url, timeout=60) as session:
+            full = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
             for label in ['Python 3.12', 'Task.uncancel()', 'Release details', 'Alice', '14 October 2026',
                           'No retries without cleanup', 'Do not swallow CancelledError without cleanup']:
                 assert label in full['content']
             for clutter in ['Global menu', 'Reply', 'Alice avatar', 'Copy link', 'Subscribe', '¶']:
                 assert clutter not in full['content']
-            result = await session.call_tool('fetch', {'urls': [base], 'query': 'uncancel',
-                                                      'response_budget_bytes': 65536})
+            result = await session.call_tool('fetch', {'urls': [base], 'query': 'uncancel'})
             assert len(result.model_dump_json(exclude_none=True).encode()) <= 65536
             selected = body(result)['sources'][0]
             assert selected['highlights']
@@ -386,14 +385,14 @@ async def test_public_http_structural_labels_scopes_and_historical_expansion(tmp
             assert 'Do not swallow CancelledError without cleanup' in quote['text']
             assert full['content'][quote['start']:quote['end']] == quote['text']
             release = '3.13'
-            refreshed = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'refresh'}))['sources'][0]
+            refreshed = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
             assert 'Python 3.13' in refreshed['content'] and 'Python 3.12' not in refreshed['content']
             assert refreshed['content_version'] != full['content_version']
-            expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+            expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert expanded['highlights'] == [quote]
             assert expanded['content_version'] == full['content_version']
-        async with running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
-            retained = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+        async with running(tmp_path, acquisition_options=options, response_budget_bytes=65536) as (url, _), client(url, timeout=60) as session:
+            retained = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert retained['highlights'] == [quote]
             assert retained['content_version'] == full['content_version']
 

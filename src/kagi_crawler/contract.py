@@ -1,4 +1,4 @@
-"""Validated discovery, acquisition and query-focused content controls."""
+"""Public MCP inputs and internal Retrieval controls (never expose Request schemas)."""
 from datetime import date
 from typing import Literal
 
@@ -16,7 +16,8 @@ class BudgetInput(BaseModel):
                     "Transport JSON-RPC envelope excluded. Truncation/omissions are explicit.")
 
 
-class FetchInput(BudgetInput):
+class FetchRequest(BudgetInput):
+    """Internal acquisition/expansion controls, not an MCP input schema."""
     model_config = ConfigDict(extra="forbid", strict=True)
     urls: list[str] | None = Field(default=None, min_length=1, max_length=10)
     evidence_ids: list[str] | None = Field(default=None, min_length=1, max_length=10,
@@ -46,7 +47,8 @@ class FetchInput(BudgetInput):
         return self
 
 
-class SearchInput(BudgetInput):
+class SearchRequest(BudgetInput):
+    """Internal discovery/retrieval controls, not an MCP input schema."""
     model_config = ConfigDict(extra="forbid", strict=True)
 
     query: str = Field(min_length=1, max_length=4096)
@@ -76,4 +78,61 @@ class SearchInput(BudgetInput):
             raise ValueError("relative and explicit dates conflict")
         if self.from_date and self.to_date and self.from_date > self.to_date:
             raise ValueError("reversed date range")
+        return self
+
+
+class SearchInput(BaseModel):
+    """Model-facing search controls; operational controls stay server-side."""
+    model_config = ConfigDict(extra="forbid", strict=True)
+    query: str = Field(min_length=1, max_length=4096)
+    num_results: int = Field(default=10, ge=1, le=20)
+    content_mode: Literal["discovery", "highlights", "full_text"] = "highlights"
+    freshness: Literal["ordinary", "fresh_only"] = "ordinary"
+
+    @model_validator(mode="after")
+    def validate_query(self):
+        if not self.query.strip():
+            raise ValueError("empty query")
+        return self
+
+
+class FetchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    urls: list[str] = Field(min_length=1, max_length=10)
+    query: str | None = Field(default=None, min_length=1, max_length=4096)
+    content_mode: Literal["highlights", "full_text"] | None = Field(default=None,
+        description="Defaults to highlights with a query, otherwise full_text.")
+    freshness: Literal["ordinary", "fresh_only"] = "ordinary"
+
+    @model_validator(mode="after")
+    def validate_query(self):
+        if self.query is not None and not self.query.strip():
+            raise ValueError("empty query")
+        if self.content_mode == "highlights" and self.query is None:
+            raise ValueError("highlights require query")
+        return self
+
+
+class ExpandInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    evidence_ids: list[str] = Field(min_length=1, max_length=10)
+
+
+class CrawlInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    url: str = Field(min_length=1, max_length=4096)
+    path_prefix: str = Field(max_length=4096,
+        description="Path subtree to crawl; / selects the entire URL origin.")
+    max_pages: int = Field(default=5, ge=1, le=20)
+
+    def traversal(self) -> TraversalInput:
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(self.url)
+        return TraversalInput(origin=f"{parsed.scheme}://{parsed.netloc}",
+                              path_prefix=self.path_prefix, max_pages=self.max_pages)
+
+    @model_validator(mode="after")
+    def validate_scope(self):
+        self.traversal()
         return self

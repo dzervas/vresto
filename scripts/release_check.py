@@ -60,6 +60,7 @@ from mcp.client.streamable_http import streamable_http_client
 import psutil
 import uvicorn
 
+from kagi_crawler.budget import DEFAULT_RESPONSE_BYTES
 from kagi_crawler.server import Settings, create_app
 from kagi_crawler.acquisition_policy import AcquisitionOptions
 
@@ -135,7 +136,7 @@ async def eventually(predicate):
 @asynccontextmanager
 async def client(url):
     async with httpx.AsyncClient(headers={'Authorization': 'Bearer fixture-access'},
-                                 trust_env=False, timeout=40) as http:
+                                 trust_env=False, timeout=250) as http:
         async with streamable_http_client(url, http_client=http) as (read, write, _):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -143,12 +144,13 @@ async def client(url):
 
 
 @asynccontextmanager
-async def server(cache, cli, clock, *, default_queue=False):
+async def server(cache, cli, clock, *, default_queue=False, response_budget_bytes=DEFAULT_RESPONSE_BYTES):
     queue = {} if default_queue else {'queue_capacity': 1, 'queue_wait': .15}
     options = AcquisitionOptions(fixture_destinations=(('127.0.0.1', 18081, '127.0.0.1'),), **queue)
     app = create_app(Settings(access_token='fixture-access', session_token='fixture-session',
         command=(sys.executable, str(cli)), cache_directory=cache,
-        acquisition_options=options, browser_clock=clock, browser_sleep=clock.sleep))
+        acquisition_options=options, browser_clock=clock, browser_sleep=clock.sleep,
+        response_budget_bytes=response_budget_bytes))
     sock = socket.socket()
     sock.bind(('127.0.0.1', 0))
     url = f'http://127.0.0.1:{sock.getsockname()[1]}/mcp'
@@ -244,14 +246,14 @@ async def run(cache, verify_persisted=False):
                     assert (await http.post(url, json={})).status_code == 401
                 start = time.perf_counter()
                 async with client(url) as first, client(url) as second:
-                    assert {t.name for t in (await first.list_tools()).tools} == {'search', 'fetch'}
+                    assert {t.name for t in (await first.list_tools()).tools} == {'search', 'fetch', 'expand', 'crawl'}
                     if verify_persisted:
                         source = data(await first.call_tool('fetch', {'urls': ['http://127.0.0.1:18081/docs'],
-                                                                      'freshness': 'cache_only'}))['sources'][0]
+                                                                      'freshness': 'ordinary'}))['sources'][0]
                         assert source['cache_state'] == 'hit', source
                         assert 'retry_limit' in source['content']
                         evidence = (cache / 'gate-evidence-id').read_text()
-                        expanded = data(await first.call_tool('fetch', {'evidence_ids': [evidence]}))
+                        expanded = data(await first.call_tool('expand', {'evidence_ids': [evidence]}))
                         assert 'legacy mode' in str(expanded['sources'][0]['highlights'])
                         assert not requests, requests
                         facts['persisted_cache_and_evidence'] = True
@@ -282,8 +284,8 @@ async def run(cache, verify_persisted=False):
                         assert pdf['document_type'] == 'pdf', pdf
                         assert pdf['highlights'][0]['pages'] == [1]
                         assert 'Never disable verification.' in pdf['highlights'][0]['text']
-                        traversed = data(await first.call_tool('fetch', {'urls': ['http://127.0.0.1:18081/docs'],
-                            'traversal': {'origin': 'http://127.0.0.1:18081', 'path_prefix': '/', 'max_pages': 2}}))
+                        traversed = data(await first.call_tool('crawl', {'url': 'http://127.0.0.1:18081/docs',
+                            'path_prefix': '/', 'max_pages': 2}))
                         assert len(traversed['sources']) == 2, traversed
                         forbidden = data(await first.call_tool('fetch', {'urls': ['http://127.0.0.1:18082/']}))
                         assert forbidden['sources'][0]['error']['code'] == 'policy_rejected'
@@ -307,7 +309,7 @@ async def run(cache, verify_persisted=False):
                         facts['rss_after_idle_teardown_bytes'] = rss()
                         # Same MCP session recreates browser; retained evidence does
                         # not depend on warmup or current page acquisition.
-                        expanded = data(await first.call_tool('fetch', {'evidence_ids': [evidence]}))
+                        expanded = data(await first.call_tool('expand', {'evidence_ids': [evidence]}))
                         assert 'legacy mode' in str(expanded['sources'][0]['highlights'])
                         await eventually(lambda: len(browsers()) == 1)
                         assert browsers().isdisjoint(warm_browser)

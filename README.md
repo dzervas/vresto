@@ -163,21 +163,26 @@ paywall bypass or guaranteed anti-bot evasion.
 ## Tools, freshness and limits
 
 Discover exact input schemas with MCP `tools/list`. Inputs use snake_case.
-Examples (tool arguments, not HTTP JSON-RPC envelopes):
+Examples (search, search, fetch, fetch, expand, crawl arguments respectively,
+not HTTP JSON-RPC envelopes):
 
 ```json
 {"query":"retry_limit version 2","num_results":10}
 {"query":"Python reference","content_mode":"discovery"}
 {"urls":["https://docs.python.org/3/library/asyncio.html"],"query":"cancellation"}
 {"urls":["https://docs.python.org/3/library/asyncio.html"],"freshness":"fresh_only","content_mode":"full_text"}
-{"evidence_ids":["<returned-version-bound-evidence-id>"],"response_budget_bytes":65536}
+{"evidence_ids":["<returned-version-bound-evidence-id>"]}
+{"url":"https://docs.python.org/3/library/asyncio.html","path_prefix":"/3/library","max_pages":5}
 ```
 
 Search defaults to acquired highlights, not provider snippets. Result counts are
-limits, not guarantees. Supported subscriber controls include region/lens,
-time window or explicit dates, order, verbatim and personalization; unsupported
-controls are rejected. Provider dates mean **update dates**, not verified
-publication dates. Postfilters, per-source errors, budget omissions and partial
+limits, not guarantees. Search accepts query, num_results, content_mode and freshness;
+fetch accepts urls, optional query/content_mode and freshness. Expand accepts only
+evidence_ids; crawl accepts url, path_prefix and optional max_pages, deriving the
+exact origin from url. Summary/answer generation is not offered. Kagi filters,
+per-call response budgets, cache ages, refresh/cache_only and traversal tuning
+are not public controls; unsupported inputs are rejected. Provider dates mean
+**update dates**, not verified publication dates. Postfilters, per-source errors, budget omissions and partial
 coverage are disclosed; snippets never silently replace failed acquisitions.
 Lexical matches are not answer verification and absence of a highlight does not
 prove absence of an answer. Full text, expansion and original sources support review.
@@ -197,11 +202,11 @@ remain. Existing cached canonical text and historical evidence IDs are unchanged
 | Bound | Default | Hard limit / configuration |
 |---|---:|---|
 | Search result count | 10 | MCP `num_results`: 1–20 |
-| Direct URLs / evidence IDs | 1–10 | 10; mutually exclusive forms |
-| Serialized response bytes | 65,536 | 4,096–262,144; MCP `response_budget_bytes` or `KAGI_CRAWLER_RESPONSE_BUDGET_BYTES` |
-| Acquisition request deadline | 30 s | `KAGI_CRAWLER_DEADLINE_SECONDS`: 0.01–120 s, one deadline across composed pages |
+| Fetch URLs / expand evidence IDs | 1–10 | Separate tools, maximum 10 each |
+| Serialized response bytes | 12,288 | 4,096–262,144; operator `KAGI_CRAWLER_RESPONSE_BUDGET_BYTES` only |
+| Acquisition request deadline | 120 s | `KAGI_CRAWLER_DEADLINE_SECONDS`: 0.01–600 s, one deadline across composed pages |
 | Discovery concurrency / waiting | 2 / 8 | Fixed independent CLI pool; excess is `discovery_queue_full` |
-| Discovery admission wait / deadline | 10 s / 30 s | Fixed wait (`discovery_queue_timeout`); request deadline includes admission, version check and search (`discovery_timeout`) |
+| Discovery admission wait / deadline | 10 s / 120 s | Fixed wait (`discovery_queue_timeout`); request deadline includes admission, version check and search (`discovery_timeout`) |
 | CLI stdout + stderr | 1 MiB | Per invocation, at most two concurrent discovery jobs |
 | Browser concurrency | 4 | `KAGI_CRAWLER_BROWSER_CONCURRENCY`: 1–8 tabs; one active page per (scheme, host, port), shared across clients |
 | Waiting queue | 8 | `KAGI_CRAWLER_QUEUE_CAPACITY`: 1–32; excess is `queue_full` |
@@ -215,8 +220,16 @@ remain. Existing cached canonical text and historical evidence IDs are unchanged
 | Native resource memory/disk/traffic | Operator enforced | Browser allocations and downloaded resources can exceed document limits before checking |
 | PDF parse | 100 pages / 10 s | One isolated parser at a time, 1.5 GiB worker address-space ceiling, also acquisition deadline |
 | Persistent canonical cache | 256 MiB / 7 days | `KAGI_CRAWLER_CACHE_CAP_BYTES`: 1 KiB–1 GiB; `KAGI_CRAWLER_CACHE_RETENTION_SECONDS`: 0.01 s–30 days |
-| Ordinary freshness | 1 hour | MCP `max_age_seconds`: 0–30 days |
-| Opt-in traversal | 5 pages / depth 1 / 15 s | MCP `traversal`: pages 1–20, depth 0–3, time >0–30 s, frontier 1–128 (default 32), aggregate bytes 1 KiB–32 MiB (default 8 MiB) |
+| Ordinary freshness | 1 hour | Fixed public cache age |
+| Crawl | 5 pages / depth 1 / 15 s | MCP `max_pages`: 1–20; fixed frontier 32 and aggregate canonical bytes 8 MiB |
+
+The 12 KiB compact-wire default leaves room for model clients such as pi that
+pretty-print structured results under a 20 KB text cap. Near-limit frozen-corpus
+responses measured 1.18–1.22× expansion (about 14.4 KB pretty-printed); this is
+not a universal bound for arbitrary metadata. Raising the operator budget can
+exceed client display limits. Discovery retains its independent 120 s deadline;
+composed searches can spend up to 120 s in discovery plus 120 s in acquisition.
+Use client call timeouts above 240 s at defaults. Per-page caps remain unchanged.
 
 Acquisition opens native `details` and supported read-only in-page text/discussion
 controls in its acquisition tab. Button labels alone never authorize a
@@ -272,8 +285,9 @@ admitted calls completing after release. Deployment discovery CPU/RSS and live
 provider latency still need measurement; these are not provider-parity limits.
 
 `ordinary` uses sufficiently recent cache and permits labeled stale fallback when
-refresh fails; `refresh` always acquires but allows that fallback; `fresh_only`
-always acquires and **never** returns stale fallback; `cache_only` never acquires.
+refresh fails; `fresh_only` always acquires and **never** returns stale fallback.
+Internal refresh/cache-only modes remain available to the cache/Retrieval layer,
+not MCP clients. Crawl uses ordinary freshness.
 Responses identify fetch time, content version and cache state; fallback includes
 original age and refresh failure. Different queries reuse canonical documents,
 not query-dependent selections. Evidence expansion refers to the **exact retained
@@ -346,7 +360,7 @@ tables, JavaScript, text PDFs and absent-answer cases, then explicitly opt in:
 ```sh
 # Uses only the private service bearer provisioned by the operator.
 uv run --python 3.12 python scripts/live_smoke.py --authorized-live \
-  --endpoint https://your-private-edge/mcp --cases /path/to/public-cases.json --budget 65536
+  --endpoint https://your-private-edge/mcp --cases /path/to/public-cases.json
 ```
 
 Repeat against authorized Exa under comparable evidence budgets, manually review

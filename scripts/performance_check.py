@@ -276,7 +276,7 @@ async def run():
         active_call = 'queue' if workload.startswith('queue_') else index
         start, initial_visits = time.perf_counter(), len(visits)
         try:
-            reply = await session.call_tool(tool, dict(response_budget_bytes=65536, **arguments))
+            reply = await session.call_tool(tool, arguments)
             result = gate.data(reply)
             completed = time.perf_counter()
             wire_size = len(reply.model_dump_json(exclude_none=True).encode())
@@ -309,7 +309,9 @@ async def run():
             cli.write_text('import json,sys\nif "--version" in sys.argv: print("kagi 0.22.0")\nelse: print(' + repr(json.dumps({'data': rows})) + ')\n')
             start = time.perf_counter()
             clock = gate.Clock()
-            async with gate.server(work / 'cache', cli, clock) as url:
+            # Keep the historical 64 KiB performance workload via operator settings,
+            # not a model-facing per-call budget.
+            async with gate.server(work / 'cache', cli, clock, response_budget_bytes=65536) as url:
                 facts['server_construction_startup_ms'] = (time.perf_counter() - start) * 1000
                 async with gate.client(url) as first, gate.client(url) as second:
                     facts['mcp_initialization_ms'] = (time.perf_counter() - start) * 1000 - facts['server_construction_startup_ms']
@@ -339,23 +341,21 @@ async def run():
                             else:
                                 assert 'Never disable verification.' in text and full[0]['document_type'] == 'pdf'
                             versions[kind] = full[0]['content_version']
-                            for freshness in ('ordinary', 'cache_only'):
-                                hits = await call(first, 'cache_' + freshness + '_' + kind, 'fetch',
-                                    {'urls': [BASE + kind], 'freshness': freshness, 'query': QUERY})
-                                assert hits[0]['cache_state'] == 'hit' and calls[-1]['fixture_visits'] == 0
-                                assert hits[0]['content_version'] == versions[kind] and hits[0]['highlights']
-                                if freshness == 'cache_only':
-                                    evidence.append(hits[0]['highlights'][0]['evidence_id'])
-                                    expected_quotes.append(hits[0]['highlights'][0])
+                            hits = await call(first, 'cache_ordinary_' + kind, 'fetch',
+                                {'urls': [BASE + kind], 'freshness': 'ordinary', 'query': QUERY})
+                            assert hits[0]['cache_state'] == 'hit' and calls[-1]['fixture_visits'] == 0
+                            assert hits[0]['content_version'] == versions[kind] and hits[0]['highlights']
+                            evidence.append(hits[0]['highlights'][0]['evidence_id'])
+                            expected_quotes.append(hits[0]['highlights'][0])
                         await call(first, 'discovery_only', 'search', {'query': QUERY, 'content_mode': 'discovery'})
-                        for freshness in ('fresh_only', 'cache_only'):
+                        for freshness in ('fresh_only', 'ordinary'):
                             composed = await call(first, 'composed_' + freshness, 'search', {'query': QUERY, 'freshness': freshness})
                             assert len(composed) == 4 and all('error' not in s for s in composed)
                             assert all(s.get('highlights') or s.get('omitted_highlight_count') for s in composed), 'missing evidence without explicit budget omission'
                             assert all(s['content_version'] == versions[k] for k, s in zip(CORPUS, composed))
-                            if freshness == 'cache_only':
+                            if freshness == 'ordinary':
                                 assert calls[-1]['fixture_visits'] == 0
-                        expanded = await call(second, 'evidence_expansion', 'fetch', {'evidence_ids': evidence})
+                        expanded = await call(second, 'evidence_expansion', 'expand', {'evidence_ids': evidence})
                         assert calls[-1]['fixture_visits'] == 0
                         assert [s['highlights'] for s in expanded] == [[quote] for quote in expected_quotes]
                         # Keep one active fixture blocked throughout concurrent

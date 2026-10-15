@@ -17,13 +17,13 @@ from .types import AcquisitionResult, Source
 
 if TYPE_CHECKING:
     from .cache import CachedAcquisition
-    from .contract import FetchInput
+    from .contract import FetchRequest
 
 from .acquisition_policy import AcquisitionOptions, DestinationPolicy, FetchError
 
 
 class TraversalInput(BaseModel):
-    # Provisional containment defaults/hard limits are published in MCP schema;
+    # Internal containment bounds; crawl exposes only max_pages and path scope.
     # each page also inherits service queue/duration/document/parser limits. These
     # are not measured deployment sizing or inferred Exa coverage guarantees.
     model_config = ConfigDict(extra='forbid', strict=True)
@@ -73,7 +73,7 @@ def path(url: str) -> str:
 
 
 class Traversal:
-    def __init__(self, acquisition: "CachedAcquisition", request: "FetchInput", options: AcquisitionOptions) -> None:
+    def __init__(self, acquisition: "CachedAcquisition", request: "FetchRequest", options: AcquisitionOptions) -> None:
         self.acquisition = acquisition
         assert request.traversal is not None  # Only constructed for traversal requests.
         self.input = request.traversal

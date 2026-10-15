@@ -11,8 +11,8 @@ async def test_discovery_shared_budget_includes_large_metadata_and_single_struct
     payload = {'data': [{'url': f'https://example.org/{i}', 'title': 'Technical title ' * 200,
                          'snippet': 'Qualification: do not enable legacy mode. ' * 200,
                          'rank': i + 1} for i in range(10)]}
-    async with running(tmp_path, max_bytes=200000, source=cli_response(json.dumps(payload))) as (url, _), client(url) as session:
-        result = await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery', 'response_budget_bytes': 4096})
+    async with running(tmp_path, max_bytes=200000, source=cli_response(json.dumps(payload)), response_budget_bytes=4096) as (url, _), client(url) as session:
+        result = await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery'})
         assert not result.isError
         data = body(result)
         assert data == result.structuredContent
@@ -33,9 +33,8 @@ async def test_full_text_budget_preserves_ten_source_outcomes_and_reports_trunca
     async with site(handler) as (base, options):
         # Ten same-origin pages are intentional budget inputs, not a queue-load test.
         options = replace(options, queue_capacity=10, queue_wait=30)
-        async with running(tmp_path, acquisition_options=options) as (url, _), client(url, timeout=60) as session:
-            result = await session.call_tool('fetch', {'urls': [base + f'/{i}' for i in range(9)] + [base + '/missing'],
-                                                     'response_budget_bytes': limit})
+        async with running(tmp_path, acquisition_options=options, response_budget_bytes=limit) as (url, _), client(url, timeout=60) as session:
+            result = await session.call_tool('fetch', {'urls': [base + f'/{i}' for i in range(9)] + [base + '/missing']})
             assert not result.isError
             data = body(result)
             assert data == result.structuredContent
@@ -66,8 +65,8 @@ async def test_invalid_response_budgets_are_rejected(tmp_path, limit):
 async def test_untrimmable_metadata_is_omitted_explicitly_not_corrupted(tmp_path):
     payload = {'data': [{'url': 'https://example.org/' + 'a' * 10000, 'title': 'Long URL', 'rank': 1},
                         {'url': 'https://example.org/useful', 'title': 'Useful', 'rank': 2}]}
-    async with running(tmp_path, source=cli_response(json.dumps(payload))) as (url, _), client(url) as session:
-        result = await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery', 'response_budget_bytes': 4096})
+    async with running(tmp_path, source=cli_response(json.dumps(payload)), response_budget_bytes=4096) as (url, _), client(url) as session:
+        result = await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery'})
         data = body(result)
         assert not result.isError
         assert [s['url'] for s in data['results']] == ['https://example.org/useful']
@@ -77,26 +76,29 @@ async def test_untrimmable_metadata_is_omitted_explicitly_not_corrupted(tmp_path
         assert len(result.model_dump_json(exclude_none=True).encode()) <= 4096
 
 
-async def test_operator_default_is_advertised_and_used_with_client_override(tmp_path):
+async def test_operator_default_is_used_and_not_exposed_as_a_tool_control(tmp_path):
     async with running(tmp_path, response_budget_bytes=8192) as (url, _), client(url) as session:
-        assert all(t.inputSchema['properties']['response_budget_bytes']['default'] == 8192
+        assert all('response_budget_bytes' not in t.inputSchema['properties']
                    for t in (await session.list_tools()).tools)
         default = body(await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery'}))
-        override = body(await session.call_tool('search', {'query': 'docs', 'content_mode': 'discovery', 'response_budget_bytes': 4096}))
+        override = await session.call_tool('search', {'query': 'docs', 'response_budget_bytes': 4096})
         assert default['budget']['limit_bytes'] == 8192
-        assert override['budget']['limit_bytes'] == 4096
+        assert override.isError
+        assert body(override)['error']['code'] == 'invalid_input'
 
 
 @pytest.mark.parametrize('limit', [None, 4096, 262144])
 async def test_representative_discovery_budget_measurements_and_boundaries(tmp_path, limit):
-    async with running(tmp_path) as (url, _), client(url) as session:
+    async with running(tmp_path, response_budget_bytes=limit or 12288) as (url, _), client(url) as session:
         arguments = {'query': 'docs', 'content_mode': 'discovery'}
-        if limit is not None:
-            arguments['response_budget_bytes'] = limit
         result = await session.call_tool('search', arguments)
         data = body(result)
         size = len(result.model_dump_json(exclude_none=True).encode())
-        print(f'discovery requested={limit} wire_bytes={size}')
+        pretty_size = len(json.dumps(data, indent=2).encode())
+        print(f'discovery requested={limit} wire_bytes={size} pretty_bytes={pretty_size}')
+        if limit is None:
+            assert pretty_size < 20_000
+            assert data['budget']['limit_bytes'] == 12288
         assert not result.isError
         assert len(data['results']) == 10
         assert not data['budget']['partial_coverage']

@@ -18,11 +18,16 @@ from mcp.types import CallToolResult
 
 from .types import ToolData, ToolResult
 
-# 4 KiB retains attributed fixture content; 64 KiB bounds shared-context output;
-# 256 KiB fits the intact multilingual fixture. These are byte safety caps,
-# not production sizing or token claims.
+# 4 KiB retains attributed fixture content; 256 KiB fits the multilingual fixture.
+# Frozen eval corpus at 12,288 bytes (compact wire / indent-2 structuredContent):
+# c05 highlights = 12,163/14,416 bytes; c06 = 12,277/14,477; c08 full_text
+# = 11,779/14,266 (pretty/compact <= 1.22 for these near-limit responses).
+# Python indent=2 with ASCII escaping is conservative versus pi JSON.stringify;
+# 12 KiB leaves headroom below pi's 20 KB model-text cap, not a universal pretty
+# size guarantee: metadata-heavy results can have higher ratios. Operators can
+# override the compact-wire budget; this is not a token or production sizing claim.
 MIN_RESPONSE_BYTES = 4096
-DEFAULT_RESPONSE_BYTES = 65536
+DEFAULT_RESPONSE_BYTES = 12288
 MAX_RESPONSE_BYTES = 262144
 
 

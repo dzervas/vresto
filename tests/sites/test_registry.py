@@ -125,7 +125,8 @@ def test_partial_outcome_preserves_content_and_discloses_reason(monkeypatch, cov
 async def test_outcomes_through_browser_and_cache(tmp_path, monkeypatch, status, code, reason):
     from aiohttp import web
     from test_fetch import site
-    from test_http import body, client, running
+    from test_http import body
+    from retrieval_helpers import client, running
     from kagi_crawler.sites.base import ExtractionOutcome
 
     wall = False

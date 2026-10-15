@@ -52,6 +52,7 @@ def main():
         docker(*common, '-c', wrapper, '/gate/release_check.py', '--cache', '/data/cache')
         docker(*common, '-c', wrapper, '/gate/release_check.py', '--cache', '/data/cache',
                '--verify-persisted')
+        # The mounted release harness checks search/fetch/expand/crawl schemas and calls.
         # Exercise the production entry point, private HTTP and SIGTERM too.
         name = 'kagi-entry-' + uuid.uuid4().hex
         docker('run', '--detach', '--name', name, '--init', '--network', 'none',

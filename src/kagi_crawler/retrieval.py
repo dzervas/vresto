@@ -1,10 +1,10 @@
-"""Search/fetch orchestration returning final public, budgeted tool data."""
+"""Search/fetch/expand/crawl orchestration returning final public, budgeted tool data."""
 from copy import deepcopy
 
 from .acquisition import Acquisition
-from .budget import apply_budget
+from .budget import DEFAULT_RESPONSE_BYTES, apply_budget
 from .cache import CachedAcquisition, DocumentCache
-from .contract import FetchInput, SearchInput
+from .contract import CrawlInput, ExpandInput, FetchInput, SearchInput, FetchRequest, SearchRequest
 from .discovery import Discovery, DiscoveryError
 from .evidence import expand_evidence, select_highlights
 from .safety import safe_sources
@@ -15,7 +15,8 @@ from .types import ToolData
 class Retrieval:
     def __init__(self, discovery: Discovery, acquisition: Acquisition,
                  cached_acquisition: CachedAcquisition, cache: DocumentCache,
-                 secrets: tuple[str, ...]) -> None:
+                 secrets: tuple[str, ...], response_budget_bytes: int = DEFAULT_RESPONSE_BYTES) -> None:
+        self.response_budget_bytes = response_budget_bytes
         self.discovery = discovery
         self.acquisition = acquisition
         self.cached_acquisition = cached_acquisition
@@ -34,7 +35,7 @@ class Retrieval:
                 'queue_wait_seconds': options.queue_wait, 'browser_navigation_seconds': min(10, options.request_timeout),
                 'browser_acquisition_seconds': options.request_timeout}
 
-    def _finalize(self, data: ToolData, request: SearchInput | FetchInput) -> ToolData:
+    def _finalize(self, data: ToolData, request: SearchRequest | FetchRequest) -> ToolData:
         # The only output boundary. Strip private traversal metadata from a
         # copy, preserving canonical/cache records. Reject credentials before
         # selection so contaminated quotations cannot influence admission.
@@ -44,7 +45,7 @@ class Retrieval:
             source.pop('links_truncated', None)
         data = safe_sources(data, self.secrets)
         highlights = (request.content_mode == 'highlights' or
-                      (isinstance(request, FetchInput) and request.content_mode is None and request.query))
+                      (isinstance(request, FetchRequest) and request.content_mode is None and request.query))
         if highlights and 'error' not in data:
             assert request.query is not None  # Validated highlight mode requires a query.
             data = select_highlights(data, request.query, request.response_budget_bytes)
@@ -53,7 +54,9 @@ class Retrieval:
             data = safe_sources(data, self.secrets)
         return apply_budget(data, request.response_budget_bytes)
 
-    async def fetch(self, request: FetchInput) -> ToolData:
+    async def fetch(self, request: FetchInput | FetchRequest) -> ToolData:
+        if isinstance(request, FetchInput):
+            request = FetchRequest(**request.model_dump(), response_budget_bytes=self.response_budget_bytes)
         data: ToolData
         if request.evidence_ids is not None:
             try:
@@ -74,7 +77,9 @@ class Retrieval:
             data['acquisition_limits'] = self._acquisition_limits(request.traversal.max_pages if request.traversal else 10)
         return self._finalize(data, request)
 
-    async def search(self, request: SearchInput) -> ToolData:
+    async def search(self, request: SearchInput | SearchRequest) -> ToolData:
+        if isinstance(request, SearchInput):
+            request = SearchRequest(**request.model_dump(), response_budget_bytes=self.response_budget_bytes)
         data: ToolData
         try:
             data = dict(await self.discovery.search(request))
@@ -103,3 +108,10 @@ class Retrieval:
             }
             return {"error": {"code": error.code, "message": messages[error.code]}}
 
+    async def expand(self, request: ExpandInput) -> ToolData:
+        return await self.fetch(FetchRequest(evidence_ids=request.evidence_ids,
+                                            response_budget_bytes=self.response_budget_bytes))
+
+    async def crawl(self, request: CrawlInput) -> ToolData:
+        return await self.fetch(FetchRequest(urls=[request.url], traversal=request.traversal(),
+                                            response_budget_bytes=self.response_budget_bytes))

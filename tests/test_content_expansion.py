@@ -88,7 +88,7 @@ async def test_action_bound_is_public_and_old_expanded_evidence_survives_refresh
             current = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
             assert 'Additional differing qualification in version 3.14.' in current['content']
             assert current['content_version'] != original['content_version']
-            expanded = body(await session.call_tool('fetch', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
+            expanded = body(await session.call_tool('expand', {'evidence_ids': [quote['evidence_id']]}))['sources'][0]
             assert expanded['highlights'] == [quote]
             assert expanded['content_version'] == original['content_version']
             assert '3.14' not in str(expanded)
@@ -163,18 +163,15 @@ async def test_opt_in_public_expansion_fetch_and_composed_search(tmp_path):
     target = os.environ['KAGI_CRAWLER_EXPANSION_SMOKE_URL']
     expected = os.environ['KAGI_CRAWLER_EXPANSION_SMOKE_EXPECTED'].splitlines()
     source = cli_response(json.dumps({'data': [{'t': 0, 'rank': 1, 'url': target, 'title': 'Public discussion'}]}))
-    async with running(tmp_path, source=source) as (url, _), client(url, timeout=60) as session:
-        fetched = body(await session.call_tool('fetch', {'urls': [target], 'freshness': 'fresh_only',
-            'response_budget_bytes': 262144}))['sources'][0]
+    async with running(tmp_path, source=source, response_budget_bytes=262144) as (url, _), client(url, timeout=60) as session:
+        fetched = body(await session.call_tool('fetch', {'urls': [target], 'freshness': 'fresh_only'}))['sources'][0]
         assert 'error' not in fetched
         assert all(text in fetched['content'] for text in expected), fetched
-        searched = body(await session.call_tool('search', {'query': expected[0], 'num_results': 1, 'freshness': 'fresh_only',
-            'response_budget_bytes': 262144}))['results'][0]
+        searched = body(await session.call_tool('search', {'query': expected[0], 'num_results': 1, 'freshness': 'fresh_only'}))['results'][0]
         assert expected[0] in ' '.join(h['text'] for h in searched['highlights']), searched
         # Independently inspect the acquired canonical search document; a
         # response/evidence budget must not masquerade as missing acquisition.
-        canonical = body(await session.call_tool('fetch', {'urls': [target], 'freshness': 'cache_only',
-            'response_budget_bytes': 262144}))['sources'][0]
+        canonical = body(await session.call_tool('fetch', {'urls': [target], 'freshness': 'ordinary'}))['sources'][0]
         assert 'content' not in fetched.get('truncated_fields', [])
         assert 'content' not in canonical.get('truncated_fields', [])
         assert canonical['content_version'] == searched['content_version']
@@ -258,7 +255,7 @@ async def test_expansion_replacement_is_revalidated_and_never_cached_as_evidence
         source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
         assert source.get('error', {}).get('code') == expected
         assert 'content' not in source and not source.get('highlights')
-        cached = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+        cached = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'ordinary'}))['sources'][0]
         assert 'error' in cached and 'content' not in cached
 
 
@@ -362,6 +359,7 @@ async def test_continuation_label_does_not_authorize_without_safe_structure(tmp_
 
 @pytest.mark.parametrize('replacement, expected', [('challenge', 'blocked'), ('error', 'fetch_failed')])
 async def test_late_replacement_during_persistent_resource_settling_is_not_cached(tmp_path, replacement, expected):
+    from retrieval_helpers import running, client
     import asyncio
     from dataclasses import replace
     finished = asyncio.Event()
@@ -442,7 +440,7 @@ async def test_network_idle_timer_rendering_preserves_warning_and_exact_coverage
                                'pending_native_load': False, 'partial': keeps_mutating},
         }
         assert data['budget']['partial_coverage'] is keeps_mutating
-        cached = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'cache_only'}))['sources'][0]
+        cached = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'ordinary'}))['sources'][0]
         assert cached['content'] == source['content']
         assert cached['content_version'] == source['content_version']
         assert cached['coverage'] == source['coverage']

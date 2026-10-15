@@ -9,6 +9,7 @@ async def fetch(session, url, **controls):
 
 
 async def test_documents_reused_across_queries_and_server_restart(tmp_path):
+    from retrieval_helpers import running, client
     requests = []
     async def handler(request):
         requests.append(str(request.rel_url))
@@ -32,6 +33,7 @@ async def test_documents_reused_across_queries_and_server_restart(tmp_path):
 
 
 async def test_freshness_refresh_versions_and_stale_failures(tmp_path):
+    from retrieval_helpers import running, client
     version = 'One'
     requests = []
     failed = False
@@ -78,6 +80,7 @@ async def test_freshness_refresh_versions_and_stale_failures(tmp_path):
 
 
 async def test_cap_evicts_oldest_documents_and_oversized_document_is_not_cached(tmp_path):
+    from retrieval_helpers import running, client
     async def handler(request):
         paragraphs = 100 if request.path == '/huge' else 16
         return web.Response(content_type='text/html', text=f'<h1>{request.path}</h1><p>' + 'Warning: this version must remain attributed. ' * paragraphs + '</p>')
@@ -101,6 +104,7 @@ async def test_cap_evicts_oldest_documents_and_oversized_document_is_not_cached(
 async def test_refreshing_same_content_does_not_evict_other_retained_sources(tmp_path):
     # Include initial-render coverage metadata in the 2560-byte cap: measured
     # rows are about 1068 bytes, so two fit but three (double-counting) do not.
+    from retrieval_helpers import running, client
     async def handler(request):
         return web.Response(content_type='text/html', text=f'<h1>{request.path}</h1><p>' + 'Stable technical documentation. ' * 15 + '</p>')
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
@@ -116,6 +120,7 @@ async def test_refreshing_same_content_does_not_evict_other_retained_sources(tmp
 
 
 async def test_retention_expires_documents_across_restart(tmp_path):
+    from retrieval_helpers import running, client
     async def handler(request):
         return web.Response(content_type='text/html', text='<h1>Temporary</h1><p>' + 'Canonical documentation. ' * 20 + '</p>')
     async with site(handler) as (base, options):
