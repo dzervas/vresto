@@ -13,11 +13,10 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
 root = parser.parse_args().root
 files = [root / name for name in ('Dockerfile', '.dockerignore', 'pyproject.toml', 'uv.lock',
-    'NOTICE', 'licenses/embeddinggemma2-Apache-2.0.txt', 'scripts/install_embedding_model.py')]
+    'scripts/install_embedding_model.py')]
 # Recursive: subpackages such as sites/ are runtime code too.
 files += [p for p in (root / 'src/kagi_crawler').rglob('*.py') if '__pycache__' not in p.parts]
-# Include only the model's public license and installer, never traverse other
-# license-directory contents or unrelated scripts/credential files.
+# Include only the model installer, never unrelated scripts or credential files.
 with tarfile.open(fileobj=sys.stdout.buffer, mode='w|') as archive:
     for path in sorted(files):
         if any(part.is_symlink() for part in [path, *path.parents]):

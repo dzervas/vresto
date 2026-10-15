@@ -40,8 +40,6 @@ RUN uv sync --locked --no-dev --python 3.12 --no-install-project \
 COPY --from=kagi /cli/bin/kagi /usr/local/bin/kagi
 
 COPY scripts/install_embedding_model.py /app/scripts/install_embedding_model.py
-COPY NOTICE /app/NOTICE
-COPY licenses /app/licenses
 # Anonymous, revision-pinned FP32 graph/data/tokenizer; no runtime downloads.
 # INT8 is a runtime option after provisioning its pinned pair with --int8.
 RUN python scripts/install_embedding_model.py /opt/embeddinggemma2

@@ -37,13 +37,6 @@ from .research import Research
 from .safety import contains_secret
 
 
-# CLI help epilog. License files themselves ship with each installed package.
-THIRD_PARTY_NOTICE = (
-    "This service runs Microck's Kagi CLI (MIT, https://github.com/Microck/kagi-cli) "
-    "and Patchright (Apache-2.0) with Chromium/Google Chrome; see NOTICE."
-)
-
-
 @dataclass(frozen=True)
 class Settings:
     access_token: str = field(repr=False)
@@ -296,15 +289,14 @@ def create_app(settings: Settings) -> ASGIApp:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Private HTTP MCP discovery and HTML acquisition.",
-                                    epilog=THIRD_PARTY_NOTICE)
+    parser = argparse.ArgumentParser(description="Private HTTP MCP discovery and HTML acquisition.")
     parser.add_argument('--host', default=os.environ.get('KAGI_CRAWLER_HOST', '127.0.0.1'))
     parser.add_argument('--port', type=int, default=int(os.environ.get('KAGI_CRAWLER_PORT', '8000')))
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(name)s %(message)s')
     # uv sync --locked; uv run python -m patchright install chromium (no sudo).
-    # Patchright 1.63.0 pins Chromium 153.0.8010.12, revision 1243; retain bundled
-    # notices. Native system libraries must already exist; Dockerfile supplies them.
+    # Patchright 1.63.0 pins Chromium 153.0.8010.12, revision 1243.
+    # Native system libraries must already exist; Dockerfile supplies them.
     # Provision both variables separately, then uv run kagi-crawler.
     # Never source a shell file, read CLI auth config, or use API fallback.
     settings = Settings(access_token=os.environ.get("KAGI_CRAWLER_ACCESS_TOKEN", ""),

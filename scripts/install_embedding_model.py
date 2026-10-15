@@ -7,7 +7,6 @@ import urllib.request
 REVISION = 'daa72c51243991dfcaf9f9137d2c573d8f7790c0'
 BASE = f'https://huggingface.co/onnx-community/embeddinggemma-2-ONNX/resolve/{REVISION}'
 FILES = {
-    'README.md': '4fe21bf1b86938ac62c7cd2d1511822e4ea6e8654e015e00b06a72676b5420e6',
     'tokenizer.json': '4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4',
     'onnx/model.onnx': 'bc47de15f81208a5c99e5ab10f746d5e33b51ea228b7dc0bef9c133a94f1c1c3',
     'onnx/model.onnx_data': '9fd452bfc6916e5a92f080f8dada35598ca4512b21c65897d4c5974d5f9630a2',
@@ -22,7 +21,7 @@ def main():
     parser.add_argument('--int8', action='store_true')
     args = parser.parse_args()
     variant = 'model_quantized' if args.int8 else 'model'
-    for name in ('tokenizer.json', f'onnx/{variant}.onnx', f'onnx/{variant}.onnx_data', 'README.md'):
+    for name in ('tokenizer.json', f'onnx/{variant}.onnx', f'onnx/{variant}.onnx_data'):
         target = args.directory / name
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_suffix(target.suffix + '.tmp')

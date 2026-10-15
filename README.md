@@ -225,9 +225,8 @@ a permanent archive.
 
 The pinned community export is
 `onnx-community/embeddinggemma-2-ONNX@daa72c51243991dfcaf9f9137d2c573d8f7790c0`;
-Apache-2.0 and the model-card prohibited-use reference are in NOTICE. Docker
-anonymously downloads the FP32 graph/data/tokenizer at build time, verifies their
-SHA256 checksums, and retains the model card. Local setup (no credentials):
+Docker anonymously downloads the FP32 graph/data/tokenizer at build time and
+verifies their SHA256 checksums. Local setup (no credentials):
 
 ```sh
 uv sync --locked
@@ -532,9 +531,3 @@ rankings. Live acquisition/challenge rates, PDF citation quality and Exa selecti
 quality comparisons remain missing; no paid credentials or calls are required
 for deterministic checks. Embeddings, rerankers, extraction and corpus search
 remain outside the baseline dependency closure.
-
-## Attribution
-
-Keep `NOTICE`, packaged Kagi/Rust notices and installed dependency/driver/Chromium
-third-party notices when redistributing. This repository does not
-change upstream licenses.
