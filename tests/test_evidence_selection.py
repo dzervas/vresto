@@ -59,6 +59,58 @@ def test_release_heading_still_scopes_child_highlights(heading):
     assert all(h['start'] == 0 and heading in h['text'] for h in quotes)
 
 
+@pytest.mark.parametrize('navigation', [
+    '[Docs](https://example.test/)\n\n'
+    '* [Permalink](https://example.test/1.2 "Get this specific version")\n'
+    '* release-package 1.2\n\n',
+    'On this page\n\n'
+    '* [When not to use this](https://example.test/#limitations)\n'
+    '* [Exceptions](https://example.test/#exceptions)\n\n',
+    '[Reference](https://example.test/version/reference)\n\n',
+    '1. [When not to use this](https://example.test/#limitations)\n'
+    '2. [Exceptions](https://example.test/#exceptions)\n\n',
+])
+def test_navigation_qualifications_do_not_scope_descendant_answers(navigation):
+    text = navigation + '# Reference\n\nGeneral operations.\n\n'
+    text += '## Background\n\n' + 'Ordinary implementation detail. ' * 150 + '\n\n'
+    answer = 'Cancellation safety describes dropped futures.\n'
+    text += '## Cancellation safety\n\n' + answer
+    data = evidence.select_highlights({'sources': [source(text)]}, 'Cancellation safety', 4096)
+    quotes = data['sources'][0]['highlights']
+    assert quotes
+    assert any(answer in h['text'] for h in quotes)
+    assert all(h['start'] == text.index('## Cancellation safety') for h in quotes)
+    assert all(h['text'] == text[h['start']:h['end']] for h in quotes)
+
+
+@pytest.mark.parametrize('introduction', [
+    'For version 1.2 only, use [these operations](https://example.test/operations).',
+    '[Only supported operations](https://example.test/operations) are described below.',
+    'Warning: [reference](https://example.test/) operations require care.',
+    '[For version 1.2 only](https://example.test/operations)',
+    '* [Warning: operations require care](https://example.test/operations)',
+    '* [Navigation](https://example.test/)\n\nWarning: operations require care.',
+])
+def test_real_linked_introductions_still_scope_child_answers(introduction):
+    text = '# Reference\n\n' + introduction + '\n\n## Operation\n\nCancellation safety.\n'
+    quotes = evidence.select_highlights({'sources': [source(text)]}, 'Cancellation safety')['sources'][0]['highlights']
+    assert quotes
+    assert all(introduction in h['text'] for h in quotes)
+
+
+def test_navigation_preamble_does_not_replace_real_api_availability_scope():
+    navigation = '* [Permalink](https://example.test/1.2 "Get this specific version")\n\n'
+    text = navigation + '* [Related API](https://example.test/related)\n' * 100 + '\n'
+    start = len(text)
+    text += '# Macro select\n\nAvailable on crate feature `macros` only.\n\n'
+    text += '## Cancellation safety\n\nCancellation safety describes dropped futures.\n'
+    quotes = evidence.select_highlights({'sources': [source(text)]}, 'Cancellation safety', 4096)['sources'][0]['highlights']
+    assert quotes
+    assert all(h['start'] == start for h in quotes)
+    assert all('Available on crate feature `macros` only.' in h['text'] for h in quotes)
+    assert any('Cancellation safety describes dropped futures.' in h['text'] for h in quotes)
+
+
 def test_marginal_identifiers_displace_overlapping_cancel_called(monkeypatch):
     text = 'cancel_called ' * 60 + 'ordinary implementation.\n'
     boundary = len(text)

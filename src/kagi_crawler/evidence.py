@@ -262,7 +262,19 @@ def sections(text: str) -> Iterator[tuple[int, int, str | None]]:
         # contain version-like author names), not a release for their children.
         release_title = bool(title and not re.match(r'(?i)^(?:Comment|Description) \d+ — ', title) and
             re.search(r'(?i)\b(?:version|release)\b|(?<![\w.#])(?:v\d+(?:\.\d+)*|\d+\.\d+(?:\.\d+)*)(?:[-+][\w.]+)?(?![\w.])', title))
-        qualified = bool(re.search(r'(?i)\b(version|only|not|never|warning|caution|experimental|deprecated|except|requires?)\b', text[start:introduction_end]) or
+        # A docs preamble can contain version-link titles or a table of
+        # contents such as "When not to use ...". Those describe navigation,
+        # not constraints on every descendant. Inspect visible prose, retaining
+        # linked words in prose but not link-only navigation lists. The
+        # canonical quotation itself is never changed.
+        introduction = []
+        for a, b in markdown_blocks(text, start, introduction_end):
+            block = text[a:b]
+            unlinked = re.sub(r'(?m)^\s*\d+[.)]\s+', '', _MARKDOWN_LINK.sub('', block))
+            if (title is not None or any(char.isalnum() for char in unlinked) or
+                    not re.match(r'\s*(?:[-*+]\s|\d+[.)]\s|\|)', block)):
+                introduction.append(_MARKDOWN_LINK.sub(r'\1', block))
+        qualified = bool(re.search(r'(?i)\b(version|only|not|never|warning|caution|experimental|deprecated|except|requires?)\b', '\n'.join(introduction)) or
             release_title)
         if text[start:end].strip():
             if scoped:
