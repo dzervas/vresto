@@ -189,3 +189,23 @@ async def test_evidence_validation_returns_final_error_without_http(tmp_path, mo
         assert data == {'error': {'code': 'invalid_input', 'message':
             'Invalid tool input or unsupported control; see tool input schema.'}}
         fetch.assert_not_awaited()
+
+
+def test_failed_and_stale_sources_are_logged_with_their_urls(caplog):
+    from kagi_crawler.retrieval import _log_failures
+    caplog.set_level('WARNING', logger='kagi_crawler')
+    _log_failures({'results': [
+        {'url': 'https://www.reddit.com/r/x/comments/1/', 'error': {'code': 'blocked', 'reason': 'login_required'}},
+        {'requested_url': 'https://nixos.wiki/a', 'error': {'code': 'blocked', 'reason': 'challenge_timeout',
+                                                             'http_status': 403}},
+        {'requested_url': 'https://ok.example/', 'content': 'fine'},
+        {'requested_url': 'https://stale.example/', 'refresh_error': {'code': 'fetch_timeout'}},
+        {'error': {'code': 'fetch_failed'}},  # credential-bearing source already stripped of its URL
+    ]})
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines == [
+        'source_failed url=https://www.reddit.com/r/x/comments/1/ code=blocked reason=login_required http_status=-',
+        'source_failed url=https://nixos.wiki/a code=blocked reason=challenge_timeout http_status=403',
+        'source_stale url=https://stale.example/ code=fetch_timeout reason=- http_status=-',
+        'source_failed url=- code=fetch_failed reason=- http_status=-',
+    ]

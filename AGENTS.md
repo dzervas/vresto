@@ -64,6 +64,6 @@ Headed capture needs `DISPLAY` pointing to a working X server (e.g. a private Xv
 ## Invariants
 
 - Public, logged-out acquisition only: no credentials, supplied cookies, login or CAPTCHA solving in browser acquisition or fixture capture. Service/upstream credentials stay confined to their existing auth/discovery boundaries.
-- Preserve MCP wire output unless the task explicitly changes the contract; diagnostics use fixed phases/reasons, never URLs, queries, credentials or raw exceptions.
+- Preserve MCP wire output unless the task explicitly changes the contract; diagnostics use fixed phases/reasons, never queries, credentials or raw exceptions. The only URLs logged are failed/stale sources (`source_failed`/`source_stale` in `retrieval.py`), after credential screening.
 - Canonical text changes alter content versions and evidence offsets/IDs. Budgeting and query selection operate on response copies, not canonical cache records. Memory evidence resolves only exact retained versions; retained results disclose origin/date, never enter lexical highlight reselection, and lose budget priority to live results. `fresh_only` excludes memory.
 - Fragile site-specific code belongs only under `sites/`; generic extraction/normalization must remain host-independent. Keep fallback and partial-coverage disclosure honest.

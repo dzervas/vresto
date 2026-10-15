@@ -1,6 +1,7 @@
 """Search/fetch/expand/crawl orchestration returning final public, budgeted tool data."""
 from copy import deepcopy
 import asyncio
+import logging
 
 from .acquisition import Acquisition
 from .budget import DEFAULT_RESPONSE_BYTES, apply_budget
@@ -13,6 +14,22 @@ from .safety import safe_sources
 from .summaries import add_summaries
 from .traversal import Traversal
 from .types import ToolData
+
+
+def _log_failures(data: ToolData) -> None:
+    # One line per failed or stale-fallback source, with its URL, so blocked
+    # sites can be found in the logs. Runs after safe_sources, which already
+    # replaced any credential-bearing source with a URL-less failure.
+    logger = logging.getLogger('kagi_crawler')
+    for source in data.get('sources', data.get('results', [])):
+        url = source.get('requested_url') or source.get('resolved_url') or source.get('url') or '-'
+        error = source.get('error')
+        if error is not None:
+            logger.warning('source_failed url=%s code=%s reason=%s http_status=%s', url,
+                           error.get('code'), error.get('reason', '-'), error.get('http_status', '-'))
+        elif (refresh := source.get('refresh_error')) is not None:
+            logger.warning('source_stale url=%s code=%s reason=%s http_status=%s', url,
+                           refresh.get('code'), refresh.get('reason', '-'), refresh.get('http_status', '-'))
 
 
 class Retrieval:
@@ -50,6 +67,7 @@ class Retrieval:
             source.pop('link_targets', None)
             source.pop('links_truncated', None)
         data = safe_sources(data, self.secrets)
+        _log_failures(data)
         highlights = ((request.content_mode == 'summary' and request.query is not None) or
                       request.content_mode == 'highlights' or
                       (isinstance(request, FetchRequest) and request.content_mode is None and request.query))

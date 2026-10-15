@@ -562,7 +562,9 @@ not representative heavy-site/PDF sizing. Deployment must repeat CPU/RSS/cgroup
 peak, idle/active, queue saturation and public-site latency measurements.
 
 Normal tool diagnostics contain only tool name, elapsed time and outcome; browser
-lifecycle/queue events are fixed labels. HTTP access logging is off; MCP responses
+lifecycle/queue events are fixed labels. Every failed or stale-fallback source is
+logged as `source_failed`/`source_stale` with its URL, error code, reason and HTTP
+status (sources that echo a credential are logged without a URL). HTTP access logging is off; MCP responses
 provide cache/error/limit details. Do not turn on debug logging or log request,
 response, environment or page bodies. For incidents inspect sanitized error
 codes, elapsed times, process counts and cache usage; investigate upstream auth
