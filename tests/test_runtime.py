@@ -43,7 +43,8 @@ async def test_operator_can_bind_container_interface_without_exposing_credential
                         break
                     except httpx.ConnectError:
                         await asyncio.sleep(.05)
-            assert response.status_code == 401
+            assert response.status_code == 200
+            assert response.json() == {'status': 'ok'}
             response = await http.get(f'http://127.0.0.2:{port}/health',
                 headers={'Authorization': 'Bearer fixture-access'})
             assert response.status_code == 200

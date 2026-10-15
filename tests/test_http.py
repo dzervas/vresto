@@ -17,7 +17,8 @@ from kagi_crawler.acquisition_policy import AcquisitionOptions
 
 @asynccontextmanager
 async def running(tmp_path, *, timeout=2, max_bytes=65536, source=None, stop=None, acquisition_options=None,
-                  response_budget_bytes=65536, browser_clock=None, browser_sleep=None, **cache_settings):
+                  response_budget_bytes=65536, browser_clock=None, browser_sleep=None,
+                  access_token='client-secret', **cache_settings):
     # Executable fixture is the external CLI boundary, not a mock of our modules.
     fixture = tmp_path / "cli.py"
     fixture.write_text(source or '''import json, sys
@@ -26,7 +27,7 @@ if "--version" in sys.argv:
 else:
     print(json.dumps({"data": [{"t": 0, "rank": i, "url": f"https://example.org/{i}", "title": f"Source {i}", "snippet": "Provider summary"} for i in range(1, 13)]}))
 ''')
-    app = create_app(Settings(access_token="client-secret", session_token="subscriber-secret",
+    app = create_app(Settings(access_token=access_token, session_token="subscriber-secret",
                               command=(sys.executable, str(fixture)), timeout=timeout,
                               max_output_bytes=max_bytes, acquisition_options=acquisition_options,
                               response_budget_bytes=response_budget_bytes,
@@ -73,7 +74,7 @@ async def client(url, token="client-secret", calls=None, timeout=Settings.timeou
         if wire is not None and response.headers.get('content-type', '').startswith('application/json'):
             wire.append(await response.aread())
     # Even a no-op response hook changes cancellation timing; observe only on request.
-    async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"},
+    async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"} if token else {},
                                  event_hooks={"request": [observe],
                                               "response": [observe_response] if wire is not None else []}, timeout=timeout) as http:
         async with streamable_http_client(url, http_client=http) as (r, w, _):
@@ -210,7 +211,8 @@ async def test_service_access_is_required_for_mcp_initialization(tmp_path):
         async with httpx.AsyncClient() as http:
             response = await http.post(url, json={"jsonrpc": "2.0", "id": 0, "method": "initialize"})
             assert response.status_code == 401
-            assert response.json() == {"error": "access_rejected"}
+            assert response.json()['error'] == 'invalid_token'
+            assert response.headers['www-authenticate'].startswith('Bearer ')
 
 
 async def test_server_shutdown_reaps_active_discovery(tmp_path):

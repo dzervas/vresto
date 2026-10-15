@@ -5,25 +5,30 @@ import argparse
 import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-import hmac
 import logging
+import json
 import time
 import os
 from pathlib import Path
 import shutil
 
+from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser, BearerAuthBackend
+from mcp.server.auth.routes import build_resource_metadata_url, create_protected_resource_routes
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import Tool, ToolAnnotations
 from pydantic import ValidationError
 from starlette.applications import Starlette
+from starlette.middleware.authentication import AuthenticationMiddleware
 from importlib.metadata import version as package_version
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 import uvicorn
 
 from starlette.types import ASGIApp
 
+from .auth import ResourceVerifier, ScopeAuthMiddleware, oauth_settings
 from .contract import SearchInput, FetchInput, ExpandInput, CrawlInput, ResearchInput
 from .budget import (result as tool_result, DEFAULT_RESPONSE_BYTES,
                      MIN_RESPONSE_BYTES, MAX_RESPONSE_BYTES)
@@ -41,6 +46,13 @@ from .safety import contains_secret
 class Settings:
     access_token: str = field(repr=False)
     session_token: str = field(repr=False)
+    oauth_issuer: str = ''
+    oauth_resource: str = ''
+    oauth_scopes: tuple[str, ...] = ()
+    oauth_opaque_userinfo: bool = False
+    oauth_introspection_client_id: str = ''
+    oauth_introspection_client_secret: str = field(default='', repr=False)
+    unauthenticated: bool = False
     command: tuple[str, ...] = (shutil.which("kagi") or "kagi",)
     # Version check/search share one deadline; stdout/stderr share one byte cap.
     timeout: float = 120
@@ -99,8 +111,23 @@ class Settings:
 
 
 def create_app(settings: Settings) -> ASGIApp:
-    if not settings.access_token or not settings.session_token:
-        raise ValueError("Service access and upstream session credentials are required")
+    if not settings.session_token:
+        raise ValueError('Upstream session credential is required')
+    oauth = oauth_settings(settings.oauth_issuer, settings.oauth_resource, settings.oauth_scopes)
+    if not settings.unauthenticated and oauth is None and not settings.access_token:
+        raise ValueError('Configure OAuth, a service access token, or explicit unauthenticated mode')
+    if bool(settings.oauth_introspection_client_id) != bool(settings.oauth_introspection_client_secret):
+        raise ValueError('Introspection client ID and secret must be configured together')
+    if settings.unauthenticated:
+        logging.getLogger('kagi_crawler').warning('auth=disabled reason=operator_unauthenticated')
+    if settings.oauth_opaque_userinfo:
+        logging.getLogger('kagi_crawler').warning('auth=userinfo reason=audience_not_verified')
+    verifier = ResourceVerifier(oauth, settings.access_token, userinfo=settings.oauth_opaque_userinfo,
+        introspection_client_id=settings.oauth_introspection_client_id,
+        introspection_client_secret=settings.oauth_introspection_client_secret,
+        issuer=settings.oauth_issuer, resource=settings.oauth_resource)
+    secrets = tuple(value for value in (settings.session_token, settings.access_token,
+                                        settings.oauth_introspection_client_secret) if value)
     if type(settings.response_budget_bytes) is not int or not MIN_RESPONSE_BYTES <= settings.response_budget_bytes <= MAX_RESPONSE_BYTES:
         raise ValueError("Service response budget is outside the hard limits")
     discovery = Discovery(settings)
@@ -120,9 +147,9 @@ def create_app(settings: Settings) -> ASGIApp:
                      embedder, settings.memory_queue_capacity)
               if settings.memory_enabled and embedder.available else None)
     cached_acquisition = CachedAcquisition(acquisition, cache,
-        (settings.access_token, settings.session_token), memory.submit if memory is not None else None)
+        secrets, memory.submit if memory is not None else None)
     retrieval = Retrieval(discovery, acquisition, cached_acquisition, cache,
-                          (settings.access_token, settings.session_token), settings.response_budget_bytes, memory)
+                          secrets, settings.response_budget_bytes, memory)
     research = Research(discovery, retrieval)
     mcp = Server("kagi-crawler")
 
@@ -177,16 +204,23 @@ def create_app(settings: Settings) -> ASGIApp:
         finally:
             # Deliberately no arguments, URLs, queries, credentials, bodies or
             # exception strings. Per-source error/cache details stay in MCP.
+            request = mcp.request_context.request
+            user = request.scope.get('user') if isinstance(request, Request) else None
+            # JSON escaping keeps an untrusted subject in one bounded log field.
+            subject = user.access_token.client_id if isinstance(user, AuthenticatedUser) else 'anonymous'
+            log_secrets = secrets + ((user.access_token.token,) if isinstance(user, AuthenticatedUser) else ())
+            if contains_secret(subject, log_secrets):
+                subject = 'redacted'
             logging.getLogger('kagi_crawler').info(
-                'tool=%s outcome=%s elapsed_ms=%.1f',
+                'tool=%s outcome=%s elapsed_ms=%.1f sub=%s',
                 name if name in ('search', 'fetch', 'expand', 'crawl', 'research') else 'unsupported', outcome,
-                (time.monotonic() - started) * 1000)
+                (time.monotonic() - started) * 1000, json.dumps(subject[:256], ensure_ascii=True))
 
     async def retrieve(name, arguments):
         # SDK JSON-schema validation echoes inputs in errors. Validate here instead
         # and never serialize ValidationError (which may contain client secrets).
         try:
-            if contains_secret(arguments, (settings.access_token, settings.session_token)):
+            if contains_secret(arguments, secrets):
                 raise ValueError("credential in input")
             if name == "fetch":
                 request = FetchInput.model_validate(arguments)
@@ -233,6 +267,7 @@ def create_app(settings: Settings) -> ASGIApp:
             try:
                 yield
             finally:
+                await verifier.close()
                 await research.cli.processes.close()
                 await discovery.processes.close()
                 await acquisition.close()
@@ -241,9 +276,15 @@ def create_app(settings: Settings) -> ASGIApp:
 
     started = time.monotonic()
 
-    async def health(_):
-        # Authenticated like every route. Coarse state and counters only: no
-        # URLs, queries, cache keys or credentials. Never warms the browser.
+    async def health(request):
+        # Public liveness discloses no deployment details. Detailed state requires
+        # authentication even when MCP access is explicitly unauthenticated.
+        user = request.scope.get('user')
+        credentials = request.scope.get('auth')
+        if not isinstance(user, AuthenticatedUser) or (oauth is not None and
+                any(scope not in credentials.scopes for scope in settings.oauth_scopes)):
+            return JSONResponse({'status': 'ok'})
+        # Coarse state and counters only; never warms the browser.
         if acquisition.closed:
             browser = 'closed'
         elif acquisition.browser is not None:
@@ -269,23 +310,33 @@ def create_app(settings: Settings) -> ASGIApp:
                 'passages': 0, 'bytes': 0, 'ingest_backlog': 0, 'ingest_drops': 0},
         })
 
-    app = Starlette(lifespan=lifespan, routes=[Route('/health', health)])
+    routes = [Route('/health', health)]
+    metadata_url = None
+    if oauth is not None and oauth.resource_server_url is not None:
+        routes.extend(create_protected_resource_routes(oauth.resource_server_url, [oauth.issuer_url],
+                                                      scopes_supported=list(settings.oauth_scopes) or None))
+        metadata_url = build_resource_metadata_url(oauth.resource_server_url)
+    app = Starlette(lifespan=lifespan, routes=routes)
 
-    async def private(scope, receive, send):
-        if scope["type"] == "http":
-            authorization = dict(scope["headers"]).get(b"authorization", b"")
-            if not hmac.compare_digest(authorization, ("Bearer " + settings.access_token).encode()):
-                await send({"type": "http.response.start", "status": 401,
-                            "headers": [(b"content-type", b"application/json")]})
-                await send({"type": "http.response.body", "body": b'{"error":"access_rejected"}'})
-                return
-            if scope["path"] == "/mcp":
-                acquisition.warmup()
-                await manager.handle_request(scope, receive, send)
-                return
-        await app(scope, receive, send)
+    async def protected(scope, receive, send):
+        if scope['path'] == '/mcp':
+            acquisition.warmup()
+            await manager.handle_request(scope, receive, send)
+        else:
+            await app(scope, receive, send)
 
-    return private
+    required = ScopeAuthMiddleware(protected, (oauth.required_scopes or []) if oauth else [], metadata_url)
+    public_paths = {route.path for route in routes}
+
+    async def dispatch(scope, receive, send):
+        if scope['type'] != 'http' or scope['path'] in public_paths:
+            await app(scope, receive, send)
+        elif settings.unauthenticated:
+            await protected(scope, receive, send)
+        else:
+            await required(scope, receive, send)
+
+    return AuthenticationMiddleware(dispatch, backend=BearerAuthBackend(verifier))
 
 
 def main() -> None:
@@ -301,6 +352,13 @@ def main() -> None:
     # Never source a shell file, read CLI auth config, or use API fallback.
     settings = Settings(access_token=os.environ.get("KAGI_CRAWLER_ACCESS_TOKEN", ""),
                         session_token=os.environ.get("KAGI_SESSION_TOKEN", ""),
+                        oauth_issuer=os.environ.get('KAGI_CRAWLER_OAUTH_ISSUER', ''),
+                        oauth_resource=os.environ.get('KAGI_CRAWLER_OAUTH_RESOURCE', ''),
+                        oauth_scopes=tuple(os.environ.get('KAGI_CRAWLER_OAUTH_SCOPES', '').split()),
+                        oauth_opaque_userinfo=os.environ.get('KAGI_CRAWLER_OAUTH_OPAQUE_USERINFO', '0') == '1',
+                        oauth_introspection_client_id=os.environ.get('KAGI_CRAWLER_OAUTH_INTROSPECTION_CLIENT_ID', ''),
+                        oauth_introspection_client_secret=os.environ.get('KAGI_CRAWLER_OAUTH_INTROSPECTION_CLIENT_SECRET', ''),
+                        unauthenticated=os.environ.get('KAGI_CRAWLER_UNAUTHENTICATED', '0') == '1',
                         memory_enabled=os.environ.get('KAGI_CRAWLER_MEMORY', '1') != '0',
                         memory_model_directory=Path(os.environ.get('KAGI_CRAWLER_MEMORY_MODEL_DIRECTORY', '/opt/embeddinggemma2')),
                         memory_cap_bytes=int(os.environ.get('KAGI_CRAWLER_MEMORY_CAP_BYTES', '1073741824')),

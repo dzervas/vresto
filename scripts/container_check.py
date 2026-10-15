@@ -65,7 +65,7 @@ def main():
                 'import time,httpx; '
                 'time.sleep(3); '
                 'r=httpx.get("http://127.0.0.1:8000/health",trust_env=False); '
-                'assert r.status_code==401; '
+                'assert r.status_code==200 and r.json()=={"status":"ok"}; '
                 'r=httpx.get("http://127.0.0.1:8000/health",headers={"Authorization":"Bearer fixture-access"},trust_env=False); '
                 'assert r.status_code==200 and r.json()["status"]=="ok"')
             docker('stop', '--time', '10', name, stdout=subprocess.DEVNULL)

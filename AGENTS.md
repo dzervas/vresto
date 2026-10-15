@@ -23,7 +23,8 @@ Paths below are relative to `src/kagi_crawler/`.
 - `research.py`: `research` tool over Kagi Assistant (small = default model, big = configured model) with its own process pool, deadline, daily caps and thread deletion; optional citation verification through fetch/highlights; `Research`.
 - `pdf.py` / `pdf_worker.py`: bounded PDF parsing in an isolated worker; `parse_pdf` returns text/title/page metadata; worker takes a service-owned file path and emits bounded JSON on stdout.
 - `types.py`: shared result/coverage TypedDicts and `ErrorCode`; public wire shapes and private acquisition metadata are explicit.
-- `server.py`: settings, MCP/HTTP auth, validation, logging and lifespan; `create_app(Settings)` / CLI `main`; authenticated `GET /health` reports coarse state/counters without starting Chrome.
+- `server.py`: settings, MCP/HTTP validation, identity logging and lifespan; `create_app(Settings)` / CLI `main`; public `GET /health` is minimal liveness, authenticated requests disclose coarse state/counters without starting Chrome.
+- `auth.py`: SDK TokenVerifier and scope challenges, issuer discovery/JWKS, JWT/introspection and explicit weaker opaque/userinfo opt-in; OAuth resource server only. Auth changes → `tests/test_auth.py` (local fake AS, no browser).
 - `contract.py`: validated public search/fetch/expand/crawl inputs and internal request controls; keep advanced freshness/traversal tests at the Retrieval/cache seam, not in MCP schemas.
 - `safety.py`: credential detection/redaction helpers used at output and cache boundaries.
 - `native_observation.py`: pending native fetch/XHR tracking without interception; `NativeLoadObservation(page)` / `.close()` owns page listeners.

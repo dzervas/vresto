@@ -78,9 +78,10 @@ viewport, WebGL/WebGL2 and verified secure DoH. It does not change rendering
 flags, spoof fingerprints, solve CAPTCHA or enable unsafe SwiftShader. Null
 WebGL is a diagnostic observation, not proof that it caused a challenge failure.
 
-Provision two **different** runtime secrets using your secret manager:
+For static-token access, provision two **different** runtime secrets using your secret manager:
 `KAGI_CRAWLER_ACCESS_TOKEN` (private MCP bearer access) and `KAGI_SESSION_TOKEN`
-(subscriber discovery). No credentials are needed during build. Never put them in
+(subscriber discovery). OAuth can replace the static access token (see below).
+No credentials are needed during build. Never put them in
 Dockerfile, build args, image tags, source, URLs or client tool arguments. The
 historical `KAGI_SESSION_TOKNE` spelling is not a supported variable. CLI auth
 files are not read and API-token auth is not a fallback.
@@ -116,19 +117,83 @@ is performed by the service. Native bind defaults to `127.0.0.1`; image bind is
 
 ## Private access and safety
 
-Clients send `Authorization: Bearer <service-access-token>`; never send the Kagi
-session token. All routes, including `/health`, require service access. Keep the
-port loopback/private and terminate TLS at a **trusted private edge** when crossing
-hosts. Restrict edge access, redact Authorization/query/body logging, preserve MCP
-streaming and cancellation, and allow bounded requests long enough to finish.
-There is no OAuth onboarding, public tenancy or per-client authorization.
-`GET /health` returns JSON with status, version, uptime, browser state
-(`running`/`starting`/`stopped`/`closed`), acquisition and discovery queue
-counters, cache usage and memory status/passage count/store bytes/ingest backlog,
-drops and failures; it never starts the browser or embedding worker. Container/Kubernetes
-probes must send the bearer token (for example an exec probe reading the env).
+Clients send `Authorization: Bearer <access-token>` (OAuth or static); never send
+the Kagi session token. Configure OAuth below, a static `KAGI_CRAWLER_ACCESS_TOKEN`,
+or explicitly set `KAGI_CRAWLER_UNAUTHENTICATED=1` (startup warning; no MCP auth).
+Without any mode the service refuses to start. OAuth plus a static token accepts
+either, trying OAuth first; the static token grants all configured scopes.
+`KAGI_SESSION_TOKEN` remains required in every mode.
+
+Keep the port loopback/private and terminate TLS at a **trusted private edge** when
+crossing hosts. Restrict edge access, redact Authorization/query/body logging,
+preserve MCP streaming and cancellation, and allow bounded requests long enough
+to finish. This is a resource server, not an OAuth proxy or authorization server;
+all authorized clients share the subscriber account/cache and required scopes.
+`GET /health` without valid authentication returns only `{"status":"ok"}` for
+liveness. With sufficient authenticated scope it returns version, uptime, browser
+state (`running`/`starting`/`stopped`/`closed`), acquisition/discovery queues, cache
+usage and memory counters; it never starts the browser or embedding worker.
+Unauthenticated mode does not expose detailed health without credentials.
 Runtime environment secrets remain visible to container administrators; use a
 trusted daemon/host, rotate tokens after exposure and never dump container env.
+
+### OAuth and pi
+
+Set `KAGI_CRAWLER_OAUTH_ISSUER` to the authorization server's exact issuer and
+`KAGI_CRAWLER_OAUTH_RESOURCE` to the **public URL of `/mcp`**, for example
+`https://crawler.example.com/mcp`. In Kubernetes this must equal the public ingress
+URL used by clients, not the service DNS name or internal HTTP URL. Publish
+`/.well-known/oauth-protected-resource/mcp` through the same ingress (with any
+resource path prefix); 401/403 challenges advertise that metadata URL. Optional
+`KAGI_CRAWLER_OAUTH_SCOPES` is a space-separated list of required scopes.
+
+Issuer discovery supports RFC 8414 and OIDC Discovery. RFC 9068 JWT access tokens
+must have `typ: at+jwt` (or `application/at+jwt`), an asymmetric JWKS signature,
+matching issuer/audience, and valid lifetime/required claims. ID tokens and HS256
+are rejected. JWKS/discovery cache for five minutes; unknown signing keys trigger
+a refresh at most once per 30 seconds. Opaque tokens use advertised RFC 7662
+introspection with active/audience checks. For ASs requiring HTTP Basic resource
+server authentication, provision `KAGI_CRAWLER_OAUTH_INTROSPECTION_CLIENT_ID` and
+`KAGI_CRAWLER_OAUTH_INTROSPECTION_CLIENT_SECRET` together. No caller token is used
+as the introspection credential. Token decisions cache for up to 30 seconds
+(negative decisions three seconds), at most 1024 entries, bounded by expiry.
+OAuth endpoints require HTTPS except loopback development servers; requests have
+three-second timeouts and do not follow redirects.
+
+**Magicentry today:** set `KAGI_CRAWLER_OAUTH_OPAQUE_USERINFO=1` to validate opaque
+access tokens at the discovered userinfo endpoint when no introspection endpoint
+is advertised. This is explicitly **weaker than MCP audience-bound authorization**:
+userinfo cannot prove the token was issued for this resource. It returns identity,
+not granted scopes, so leave required scopes unset for magicentry today. JWT or
+introspection validation failures never downgrade to userinfo. Disable this opt-in
+once the AS issues audience-bound JWTs or supports introspection.
+
+In pi's user-level `~/.pi/agent/mcp.json` (pi still runs through your normal sandbox):
+
+```json
+{
+  "mcpServers": {
+    "kagi": {
+      "url": "https://crawler.example.com/mcp",
+      "oauth": { "clientId": "pi-kagi", "callbackPort": 8765, "scope": "openid profile email" }
+    }
+  }
+}
+```
+
+Register that static client in magicentry with the exact redirect URI
+`http://127.0.0.1:8765/callback`, then run `pi mcp login kagi` (or `/mcp login kagi`).
+Magicentry currently has no DCR; configure the registered client rather than
+expecting automatic registration. **Current magicentry discovery needs an AS fix
+before pi login:** `scopes_supported` is emitted as a space-separated string,
+but OIDC Discovery (and pi) requires a JSON array. It also omits
+`code_challenge_methods_supported: ["S256"]` despite supporting S256 exchange;
+strict MCP clients require that advertisement. The resource server does not
+rewrite the AS's metadata; the example above assumes these AS fixes.
+If the registration requires a secret, add
+`"clientSecret": "${MAGICENTRY_PI_CLIENT_SECRET}"` inside `oauth`; never put its
+literal value in configuration. Other compliant ASs can use pi's normal discovery
+and supported registration mechanism without this static client configuration.
 
 Discovery credentials are confined to the discovery subprocess; browser/driver
 and PDF workers receive allowlisted environments. **User-approved departure from

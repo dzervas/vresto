@@ -82,7 +82,7 @@ class Discovery:
             data = SearchResponse.model_validate(json.loads(stdout))
             results = [{"provider_rank": r.rank, "url": r.url, "title": r.title,
                         "provider_snippet": r.snippet} for r in data.data[:request.num_results]]
-            if any(secret in value for r in results for value in (r["url"], r["title"], r["provider_snippet"])
+            if any(secret and secret in value for r in results for value in (r["url"], r["title"], r["provider_snippet"])
                    for secret in (self.settings.session_token, self.settings.access_token)):
                 raise ValueError("credential echoed by upstream")
         except (ValueError, ValidationError, UnicodeDecodeError):
