@@ -3,7 +3,7 @@
 Single service process owns this directory (do not share it between replicas).
 JSON record sizes include metadata; eviction is oldest fetched version first,
 not query popularity. Expiry is swept on startup and cache use, not by an idle
-browser timer. No separate index/evidence store can outlive its document.
+browser timer. Semantic memory owns independent retention; cache eviction does not evict memory.
 """
 import asyncio
 from collections.abc import Callable
@@ -129,10 +129,12 @@ class DocumentCache:
 
 
 class CachedAcquisition:
-    def __init__(self, acquisition: Acquisition, cache: DocumentCache, secrets: tuple[str, ...] = ()) -> None:
+    def __init__(self, acquisition: Acquisition, cache: DocumentCache, secrets: tuple[str, ...] = (),
+                 on_success: Callable[[SourceSuccess], None] | None = None) -> None:
         self.acquisition = acquisition
         self.cache = cache
         self.secrets = secrets
+        self.on_success = on_success
 
     async def fetch_many(self, urls: list[str], *, freshness: str = 'ordinary', max_age_seconds: float = 3600,
                          scope: Callable[[str], str] | None = None) -> AcquisitionResult:
@@ -161,6 +163,8 @@ class CachedAcquisition:
             source = {'error': {'code': 'fetch_failed'}}
         if 'error' not in source:
             self.cache.store(source)
+            if self.on_success is not None:
+                self.on_success(source)
             source = cast(SourceSuccess, dict(source, cache_state='refresh' if cached else 'miss', stale=False))
         elif cached and freshness != 'fresh_only' and source['error']['code'] not in ('policy_rejected', 'scope_rejected', 'traversal_byte_limit'):
             source = cast(SourceSuccess, dict(cached, cache_state='stale', stale=True, refresh_error=source['error']))

@@ -2,8 +2,10 @@
 
 Private CPU-only Streamable HTTP MCP at `/mcp`, with **search** and **fetch**.
 Kagi discovers sources; Chrome/Patchright acquires pages natively; local lxml +
-markdownify convert rendered HTML and lexical BM25 selects verbatim, version-bound evidence. No GPU, models, external database,
-external browser service or paid browser license is required.
+markdownify convert rendered HTML and lexical BM25 selects verbatim, version-bound evidence.
+Optional persistent semantic memory adds dated retained passages to search using a
+local CPU ONNX encoder and SQLite. No GPU, external database, external browser
+service or paid browser license is required.
 
 > Subscriber automation is an **unsupported, unofficial HTML interface**, not the
 > Kagi API. Markup/session changes or upstream restrictions can break discovery;
@@ -122,7 +124,8 @@ streaming and cancellation, and allow bounded requests long enough to finish.
 There is no OAuth onboarding, public tenancy or per-client authorization.
 `GET /health` returns JSON with status, version, uptime, browser state
 (`running`/`starting`/`stopped`/`closed`), acquisition and discovery queue
-counters and cache usage; it never starts the browser. Container/Kubernetes
+counters, cache usage and memory status/passage count/store bytes/ingest backlog,
+drops and failures; it never starts the browser or embedding worker. Container/Kubernetes
 probes must send the bearer token (for example an exec probe reading the env).
 Runtime environment secrets remain visible to container administrators; use a
 trusted daemon/host, rotate tokens after exposure and never dump container env.
@@ -193,6 +196,85 @@ Heavy overlap within the same source/version is suppressed only when it adds no
 new query terms or qualifications. Exact-document duplicates retain independent
 attribution and evidence IDs. Covered/uncovered query terms describe lexical
 representation, not whether the question is answered.
+
+### Persistent semantic memory
+
+When enabled, successful public acquisitions enqueue background indexing without
+waiting for embeddings. Search merges hybrid FTS5 BM25 + dense RRF(k=60) matches
+from retained history **after live results**, excluding live URLs. These extra
+results have `origin: "memory"`, `fetched_at`, verbatim highlights and expandable
+evidence IDs, including in discovery/full-text/summary modes. `num_results` limits
+live discovery and separately bounds supplementary memory passages. `fresh_only`
+excludes memory. Live results have first claim on the shared response budget;
+retained passages are omitted before altering live content. Memory lookup is
+best-effort (five-second limit); discovery failures still return their normal error.
+Dense retrieval never replaces lexical highlight selection or generates summaries.
+Top-level `selection` query-term coverage describes live lexical highlighting,
+not supplementary memory ranking.
+
+**Privacy policy:** this private service retains acquired third-party text and
+historical versions independently of the short-lived document cache. The SQLite
+file lives at `$KAGI_CRAWLER_CACHE_DIRECTORY/memory.sqlite`; keep the volume private
+and use one service process per volume. Default retention is 1 GiB, oldest fetched
+versions first, with no age expiry. Canonical versions are stored once alongside
+passage text/vectors so `expand` works after cache eviction; evidence becomes
+unavailable only when neither store retains the exact version. Reads do not renew
+retention. The cap includes SQLite/FTS pages (compacted after eviction), excluding
+transient transaction journals/filesystem overhead. It is a bounded history, not
+a permanent archive.
+
+The pinned community export is
+`onnx-community/embeddinggemma-2-ONNX@daa72c51243991dfcaf9f9137d2c573d8f7790c0`;
+Apache-2.0 and the model-card prohibited-use reference are in NOTICE. Docker
+anonymously downloads the FP32 graph/data/tokenizer at build time, verifies their
+SHA256 checksums, and retains the model card. Local setup (no credentials):
+
+```sh
+uv sync --locked
+uv run --locked python scripts/install_embedding_model.py .runtime/embeddinggemma2
+export KAGI_CRAWLER_MEMORY_MODEL_DIRECTORY="$PWD/.runtime/embeddinggemma2"
+```
+
+Missing files or `KAGI_CRAWLER_MEMORY=0` disable memory; `/health` discloses why.
+Runtime never downloads models. `KAGI_CRAWLER_MEMORY_INT8=1` selects the pinned
+INT8 pair (provision it with the same installer plus `--int8`); default FP32/768d
+was faster and more accurate in the feasibility smoke. The graph already pools
+and normalizes; lower dimensions truncate and renormalize. Prefixes are
+`task: search result | query: ...` and `title: ... | text: ...`. Canonical passage
+windows are split at 6000 UTF-8 bytes, titles bounded to 512 bytes; the worker also
+checks the actual 8192-token ceiling and never silently truncates. Navigation-dense
+passages at the highlighter's link-density penalty floor are skipped.
+
+| Memory operator setting | Default | Bounds / meaning |
+| --- | --- | --- |
+| `KAGI_CRAWLER_MEMORY_CAP_BYTES` | 1073741824 | 1 MiB–10 GiB; independent of document cache |
+| `KAGI_CRAWLER_MEMORY_RETENTION_SECONDS` | 0 | 0 disables age expiry; up to 10 years |
+| `KAGI_CRAWLER_MEMORY_QUEUE_CAPACITY` | 8 | 1–64 documents; full queue skips ingestion and counts drops |
+| `KAGI_CRAWLER_MEMORY_THREADS` | 4 | 1–16 inference threads; one passage per batch |
+| `KAGI_CRAWLER_MEMORY_DIMENSIONS` | 768 | 128 / 256 / 512 / 768 |
+| `KAGI_CRAWLER_MEMORY_WORKER_BYTES` | 6442450944 | 2–16 GiB address-space ceiling, not an RSS allowance |
+
+Inference runs in a single owned subprocess, never the event loop; query and
+background ingestion share it. Model/precision/dimension changes mark old vectors
+inactive; old versions remain expandable, and reacquisition lazily reindexes them.
+CPU cosine search scans vectors in bounded memory, O(passages × dimensions): use
+only tens of thousands of passages initially; ANN is a follow-up, not provided by
+the byte cap. Size deployment RAM/CPU for Chrome **and** the encoder; the earlier
+3 GiB browser-only example is not a memory-enabled sizing recommendation.
+
+Offline retrieval/throughput/latency/RSS/storage measurement (fresh store required):
+
+```sh
+uv run --locked python scripts/evaluation/run.py memory \
+  --model-dir .runtime/embeddinggemma2 --store .runtime/memory-eval.sqlite \
+  --output /tmp/kc-memory-metrics.json
+```
+
+The harness reports global passage Hit@1/5/10 against FTS5-only, separately for
+original and ten identifier-free paraphrase cases. This is not budgeted highlighter
+recall or proof that a passage answers a question.
+
+### Generated summaries
 
 Both search and fetch accept opt-in `content_mode: "summary"`: per-source Kagi
 subscriber Summarizer output of our canonical Markdown, labelled `generated`,
@@ -370,7 +452,8 @@ original age and refresh failure. Different queries reuse canonical documents,
 not query-dependent selections. Evidence expansion refers to the **exact retained
 version**, survives cache-mounted restarts, and never substitutes current text.
 Oldest fetched versions expire/evict within cache bounds (reads do not renew them);
-evicted evidence returns `evidence_unavailable`. This is not a permanent archive.
+evidence absent from both cache and independent memory returns `evidence_unavailable`.
+This is not a permanent archive.
 HTML highlights retain numeric/version-heading scopes and whole qualifying
 ancestry. Initial PDF highlights include a bounded previous/current/next-page
 window, even when neighboring warnings have no lexical query overlap. Each is

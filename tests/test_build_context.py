@@ -10,6 +10,7 @@ def test_build_context_excludes_credentials_and_workspace_metadata(tmp_path):
     for path in ['Dockerfile', 'Dockerfile.headful', 'Dockerfile.chrome', 'pyproject.toml', 'uv.lock', 'NOTICE', '.dockerignore',
                  'src/kagi_crawler/server.py', 'src/kagi_crawler/sites/x.py',
                  'src/kagi_crawler/sites/__pycache__/x.cpython-312.pyc', 'licenses/LICENSE',
+                 'licenses/embeddinggemma2-Apache-2.0.txt', 'scripts/install_embedding_model.py',
                  '.envrc', '.beads/issues.json', '.jj/repo/config.toml',
                  'src/kagi_crawler/.envrc', 'src/kagi_crawler/credentials.json',
                  'licenses/session.key']:
@@ -20,7 +21,8 @@ def test_build_context_excludes_credentials_and_workspace_metadata(tmp_path):
         'scripts/build_context.py'), '--root', str(tmp_path)], capture_output=True, check=True)
     with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
         assert set(archive.getnames()) == {'.dockerignore', 'Dockerfile', 'pyproject.toml',
-            'uv.lock', 'src/kagi_crawler/server.py', 'src/kagi_crawler/sites/x.py'}
+            'uv.lock', 'NOTICE', 'licenses/embeddinggemma2-Apache-2.0.txt',
+            'scripts/install_embedding_model.py', 'src/kagi_crawler/server.py', 'src/kagi_crawler/sites/x.py'}
     # An allowed filename must not smuggle an excluded file through a symlink.
     (tmp_path / 'src/kagi_crawler/server.py').unlink()
     (tmp_path / 'src/kagi_crawler/server.py').symlink_to(tmp_path / '.envrc')

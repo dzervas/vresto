@@ -3,6 +3,11 @@
 !Dockerfile
 !pyproject.toml
 !uv.lock
+!NOTICE
+!licenses/
+!licenses/embeddinggemma2-Apache-2.0.txt
+!scripts/
+!scripts/install_embedding_model.py
 !src/
 !src/kagi_crawler/
 !src/kagi_crawler/*.py

@@ -41,7 +41,7 @@ def main():
                'assert re.fullmatch(r"Google Chrome \\d+\\.\\d+\\.\\d+\\.\\d+",version), version; '
                'print(json.dumps({"browser_path":browser,"browser_version":version}),flush=True); '
                'assert subprocess.check_output(["kagi","--version"],text=True).strip()=="kagi 0.22.0"; '
-               'assert not {"torch","transformers","sentence-transformers","onnxruntime"} & '
+               'assert not {"torch","transformers","sentence-transformers"} & '
                '{d.metadata["Name"].lower() for d in m.distributions()}')
         # Overriding the image entry point bypasses its display ownership. Own one
         # here too: the image defaults to headed Chrome, not bundled Chromium.

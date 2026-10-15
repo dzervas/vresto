@@ -1,6 +1,6 @@
 """Lexical evidence over canonical Markdown; never generate or shorten quotations."""
 from collections.abc import Iterator, Iterable
-from typing import cast
+from typing import cast, Protocol
 import base64
 from collections import Counter
 import hashlib
@@ -10,8 +10,11 @@ import re
 from urllib.parse import urlsplit
 
 
-from .cache import DocumentCache
 from .types import ToolData, ToolResult, SourceSuccess
+
+class EvidenceStore(Protocol):
+    def lookup(self, url: str, content_version: str | None = None) -> SourceSuccess | None: ...
+
 
 def _digest(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
@@ -21,16 +24,16 @@ def evidence_id(source: SourceSuccess, start: int, end: int) -> str:
     # Evidence ID format: p1.<base64url compact JSON>, Unicode character offsets,
     # requested URL identity (including query), exact SHA256 canonical version,
     # and quote SHA256. IDs are references, NOT authorization or signed claims.
-    # resolve_evidence validates all fields against cache.lookup(url, version);
-    # never reacquire/fall back to current content. No separate evidence index:
-    # cache version eviction makes every associated ID unavailable coherently.
+    # resolve_evidence validates against an exact retained canonical version,
+    # in cache or memory; never reacquire/fall back to current content.
     payload = [source['requested_url'], source['content_version'], start, end,
                _digest(source['content'][start:end])]
     return 'p1.' + base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False,
         separators=(',', ':')).encode()).decode().rstrip('=')
 
 
-def resolve_evidence(cache: DocumentCache, identifier: str) -> tuple[SourceSuccess, int, int]:
+def resolve_evidence(cache: EvidenceStore, identifier: str,
+                     fallback: EvidenceStore | None = None) -> tuple[SourceSuccess, int, int]:
     """Return (canonical_source, start, end), or raise ValueError(code).
 
     invalid_evidence_id denotes malformed references; evidence_unavailable denotes
@@ -62,6 +65,10 @@ def resolve_evidence(cache: DocumentCache, identifier: str) -> tuple[SourceSucce
     except (ValueError, TypeError, UnicodeError, RecursionError):
         raise ValueError('invalid_evidence_id') from None
     source = cache.lookup(url, version)
+    if source is None and fallback is not None:
+        source = fallback.lookup(url, version)
+        if source is not None:
+            source = cast(SourceSuccess, dict(source, origin='memory'))
     if source is None:
         raise ValueError('evidence_unavailable')
     text = source.get('content', '')
@@ -94,7 +101,8 @@ def pdf_section(source: SourceSuccess, start: int, end: int) -> str:
     return f'PDF page {pages[0]}' if len(pages) == 1 else f'PDF pages {pages[0]}–{pages[-1]}'
 
 
-def expand_evidence(cache: DocumentCache, identifiers: list[str]) -> ToolResult:
+def expand_evidence(cache: EvidenceStore, identifiers: list[str],
+                    fallback: EvidenceStore | None = None) -> ToolResult:
     """Resolve all references before returning anything; malformed IDs fail the request.
 
     Unlike Exa's URL-based follow-up contents workflow, these IDs point to retained
@@ -106,7 +114,7 @@ def expand_evidence(cache: DocumentCache, identifiers: list[str]) -> ToolResult:
     sources = []
     for identifier in identifiers:
         try:
-            canonical, start, end = resolve_evidence(cache, identifier)
+            canonical, start, end = resolve_evidence(cache, identifier, fallback)
         except ValueError as error:
             if str(error) != 'evidence_unavailable':
                 raise

@@ -22,7 +22,9 @@ fetched_at/content_version), cases (source IDs and original args), discovery
 and frozen_at. Failed acquisitions remain explicit error records. Freeze resumes
 existing successful records unless --refresh; it never reconstructs canonical
 text from old highlights. Scoring verifies versions and all literal labels before
-running the current production selector and shared wire-budget gate. UTF-8 byte
+running the current production selector and shared wire-budget gate. Cases marked
+memory_paraphrase belong to the global memory metric (run.py memory), not this
+historical per-search-source baseline, and are excluded here. UTF-8 byte
 metrics count emitted highlights, not JSON overhead; overlap is summed quote
 bytes minus interval-union bytes within each source. Absent cases' exposure is
 reported separately. Comparisons reject changed corpus or labels.
@@ -109,6 +111,9 @@ def union_bytes(text, intervals):
 
 
 def score(corpus, labels):
+    # Keep the original corpus/expectation digest strict and comparable; global
+    # memory paraphrases do not invent new recorded discovery/acquisition calls.
+    labels = {**labels, 'cases': [case for case in labels['cases'] if not case.get('memory_paraphrase')]}
     documents = corpus['documents']
     for sid, source in documents.items():
         if 'error' not in source:

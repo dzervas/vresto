@@ -455,5 +455,9 @@ if __name__ == '__main__':
         from highlights import main as highlight_main
         sys.argv.pop(1)
         highlight_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == 'memory':
+        from memory import main as memory_main
+        sys.argv.pop(1)
+        memory_main()
     else:
         main()

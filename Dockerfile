@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Single final runtime. No credentials/build secrets, models, GPU or remote DB.
+# Single final runtime. Public pinned CPU model; no credentials/build secrets or remote DB.
 FROM rust:1.90.0-bookworm AS kagi
 RUN git clone https://github.com/Microck/kagi-cli /source \
  && cd /source \
@@ -35,9 +35,16 @@ RUN uv tool run --from patchright==1.63.0 patchright install --with-deps chrome 
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --python 3.12 --no-install-project \
- && .venv/bin/python -c 'import importlib.metadata as m; assert not {"torch","transformers","sentence-transformers","onnxruntime"} & {d.metadata["Name"].lower() for d in m.distributions()}'
+ && .venv/bin/python -c 'import importlib.metadata as m; assert not {"torch","transformers","sentence-transformers"} & {d.metadata["Name"].lower() for d in m.distributions()}'
 
 COPY --from=kagi /cli/bin/kagi /usr/local/bin/kagi
+
+COPY scripts/install_embedding_model.py /app/scripts/install_embedding_model.py
+COPY NOTICE /app/NOTICE
+COPY licenses /app/licenses
+# Anonymous, revision-pinned FP32 graph/data/tokenizer; no runtime downloads.
+# INT8 is a runtime option after provisioning its pinned pair with --int8.
+RUN python scripts/install_embedding_model.py /opt/embeddinggemma2
 
 COPY src ./src
 RUN uv sync --locked --no-dev --python 3.12

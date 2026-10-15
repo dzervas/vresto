@@ -70,6 +70,19 @@ def apply_budget(data: ToolData, limit: int) -> ToolData:
     if wire_bytes(output) <= limit:
         return output
 
+    # Search memory is supplementary: omit its lowest-ranked results before
+    # changing live data. Explicit expand requests still shed context first.
+    while key == 'results' and wire_bytes(output) > limit:
+        positions = [i for i, source in enumerate(sources) if source.get('origin') == 'memory']
+        if not positions:
+            break
+        position = positions[-1]
+        sources.pop(position)
+        coverage['omitted_source_indices'].append(indices.pop(position))
+        coverage['omitted_source_indices'].sort()
+        coverage['returned_source_count'] = len(sources)
+        coverage['partial_coverage'] = True
+
     # Fairly reduce large text across all sources before omitting any records.
     # Repeated halving avoids letting the first page monopolize the response.
     while wire_bytes(output) > limit:

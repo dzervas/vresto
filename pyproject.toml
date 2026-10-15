@@ -3,7 +3,8 @@ name = "kagi-crawler"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = ["mcp==1.26.0", "uvicorn==0.40.0", "pypdf==6.12.2", "patchright==1.63.0", "aiohttp==3.13.3",
-                "lxml==6.1.3", "markdownify==1.2.3"]
+                "lxml==6.1.3", "markdownify==1.2.3", "onnxruntime==1.31.0",
+                "tokenizers==0.23.3", "numpy==2.5.4"]
 
 [project.scripts]
 kagi-crawler = "kagi_crawler.server:main"
@@ -16,7 +17,7 @@ build-backend = "hatchling.build"
 # otherwise includes Jujutsu working-copy files. Never publish those or secrets.
 [tool.hatch.build.targets.sdist]
 include = ["/src/kagi_crawler/**/*.py", "/README.md", "/Dockerfile", "/.dockerignore",
-           "/pyproject.toml", "/uv.lock", "/scripts/*.py", "/tests/*.py"]
+           "/pyproject.toml", "/uv.lock", "/scripts/*.py", "/tests/*.py", "/NOTICE", "/licenses/embeddinggemma2-Apache-2.0.txt"]
 exclude = ["**/.env*", "**/.beads/**", "**/.jj/**", "**/.git/**", "**/*credentials*", "**/*.key", "**/*.pem"]
 
 [dependency-groups]

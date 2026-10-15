@@ -15,7 +15,8 @@ Paths below are relative to `src/kagi_crawler/`.
 - `sites/`: fragile site markup, ordered adapters and fail-soft orchestration; `expand_content` / `extract_document` disclose adapter coverage. Before adding/fixing an adapter, read the guide in `sites/__init__.py`'s docstring.
 - `cache.py`: versioned canonical documents, retention/eviction and freshness/stale rules; `DocumentCache.lookup/store/usage`, `CachedAcquisition.fetch_many(..., scope=...)`.
 - `traversal.py`: bounded breadth-first crawling with explicit document scope; `Traversal.run(seed)` returns acquisitions plus traversal metadata.
-- `evidence.py`: BM25 passage selection, version-bound evidence IDs and exact retained-version expansion; `select_highlights`, `evidence_id`, `resolve_evidence`, `expand_evidence`.
+- `evidence.py`: BM25 passage selection, version-bound evidence IDs and exact retained-version expansion; `select_highlights`, `evidence_id`, `resolve_evidence`, `expand_evidence` (cache first, exact memory version fallback).
+- `memory.py` / `memory_worker.py`: bounded background passage ingestion, independent SQLite/FTS5 history and hybrid RRF search; `Memory.submit/query/close`, `MemoryStore.lookup`; isolated ONNX worker owns model inference. Model pins/checksums live in `scripts/install_embedding_model.py`; measure retrieval with `scripts/evaluation/run.py memory`.
 - `budget.py`: complete MCP result serialization and byte limits; `result`, `wire_bytes`, `apply_budget` trim responses, never canonical cache text.
 - `discovery.py` / `process.py`: pinned Kagi CLI JSON contract and bounded subprocess/process-group ownership; `Discovery.search`, `DiscoveryError`, `Processes.admission/run/close`.
 - `pdf.py` / `pdf_worker.py`: bounded PDF parsing in an isolated worker; `parse_pdf` returns text/title/page metadata; worker takes a service-owned file path and emits bounded JSON on stdout.
@@ -61,5 +62,5 @@ Headed capture needs `DISPLAY` pointing to a working X server (e.g. a private Xv
 
 - Public, logged-out acquisition only: no credentials, supplied cookies, login or CAPTCHA solving in browser acquisition or fixture capture. Service/upstream credentials stay confined to their existing auth/discovery boundaries.
 - Preserve MCP wire output unless the task explicitly changes the contract; diagnostics use fixed phases/reasons, never URLs, queries, credentials or raw exceptions.
-- Canonical text changes alter content versions and evidence offsets/IDs. Budgeting and query selection operate on response copies, not canonical cache records.
+- Canonical text changes alter content versions and evidence offsets/IDs. Budgeting and query selection operate on response copies, not canonical cache records. Memory evidence resolves only exact retained versions; retained results disclose origin/date, never enter lexical highlight reselection, and lose budget priority to live results. `fresh_only` excludes memory.
 - Fragile site-specific code belongs only under `sites/`; generic extraction/normalization must remain host-independent. Keep fallback and partial-coverage disclosure honest.

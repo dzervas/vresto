@@ -410,6 +410,167 @@
       "response_budget_bytes": 65536,
       "expectation_kind": "answer",
       "note": "Literal answer probes derived from the recorded intent and Exa reference, checked against frozen canonical text. Historical unqueried/full-text call: intent-derived selection probe (not full-text fidelity scoring)."
+    },
+    {
+      "id": "p01",
+      "query": "Why can catching an interruption in a coroutine make a group of sibling jobs malfunction?",
+      "sources": [
+        "8648139190e53478",
+        "6d3a7cdc1b3ba01d",
+        "5649ec7d0dec788f"
+      ],
+      "expected": [
+        "might misbehave if a coroutine swallows"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c02; no literal API/product identifier in the question. Labels fixed before memory ranking."
+    },
+    {
+      "id": "p02",
+      "query": "Can a multi-package Python repository use one dependency resolution file for all its projects?",
+      "sources": [
+        "ea84d5718b376dff",
+        "2a60a156d6b5b574",
+        "501cd36a942f38d1",
+        "80b0188a9e09370a",
+        "7cb05c83f85fe998"
+      ],
+      "expected": [
+        "the workspace shares a single lockfile"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c04; no literal API/product identifier in the question. Labels fixed before memory ranking."
+    },
+    {
+      "id": "p03",
+      "query": "How do I keep using the older invisible browser implementation after its removal from the regular executable?",
+      "sources": [
+        "f153b471bf605e05",
+        "ddb1123abce7d3d6",
+        "2e697fc856a0f413",
+        "d6a62e40e6de9a16",
+        "4e5edf5d8200fd20"
+      ],
+      "expected": [
+        "`chrome-headless-shell` (to retain old Headless functionality)"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c05; no literal API/product identifier in the question. Labels fixed before memory ranking."
+    },
+    {
+      "id": "p04",
+      "query": "Which ranking knob controls whether repeated occurrences of a word stop adding much relevance?",
+      "sources": [
+        "999fa5964cb1abbd",
+        "00391a0eb278d076",
+        "4874c4235dae9f13",
+        "48ace3dacc6cebcd",
+        "fed6b86fd491460b"
+      ],
+      "expected": [
+        "The parameter `k1` controls how quickly the saturation occurs."
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c06; no literal API/product identifier in the question. Labels fixed before memory ranking."
+    },
+    {
+      "id": "p05",
+      "query": "When an unfinished asynchronous operation loses a race, can I lose my position waiting for a fair lock?",
+      "sources": [
+        "b4a98f510f7d19e0",
+        "29f790675e6c22b4",
+        "a1a500572f5534e7",
+        "fc88d1b054464516"
+      ],
+      "expected": [
+        "use a queue for fairness and cancellation makes you lose your place in the queue"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c07; no literal API/product identifier in the question. Labels fixed before memory ranking."
+    },
+    {
+      "id": "p06",
+      "query": "When does the spring operating-system release stop receiving maintenance?",
+      "sources": [
+        "eb89422bbc81d929",
+        "7433ac4e6a588763",
+        "7fab2bc8978006b9",
+        "788f793bf054053e",
+        "e10529936cc9d78a"
+      ],
+      "expected": [
+        "2026-12-31"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c08; no literal API/product identifier in the question. Labels fixed before memory ranking."
+    },
+    {
+      "id": "p07",
+      "query": "Who said that changing the world requires changing the way we think?",
+      "sources": [
+        "5cc9e3a18b934801"
+      ],
+      "expected": [
+        "The world as we have created it is a process of our thinking."
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c16; no literal API/product identifier in the question. Labels fixed before memory ranking."
+    },
+    {
+      "id": "p08",
+      "query": "How can automation open a different installed browser binary instead of the bundled one?",
+      "sources": [
+        "a572f764ce74b0aa"
+      ],
+      "expected": [
+        "executablePath"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c25; no literal API/product identifier in the question. Labels fixed before memory ranking."
+    },
+    {
+      "id": "p09",
+      "query": "What was the first short status message by the founder of the bird social network?",
+      "sources": [
+        "2da49e2f7e72bf7b"
+      ],
+      "expected": [
+        "just setting up my twttr"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c26; no literal API/product identifier in the question. Labels fixed before memory ranking."
+    },
+    {
+      "id": "p10",
+      "query": "Is it safe for two execution threads to use the same embedded database handle in the strongest locking mode?",
+      "sources": [
+        "86f8f63e6ad5267b"
+      ],
+      "expected": [
+        "| serialized | 3 | 1 | Threads may share the module, connections and cursors |"
+      ],
+      "response_budget_bytes": 16384,
+      "expectation_kind": "answer",
+      "memory_paraphrase": true,
+      "note": "Plain-language paraphrase of c28; no literal API/product identifier in the question. Labels fixed before memory ranking."
     }
   ]
 }

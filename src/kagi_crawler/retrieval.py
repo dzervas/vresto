@@ -8,6 +8,7 @@ from .cache import CachedAcquisition, DocumentCache
 from .contract import CrawlInput, ExpandInput, FetchInput, SearchInput, FetchRequest, SearchRequest
 from .discovery import Discovery, DiscoveryError
 from .evidence import expand_evidence, select_highlights
+from .memory import Memory
 from .safety import safe_sources
 from .summaries import add_summaries
 from .traversal import Traversal
@@ -17,13 +18,15 @@ from .types import ToolData
 class Retrieval:
     def __init__(self, discovery: Discovery, acquisition: Acquisition,
                  cached_acquisition: CachedAcquisition, cache: DocumentCache,
-                 secrets: tuple[str, ...], response_budget_bytes: int = DEFAULT_RESPONSE_BYTES) -> None:
+                 secrets: tuple[str, ...], response_budget_bytes: int = DEFAULT_RESPONSE_BYTES,
+                 memory: Memory | None = None) -> None:
         self.response_budget_bytes = response_budget_bytes
         self.discovery = discovery
         self.acquisition = acquisition
         self.cached_acquisition = cached_acquisition
         self.cache = cache
         self.secrets = secrets
+        self.memory = memory
 
     def _acquisition_limits(self, page_limit):
         options = self.acquisition.options
@@ -37,7 +40,8 @@ class Retrieval:
                 'queue_wait_seconds': options.queue_wait, 'browser_navigation_seconds': min(10, options.request_timeout),
                 'browser_acquisition_seconds': options.request_timeout}
 
-    def _finalize(self, data: ToolData, request: SearchRequest | FetchRequest) -> ToolData:
+    def _finalize(self, data: ToolData, request: SearchRequest | FetchRequest,
+                  retained: list[ToolData] | None = None) -> ToolData:
         # The only output boundary. Strip private traversal metadata from a
         # copy, preserving canonical/cache records. Reject credentials before
         # selection so contaminated quotations cannot influence admission.
@@ -61,6 +65,10 @@ class Retrieval:
                 source.pop('content', None)
                 if 'error' not in source:
                     source['content_mode'] = 'summary'
+        if retained:
+            # Already ranked exact passages, not input to lexical highlighting or
+            # generated summaries. Live sources have first claim on the budget.
+            data['results'].extend(safe_sources({'results': retained}, self.secrets)['results'])
         return apply_budget(data, request.response_budget_bytes)
 
     async def fetch(self, request: FetchInput | FetchRequest) -> ToolData:
@@ -70,7 +78,8 @@ class Retrieval:
         data: ToolData
         if request.evidence_ids is not None:
             try:
-                data = dict(expand_evidence(self.cache, request.evidence_ids))
+                data = dict(await asyncio.to_thread(expand_evidence, self.cache, request.evidence_ids,
+                                                   self.memory.store if self.memory is not None else None))
             except ValueError:
                 # Evidence validation also checks retained versions/offsets;
                 # never forward the offending ID or exception details.
@@ -110,7 +119,13 @@ class Retrieval:
             if request.content_mode == 'summary':
                 data = safe_sources(data, self.secrets)
                 await add_summaries(data, self.discovery, self.cache, self.secrets, 'overview', deadline)
-            return self._finalize(data, request)
+            retained = []
+            if self.memory is not None and request.freshness != 'fresh_only':
+                exclude = {url for result in data['results'] for key in ('url', 'requested_url', 'resolved_url')
+                           if (url := result.get(key))}
+                retained = await self.memory.query(request.query, request.num_results, exclude,
+                    timeout_seconds=min(5, max(0, deadline - asyncio.get_running_loop().time())))
+            return self._finalize(data, request, retained)
         except DiscoveryError as error:
             messages = {
                 "upstream_authentication": "Kagi subscriber session missing, rejected or expired.",
