@@ -1,0 +1,30 @@
+when:
+  - event: manual
+    branch: main
+  - event: push
+    branch: main
+    path:
+      on_empty: false
+      include:
+        - .woodpecker/docker.yaml
+        - .woodpecker/docker-build.yaml
+        - Dockerfile
+        - pyproject.toml
+        - src
+
+labels:
+  platform: linux/${arch}
+
+steps:
+  - name: build
+    image: woodpeckerci/plugin-kaniko:2.3.3
+    settings:
+      registry: git.vpn.dzerv.art
+      repo: ${CI_REPO}
+      tags: build-${CI_PIPELINE_NUMBER}-${arch}
+      username: ${CI_REPO_OWNER}
+      password:
+        from_secret: forgejo_token
+      cache: "true"
+      # The cache-repo setting prefixes the registry; extra_opts keeps this path local.
+      extra_opts: --force --cache-repo=oci:/cache/layers

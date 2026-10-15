@@ -1,0 +1,36 @@
+when:
+  - event: manual
+    branch: main
+  - event: push
+    branch: main
+    path:
+      on_empty: false
+      include:
+        - .woodpecker/docker.yaml
+        - .woodpecker/docker-build.yaml
+        - Dockerfile
+        - pyproject.toml
+        - src
+
+depends_on: [docker-build]
+skip_clone: true
+concurrency:
+  limit: 1
+  group: docker
+
+steps:
+  # Manifest mode only runs buildx imagetools against the registry: no daemon, no build.
+  - name: publish
+    image: codefloe.com/crow-plugins/docker-buildx:2.6.1
+    settings:
+      manifest: true
+      manifest_sources:
+        - git.vpn.dzerv.art/${CI_REPO}:build-${CI_PIPELINE_NUMBER}-amd64
+        - git.vpn.dzerv.art/${CI_REPO}:build-${CI_PIPELINE_NUMBER}-arm64
+      image_refs:
+        - git.vpn.dzerv.art/${CI_REPO}:latest
+        - git.vpn.dzerv.art/${CI_REPO}:build-${CI_PIPELINE_NUMBER}
+      registry: git.vpn.dzerv.art
+      username: ${CI_REPO_OWNER}
+      password:
+        from_secret: forgejo_token
