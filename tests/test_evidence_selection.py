@@ -2,6 +2,8 @@
 from copy import deepcopy
 import hashlib
 
+import pytest
+
 from kagi_crawler import evidence
 from kagi_crawler.budget import apply_budget, wire_bytes
 
@@ -14,6 +16,47 @@ def source(text, url='https://example.test/docs'):
 
 def slices(monkeypatch, intervals):
     monkeypatch.setattr(evidence, 'document_passages', lambda s: iter(intervals))
+
+
+@pytest.mark.parametrize('heading', [
+    'Add an asyncio.TaskGroup.cancel method #108951',
+    'Proposal 108951',
+    'Related issue #3.12',
+])
+def test_issue_numbers_do_not_scope_discussion_highlights(heading):
+    text = '# ' + heading + '\n\nState: Closed\n\n'
+    for i in range(1, 24):
+        text += f'## Comment {i} — contributor — 2023-09-05T19:13:00Z\n\n'
+        text += ('Ordinary scheduling discussion. ' * 35 + '\n\n' if i < 23 else
+                 'cancel_called and TaskGroup._abort describe cancellation.\n')
+    data = evidence.select_highlights({'sources': [source(text)]}, 'cancel_called TaskGroup._abort')
+    quotes = data['sources'][0]['highlights']
+    assert quotes
+    assert all(h['start'] == text.index('## Comment 23') for h in quotes)
+    assert all(len(h['text']) < 300 for h in quotes)
+    assert all(h['text'] == text[h['start']:h['end']] for h in quotes)
+
+
+@pytest.mark.parametrize('entry', ['Comment', 'Description'])
+def test_attributed_discussion_heading_is_not_a_version_scope(entry):
+    heading = f'## {entry} 23 — contributor-v2.4 — 2023-09-05T19:13:00Z\n\n'
+    text = '# Discussion\n\n' + heading + 'Ordinary background.\n\n'
+    text += '### Implementation\n\ncancel_called reports cancellation.\n'
+    text += '## Comment 24 — contributor — 2023-09-06T19:13:00Z\n\nTaskGroup._abort cancels tasks.\n'
+    data = evidence.select_highlights({'sources': [source(text)]}, 'cancel_called TaskGroup._abort')
+    quotes = data['sources'][0]['highlights']
+    assert any('cancel_called' in h['text'] for h in quotes)
+    assert any('TaskGroup._abort' in h['text'] for h in quotes)
+    assert all(heading not in h['text'] for h in quotes)
+
+
+@pytest.mark.parametrize('heading', ['Python 3.12', 'v2', 'v2.4', 'Version 2', 'Release 2'])
+def test_release_heading_still_scopes_child_highlights(heading):
+    text = f'# {heading}\n\nRelease reference.\n\n## Operation\n\ncancel_called reports cancellation.\n'
+    data = evidence.select_highlights({'sources': [source(text)]}, 'cancel_called')
+    quotes = data['sources'][0]['highlights']
+    assert quotes
+    assert all(h['start'] == 0 and heading in h['text'] for h in quotes)
 
 
 def test_marginal_identifiers_displace_overlapping_cancel_called(monkeypatch):

@@ -257,8 +257,13 @@ def sections(text: str) -> Iterator[tuple[int, int, str | None]]:
         # later local warnings must not scope every descendant of a long section.
         _, introduction_end = next(passage_windows(text, start, end,
             include_attached_qualification=False), (start, end))
+        # Issue references (#108951) and bare numbers are not release scopes.
+        # Attributed discussion headings also contain ordinals/dates (and may
+        # contain version-like author names), not a release for their children.
+        release_title = bool(title and not re.match(r'(?i)^(?:Comment|Description) \d+ — ', title) and
+            re.search(r'(?i)\b(?:version|release)\b|(?<![\w.#])(?:v\d+(?:\.\d+)*|\d+\.\d+(?:\.\d+)*)(?:[-+][\w.]+)?(?![\w.])', title))
         qualified = bool(re.search(r'(?i)\b(version|only|not|never|warning|caution|experimental|deprecated|except|requires?)\b', text[start:introduction_end]) or
-            (title and re.search(r'(?i)(?<!\w)v?\d+(?:\.\d+)*(?:[-+][\w.]+)?(?!\w)', title)))
+            release_title)
         if text[start:end].strip():
             if scoped:
                 # Parent scopes cannot be stitched onto a later quote: retain
