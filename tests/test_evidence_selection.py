@@ -514,3 +514,53 @@ def test_fitting_union_is_charged_once_with_utf8_and_escaping(monkeypatch):
     doubled = deepcopy(selected)
     doubled['sources'][0]['highlights'].append(deepcopy(quotes[0]))
     assert apply_budget(doubled, limit)['sources'][0]['highlights'] != doubled['sources'][0]['highlights']
+
+
+@pytest.mark.parametrize('heading,body', [
+    ('Related pages', '\n'.join(f'* [tokio select cancellation safety](https://example.test/topic/{i})' for i in range(6))),
+    ('Sections', '\n'.join(f'* [tokio select cancellation safety](https://example.test/topic/{i})' for i in range(6))),
+    ('Related topics', '| Topic | Replies | Views |\n| --- | --- | --- |\n' + '\n'.join(
+        f'| [tokio select cancellation safety](https://example.test/topic/{i}) | 2 | 123 |' for i in range(6))),
+    ('Tabs', '[![](https://example.test/avatar.png)](https://example.test/user)\n' + '\n'.join(
+        f'[tokio select cancellation safety](https://example.test/{"long-path/" * 20}{i})' for i in range(6))),
+])
+def test_link_dense_navigation_loses_to_answer_prose(heading, body):
+    text = f'# {heading}\n\n{body}\n\n# Answer\n\nCancellation safety describes dropped futures.\n'
+    original = {'sources': [source(text)]}
+    before = deepcopy(original)
+    selected = evidence.select_highlights(original, 'tokio select cancellation safety')
+    quotes = selected['sources'][0]['highlights']
+    assert quotes[0]['section'] == 'Answer'
+    assert original == before
+    # This is a penalty, not a filter: matching navigation remains eligible.
+    assert any(q['section'] == heading for q in quotes)
+    assert selected['selection']['uncovered_query_terms'] == []
+    for quote in quotes:
+        assert quote['text'] == text[quote['start']:quote['end']]
+        assert quote['evidence_id'] == evidence.evidence_id(original['sources'][0], quote['start'], quote['end'])
+
+
+@pytest.mark.parametrize('heading', ['API index', 'Reference list', 'Related pages'])
+def test_link_lists_that_are_the_answer_remain_selectable(heading):
+    text = f'# {heading}\n\n* [`Receiver::recv`](https://example.test/recv)\n* [`StreamExt::next`](https://example.test/next)\n'
+    selected = evidence.select_highlights({'sources': [source(text)]}, 'Receiver::recv StreamExt::next', 4096)
+    assert selected['sources'][0]['highlights'][0]['text'] == text
+    assert selected['selection']['uncovered_query_terms'] == []
+
+
+@pytest.mark.parametrize('code', [
+    '```markdown\n' + '\n'.join('[cancellation safety](https://example.test/)' for _ in range(6)) + '\n```',
+    '\n'.join('`[cancellation safety](https://example.test/)`' for _ in range(6)),
+])
+def test_markdown_links_in_code_are_not_navigation(code):
+    text = '# Markdown example\n\n' + code + '\n\n# Other\n\nCancellation is discussed here.\n'
+    selected = evidence.select_highlights({'sources': [source(text)]}, 'cancellation safety')
+    assert selected['sources'][0]['highlights'][0]['section'] == 'Markdown example'
+
+
+def test_answer_with_ordinary_citations_keeps_its_rank():
+    text = '# Answer\n\nCancellation safety describes dropped futures and preserves application state. '
+    text += 'See the [reference](https://example.test/reference).\n\n'
+    text += '# Other\n\nCancellation safety ' + 'background material ' * 20 + '.\n'
+    selected = evidence.select_highlights({'sources': [source(text)]}, 'cancellation safety')
+    assert selected['sources'][0]['highlights'][0]['section'] == 'Answer'

@@ -295,6 +295,41 @@ def _passage_bag(quote):
     return bag
 
 
+_MARKDOWN_LINK = re.compile(r'(?<!!)\[((?:\\.|[^\]\\])*)\]\((?:\\.|[^)\\])*\)')
+
+
+def _link_density_penalty(quote):
+    # Related-page lists, docs sidebars and forum topic tables repeat query
+    # terms without answering them. Measure visible link labels, not URL bytes:
+    # long destinations must not disguise a navigation-heavy passage as prose.
+    # Markdown examples in code are text, not navigational links. Mask only
+    # brackets so their ordinary character contribution remains in the share.
+    lines = []
+    fence = None
+    for line in quote.splitlines(keepends=True):
+        previous = fence
+        fence = _fence_transition(line, fence)
+        if previous is not None or fence is not None:
+            line = line.replace('[', ' ').replace(']', ' ')
+        else:
+            line = re.sub(r'(`+)(.*?)\1',
+                lambda match: match[0].replace('[', ' ').replace(']', ' '), line)
+        lines.append(line)
+    quote = ''.join(lines)
+    # Linked avatars must not leave image destination bytes in the denominator.
+    quote = re.sub(r'!\[((?:\\.|[^\]\\])*)\]\((?:\\.|[^)\\])*\)', r'\1', quote)
+    links = list(_MARKDOWN_LINK.finditer(quote))
+    # Ignore layout punctuation/whitespace: Markdown table pipes and bullets
+    # must not dilute the link share of a Related topics table or sidebar.
+    linked = sum(sum(char.isalnum() for char in link[1]) for link in links)
+    visible_text = _MARKDOWN_LINK.sub(r'\1', quote)
+    visible = sum(char.isalnum() for char in visible_text)
+    # A reference list or API index can itself be the answer. Penalize, never
+    # filter it; the floor keeps fully linked answers eligible for admission.
+    # Leave ordinary citations alone up to 40%; ramp to the floor at 58%.
+    return max(0.1, min(1, 1 - (linked / max(1, visible) - 0.4) / 0.2))
+
+
 def _qualifications(quote):
     # Conservative lexical guard, not interpretation of a claim. Distinct
     # negations, warnings and release constraints must survive overlap removal.
@@ -359,6 +394,7 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
                 bag=bag, matching_terms=terms & bag.keys(),
                 terms=terms & (_passage_bag(quote).keys() if source.get('document_type') == 'pdf' else bag.keys()),
                 version=source['content_version'],
+                link_density_penalty=_link_density_penalty(quote) if source.get('document_type') != 'pdf' else 1,
                 qualifications=_qualifications(quote)))
     counts = Counter(term for p in passages for term in p['bag'])
     average = sum(sum(p['bag'].values()) for p in passages) / max(1, len(passages))
@@ -470,8 +506,10 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
             # Marginal rank changes only when admitted evidence covers new
             # terms. Reverse sorting permits constant-time best-candidate pops.
             if rerank:
+                # Penalize marginal coverage too: sidebars often mention more
+                # distinct query terms than any individual answer paragraph.
                 pending = sorted(pending, key=lambda p: (
-                    -(p['score'] / maximum + len(p['terms'] - covered)),
+                    -((p['score'] / maximum + len(p['terms'] - covered)) * p['link_density_penalty']),
                     p['index'], p['start'], p['end']), reverse=True)
                 rerank = False
             candidate = pending.pop()
