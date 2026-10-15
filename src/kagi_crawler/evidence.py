@@ -280,19 +280,43 @@ def sections(text: str) -> Iterator[tuple[int, int, str | None]]:
 
 def tokens(text: str) -> list[str]:
     # Identifiers and versions stay whole: connect_safe, foo.bar, v2.4, --flag.
-    # No stemming/stopword inference that might collapse a technical constraint.
+    # Reporting uses these literal query tokens; matching aliases stay separate.
     return re.findall(r'[\w]+(?:[.:-][\w]+)*', text.casefold())
 
 
+# Function words still score and remain in coverage reports, but do not earn a
+# marginal-coverage bonus over configuration examples with fewer prose words.
+_COVERAGE_STOPWORDS = frozenset(
+    'a an and are as at be by for from how in is it of on or the to was what when where which who why with'.split())
+
+
+def _matching_term(term):
+    # Light plural folding only for bare words, never qualified API names,
+    # flags, versions or snake_case identifiers. Keep class/status/analysis exact.
+    if term.isalpha() and len(term) > 3:
+        if term.endswith(('ches', 'shes', 'sses', 'xes', 'zes')):
+            return term[:-2]
+        if term.endswith('s') and not term.endswith(('ss', 'us', 'is')):
+            return term[:-1]
+    return term
+
+
 def _passage_bag(quote):
-    bag = Counter(tokens(quote))
-    # Only bare identifier suffixes are aliases. Qualified query tokens remain
-    # exact: other.TaskGroup cannot satisfy asyncio.TaskGroup.
-    for term, frequency in list(bag.items()):
+    bag = Counter()
+    for term in tokens(quote):
+        bag[_matching_term(term)] += 1
+        # Bare dotted-identifier parts are aliases: workspaces can match
+        # tool.uv.workspace. Never manufacture another qualified identifier:
+        # other.TaskGroup cannot satisfy asyncio.TaskGroup.
         parts = term.split('.')
         if len(parts) > 1 and all(part.isidentifier() for part in parts):
-            bag[parts[-1]] += frequency
+            for part in set(parts):
+                bag[_matching_term(part)] += 1
     return bag
+
+
+def _matched_terms(terms, bag):
+    return {term for term in terms if _matching_term(term) in bag}
 
 
 _MARKDOWN_LINK = re.compile(r'(?<!!)\[((?:\\.|[^\]\\])*)\]\((?:\\.|[^)\\])*\)')
@@ -378,7 +402,7 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
             # Rank the matching page itself, not a neighbor's borrowed match.
             bag = _passage_bag(text[start:end])
             if source.get('document_type') == 'pdf':
-                if not terms & bag.keys():
+                if not _matched_terms(terms, bag):
                     continue
                 # Trusted previous/current/next pages are a single atomic quote.
                 references = source['pdf']['references']
@@ -391,22 +415,23 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
                 continue
             seen.add(quote)
             passages.append(dict(index=index, start=start, end=end, section=section,
-                bag=bag, matching_terms=terms & bag.keys(),
-                terms=terms & (_passage_bag(quote).keys() if source.get('document_type') == 'pdf' else bag.keys()),
+                bag=bag, matching_terms=_matched_terms(terms, bag),
+                terms=_matched_terms(terms, _passage_bag(quote) if source.get('document_type') == 'pdf' else bag),
                 version=source['content_version'],
                 link_density_penalty=_link_density_penalty(quote) if source.get('document_type') != 'pdf' else 1,
                 qualifications=_qualifications(quote)))
     counts = Counter(term for p in passages for term in p['bag'])
     average = sum(sum(p['bag'].values()) for p in passages) / max(1, len(passages))
+    inverse = {term: math.log(1 + (len(passages) - counts[_matching_term(term)] + 0.5) /
+                             (counts[_matching_term(term)] + 0.5)) for term in terms}
     ranked = []
     for passage in passages:
         bag = passage['bag']
         length = sum(bag.values())
         score = 0.0
         for term in sorted(passage['matching_terms']):
-            frequency = bag[term]
-            inverse = math.log(1 + (len(passages) - counts[term] + 0.5) / (counts[term] + 0.5))
-            score += inverse * frequency * 2.2 / (frequency + 1.2 * (0.25 + 0.75 * length / max(1, average)))
+            frequency = bag[_matching_term(term)]
+            score += inverse[term] * frequency * 2.2 / (frequency + 1.2 * (0.25 + 0.75 * length / max(1, average)))
         # A giant background window should not win merely by repeating a name.
         score /= math.sqrt(max(1, length / 200))
         if score > 0:
@@ -506,10 +531,12 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
             # Marginal rank changes only when admitted evidence covers new
             # terms. Reverse sorting permits constant-time best-candidate pops.
             if rerank:
-                # Penalize marginal coverage too: sidebars often mention more
-                # distinct query terms than any individual answer paragraph.
+                # Rare new terms outweigh ubiquitous prose words. Use the same
+                # IDF as BM25, but omit function words only from this bonus.
+                # Penalize coverage too: sidebars repeat many distinct terms.
                 pending = sorted(pending, key=lambda p: (
-                    -((p['score'] / maximum + len(p['terms'] - covered)) * p['link_density_penalty']),
+                    -((p['score'] / maximum + sum(inverse[t] for t in sorted(p['terms'] - covered)
+                        if t not in _COVERAGE_STOPWORDS)) * p['link_density_penalty']),
                     p['index'], p['start'], p['end']), reverse=True)
                 rerank = False
             candidate = pending.pop()
@@ -547,7 +574,7 @@ def select_highlights(data: ToolData, query: str, limit: int | None = None) -> T
                     section = next((p['section'] for p in replaced
                                     if (p['start'], p['end']) == (start, end)), None)
                 replacement = dict(candidate, start=start, end=end, section=section,
-                    terms=terms & _passage_bag(quote).keys(), qualifications=_qualifications(quote))
+                    terms=_matched_terms(terms, _passage_bag(quote)), qualifications=_qualifications(quote))
             trial_selected = [p for p in selected if p not in replaced]
             # Keep the first selected slot stable when a later window replaces it.
             position = selected.index(replaced[0]) if replaced else len(trial_selected)

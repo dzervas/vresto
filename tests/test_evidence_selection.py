@@ -564,3 +564,72 @@ def test_answer_with_ordinary_citations_keeps_its_rank():
     text += '# Other\n\nCancellation safety ' + 'background material ' * 20 + '.\n'
     selected = evidence.select_highlights({'sources': [source(text)]}, 'cancellation safety')
     assert selected['sources'][0]['highlights'][0]['section'] == 'Answer'
+
+
+@pytest.mark.parametrize('query,word', [
+    ('workspaces', 'workspace'), ('packages', 'package'),
+    ('classes', 'class'), ('boxes', 'box'), ('workspace', 'workspaces'),
+])
+def test_plural_matching_preserves_query_terms_and_literal_quotes(query, word):
+    text = f'# Configuration\n\n{word} configuration.\n'
+    original = {'sources': [source(text)]}
+    before = deepcopy(original)
+    selected = evidence.select_highlights(original, query)
+    assert selected['selection']['query_terms'] == [query]
+    assert selected['selection']['covered_query_terms'] == [query]
+    assert selected['selection']['uncovered_query_terms'] == []
+    quote = selected['sources'][0]['highlights'][0]
+    assert quote['text'] == text
+    assert quote['evidence_id'] == evidence.evidence_id(original['sources'][0], 0, len(text))
+    assert original == before
+
+
+@pytest.mark.parametrize('query', ['uv', 'workspaces', 'tool'])
+def test_dotted_config_parts_match_bare_query_terms(query):
+    text = '# Configuration\n\n```toml\n[tool.uv.workspace]\nmembers = ["packages/*"]\n```\n'
+    selected = evidence.select_highlights({'sources': [source(text)]}, query)
+    assert selected['sources'][0]['highlights'][0]['text'] == text
+    assert selected['selection']['covered_query_terms'] == [query]
+
+
+@pytest.mark.parametrize('query,identifier', [
+    ('asyncio.TaskGroup', 'other.TaskGroup'),
+    ('asyncio.TaskGroups', 'asyncio.TaskGroup'),
+    ('tool.uv.workspaces', 'tool.uv.workspace'),
+    ('task_flags', 'task_flag'), ('v2.4', 'v2.5'),
+    ('status', 'statu'), ('class', 'clas'), ('analysis', 'analysi'),
+])
+def test_matching_aliases_do_not_fold_qualified_or_technical_constraints(query, identifier):
+    selected = evidence.select_highlights({'sources': [source(identifier)]}, query)
+    assert selected['sources'][0]['relevance'] == 'no_lexical_match'
+    assert selected['selection']['uncovered_query_terms'] == evidence.tokens(query)
+
+
+def test_coverage_stopwords_still_match_score_and_report():
+    text = '# Prose\n\nhow to with\n'
+    selected = evidence.select_highlights({'sources': [source(text)]}, 'how to with packages')
+    assert selected['sources'][0]['highlights'][0]['text'] == text
+    assert selected['selection']['covered_query_terms'] == ['how', 'to', 'with']
+    assert selected['selection']['uncovered_query_terms'] == ['packages']
+
+
+def test_rare_marginal_term_beats_several_ubiquitous_terms(monkeypatch):
+    lines = [f'alpha beta gamma operation_{i}.\n' for i in range(10)]
+    lines.append('delta ' + 'ballast ' * 400 + '.\n')
+    text = ''.join(lines)
+    intervals = []
+    position = 0
+    for line in lines:
+        intervals.append((position, position + len(line), None))
+        position += len(line)
+    slices(monkeypatch, intervals)
+    selected = evidence.select_highlights({'sources': [source(text)]}, 'alpha beta gamma delta')
+    assert selected['sources'][0]['highlights'][0]['text'] == lines[-1]
+    assert selected['selection']['uncovered_query_terms'] == []
+
+
+def test_function_word_coverage_does_not_displace_configuration():
+    text = '# Prose\n\nhow to with\n\n# Configuration\n\nworkspace\n'
+    selected = evidence.select_highlights({'sources': [source(text)]}, 'how to with workspaces')
+    assert selected['sources'][0]['highlights'][0]['section'] == 'Configuration'
+    assert selected['selection']['covered_query_terms'] == ['how', 'to', 'with', 'workspaces']
