@@ -127,6 +127,16 @@ def _markdown(document):
     ).convert(document).strip() + '\n'
 
 
+def fragment_markdown(fragment: str) -> str:
+    """Markdown for a trusted-shape HTML fragment (e.g. generated summaries).
+
+    Plain text without tags passes through unchanged.
+    """
+    if not re.search(r'<[a-zA-Z][^>]*>', fragment):
+        return fragment
+    return _markdown(fragment).strip()
+
+
 def extract(document: str, url: str) -> Extracted:
     """Links come from the unnormalized document; Markdown from main content."""
     links = _LinkTargets(url)

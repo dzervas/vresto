@@ -242,3 +242,10 @@ async def test_dash_leading_canonical_markdown_is_a_literal_cli_value(tmp_path):
         result = await service.fetch(FetchInput(urls=[source['requested_url']], content_mode='summary'))
         assert result['sources'][0]['summary']['generated'] is True
         assert calls(tmp_path)[0]['args'][4] == '--text=' + source['content']
+
+
+def test_summarizer_html_becomes_markdown():
+    from kagi_crawler.extraction import fragment_markdown
+    assert fragment_markdown('<p>Tasks use <strong>TaskGroups</strong>.</p>\n<p>Key points</p>') == \
+        'Tasks use __TaskGroups__.\n\nKey points'
+    assert fragment_markdown('Already plain text.') == 'Already plain text.'

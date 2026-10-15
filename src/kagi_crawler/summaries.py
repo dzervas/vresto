@@ -6,6 +6,7 @@ import anyio
 
 from .cache import DocumentCache
 from .discovery import Discovery, DiscoveryError
+from .extraction import fragment_markdown
 from .safety import contains_secret
 from .types import ToolData
 
@@ -39,7 +40,9 @@ async def add_summaries(data: ToolData, discovery: Discovery, cache: DocumentCac
             version = source['content_version']
             cached = cache.summary(version, length)
             if cached is not None and not contains_secret(cached, secrets):
-                source['summary'] = cached
+                # The Summarizer returns HTML; entries cached before conversion
+                # are normalised on read so every summary is Markdown.
+                source['summary'] = dict(cached, text=fragment_markdown(cached['text']))
                 continue
             try:
                 text, truncated = summary_input(source['content'])
@@ -50,7 +53,7 @@ async def add_summaries(data: ToolData, discovery: Discovery, cache: DocumentCac
                     generated = await discovery.summarize(text, length)
                 if contains_secret(generated, secrets):
                     raise DiscoveryError('discovery_parse_error')
-                summary = {'text': generated, 'generated': True, 'provider': 'kagi',
+                summary = {'text': fragment_markdown(generated), 'generated': True, 'provider': 'kagi',
                            'length': length, 'type': 'summary', 'content_version': version,
                            'summary_input_truncated': truncated}
                 cache.store_summary(version, length, summary, source['fetched_at'])

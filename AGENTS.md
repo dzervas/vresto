@@ -19,6 +19,8 @@ Paths below are relative to `src/kagi_crawler/`.
 - `memory.py` / `memory_worker.py`: bounded background passage ingestion, independent SQLite/FTS5 history and hybrid RRF search; `Memory.submit/query/close`, `MemoryStore.lookup`; isolated ONNX worker owns model inference. Model pins/checksums live in `scripts/install_embedding_model.py`; measure retrieval with `scripts/evaluation/run.py memory`.
 - `budget.py`: complete MCP result serialization and byte limits; `result`, `wire_bytes`, `apply_budget` trim responses, never canonical cache text.
 - `discovery.py` / `process.py`: pinned Kagi CLI JSON contract and bounded subprocess/process-group ownership; `Discovery.search`, `DiscoveryError`, `Processes.admission/run/close`.
+- `summaries.py`: generated Kagi Summarizer summaries of canonical Markdown (HTML output converted to Markdown), cached per content version, failing per source; `add_summaries`. Generated text, never evidence.
+- `research.py`: `research` tool over Kagi Assistant (small = default model, big = configured model) with its own process pool, deadline, daily caps and thread deletion; optional citation verification through fetch/highlights; `Research`.
 - `pdf.py` / `pdf_worker.py`: bounded PDF parsing in an isolated worker; `parse_pdf` returns text/title/page metadata; worker takes a service-owned file path and emits bounded JSON on stdout.
 - `types.py`: shared result/coverage TypedDicts and `ErrorCode`; public wire shapes and private acquisition metadata are explicit.
 - `server.py`: settings, MCP/HTTP auth, validation, logging and lifespan; `create_app(Settings)` / CLI `main`; authenticated `GET /health` reports coarse state/counters without starting Chrome.
