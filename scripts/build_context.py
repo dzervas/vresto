@@ -1,6 +1,6 @@
 """Emit an allowlisted build tar, without traversing workspace/credential trees.
 
-python scripts/build_context.py | docker build -t kagi-crawler:local -
+python scripts/build_context.py | docker build --build-arg TARGETARCH=amd64 -t kagi-crawler:local -
 .dockerignore independently protects ordinary docker build . invocations too.
 Reject symlinks: a link from an allowed path must not read anything outside it.
 """

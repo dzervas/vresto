@@ -25,6 +25,8 @@ steps:
       registry: git.vpn.dzerv.art
       repo: ${CI_REPO}
       tags: build-${CI_PIPELINE_NUMBER}-${arch}
+      build_args:
+        - TARGETARCH=${arch}
       username: ${CI_REPO_OWNER}
       password:
         from_secret: forgejo_token

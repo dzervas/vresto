@@ -35,7 +35,10 @@ def test_default_dockerfile_declares_owned_headed_chrome_only():
     # Configuration guard, not a claim that Debian/container launch was tested.
     root = Path(__file__).resolve().parents[1]
     dockerfile = (root / 'Dockerfile').read_text()
-    assert 'patchright install --with-deps chrome' in dockerfile
+    # Google's apt package on both architectures (Patchright refuses arm64 chrome).
+    assert 'ARG TARGETARCH' in dockerfile
+    assert 'apt-get install -y --no-install-recommends google-chrome-stable' in dockerfile
+    assert 'test -x /opt/google/chrome/chrome' in dockerfile
     assert 'KAGI_CRAWLER_HEADFUL=1' in dockerfile
     assert 'KAGI_CRAWLER_BROWSER_CHANNEL=chrome' in dockerfile
     assert '/etc/opt/chrome/policies/managed/native-doh.json' in dockerfile
@@ -43,7 +46,7 @@ def test_default_dockerfile_declares_owned_headed_chrome_only():
     assert 'chmod 1777 /tmp/.X11-unix' in dockerfile
     assert 'USER 10001:10001' in dockerfile
     assert 'ENTRYPOINT ["python", "-m", "kagi_crawler.headful"]' in dockerfile
-    assert 'patchright install --with-deps chromium' not in dockerfile
+    assert 'patchright install --with-deps' not in dockerfile
     assert 'chrome_for_testing' not in dockerfile
     assert not (root / 'Dockerfile.headful').exists()
     assert not (root / 'Dockerfile.chrome').exists()

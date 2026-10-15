@@ -22,13 +22,15 @@ target, not a pinned browser revision. Record the reported browser version and
 image digest for comparisons. Base/tool image tags are version-pinned, not
 digest-reproducible; resolve approved digests in your release process and retest
 coordinated driver/browser upgrades rather than freezing security updates.
-The Chrome installer currently supports Linux amd64, not Linux arm64.
+Chrome comes from Google's apt repository (google-chrome-stable) for linux/amd64 and
+linux/arm64; pass `--build-arg TARGETARCH=amd64|arm64` when the builder does not
+set it (BuildKit/buildx do; kaniko and the Woodpecker pipeline pass it explicitly).
 
 ```sh
 # The streamed allowlist is additionally protected by .dockerignore.
 # Neither command reads .envrc, .beads, .jj or credential files.
 set -o pipefail
-python3 scripts/build_context.py | docker build -t kagi-crawler:local -
+python3 scripts/build_context.py | docker build --build-arg TARGETARCH=amd64 -t kagi-crawler:local -
 python3 scripts/container_check.py kagi-crawler:local
 ```
 
