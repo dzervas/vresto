@@ -1,0 +1,50 @@
+name: Docker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/docker.yaml
+      - .dockerignore
+      - Dockerfile
+      - pyproject.toml
+      - MANIFEST.in
+      - uv.lock
+      - scripts/install_embedding_model.py
+      - src/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker
+  cancel-in-progress: false
+
+jobs:
+  # Docker's reusable workflow builds on native amd64/arm64 runners and merges
+  # their digests only after both succeed; no emulation or intermediate tags.
+  publish:
+    if: github.ref == 'refs/heads/main'
+    uses: docker/github-builder/.github/workflows/build.yml@v1
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      output: image
+      push: true
+      platforms: linux/amd64,linux/arm64
+      cache: true
+      cache-mode: max
+      meta-images: ghcr.io/${{ github.repository }}
+      meta-tags: |
+        type=raw,value=latest
+        type=raw,value=build-${{ github.run_number }}
+        type=sha
+      set-meta-labels: true
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}

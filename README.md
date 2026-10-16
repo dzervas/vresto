@@ -27,14 +27,12 @@ Provision two different secrets in your shell environment or secret manager:
 clients connecting to this server. Do not put secret values in source or images.
 
 ```sh
-docker build --build-arg TARGETARCH=amd64 -t vresto:local .
-docker volume create vresto-cache
 docker run -d --name vresto --init --restart unless-stopped \
   --cap-drop ALL --security-opt no-new-privileges --shm-size 256m \
   -p 127.0.0.1:8000:8000 \
   --mount type=volume,src=vresto-cache,dst=/data/cache \
   --env VRESTO_ACCESS_TOKEN --env KAGI_SESSION_TOKEN \
-  vresto:local
+  ghcr.io/dzervas/vresto
 ```
 
 Use `TARGETARCH=arm64` for ARM64. The build context is allowlisted by
