@@ -5,9 +5,9 @@ from aiohttp import web
 import pytest
 from pydantic import ValidationError
 
-from kagi_crawler.acquisition_policy import AcquisitionOptions
-from kagi_crawler.contract import CrawlInput, FetchInput, SearchInput
-from kagi_crawler.server import Settings
+from vresto.acquisition_policy import AcquisitionOptions
+from vresto.contract import CrawlInput, FetchInput, SearchInput
+from vresto.server import Settings
 from test_fetch import site
 from test_http import body, client, running
 

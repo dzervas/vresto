@@ -23,7 +23,7 @@ def virtual_display() -> Iterator[None]:
         raise SystemExit(128 + signum)
 
     previous = {s: signal.signal(s, stop) for s in (signal.SIGTERM, signal.SIGINT)}
-    environment = {k: os.environ.get(k) for k in ('DISPLAY', 'KAGI_CRAWLER_HEADFUL')}
+    environment = {k: os.environ.get(k) for k in ('DISPLAY', 'VRESTO_HEADFUL')}
     read_fd, write_fd = os.pipe()
     display = None
     try:
@@ -41,7 +41,7 @@ def virtual_display() -> Iterator[None]:
         if not number.isdigit() or display.poll() is not None:
             raise SystemExit('Xvfb startup failed')
         os.environ['DISPLAY'] = ':' + number.decode('ascii')
-        os.environ['KAGI_CRAWLER_HEADFUL'] = '1'
+        os.environ['VRESTO_HEADFUL'] = '1'
         yield
     finally:
         os.close(read_fd)

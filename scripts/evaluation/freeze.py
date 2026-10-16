@@ -1,7 +1,7 @@
 """Opt-in real HTTP corpus freezing; run with project Python and browser setup.
 
-PYTHONPATH=src python scripts/evaluation/freeze.py --output /tmp/corpus.json
-Real-page intent cases: PYTHONPATH=src python scripts/evaluation/freeze.py --real-pages
+uv run --locked python scripts/evaluation/freeze.py --output /tmp/corpus.json
+Real-page intent cases: uv run --locked python scripts/evaluation/freeze.py --real-pages
 (See highlights.py for corpus/expectation fields and browser setup.)
 Then deliberately replace data/corpus.json to version a new acquisition. Normal
 replay/tests never refresh this file. HTML fixtures are exact preparations from
@@ -23,9 +23,9 @@ sys.path.insert(0, str(ROOT / 'tests'))
 from aiohttp import web
 from test_fetch import site
 from test_http import running, client, body
-from kagi_crawler.evidence import select_highlights
-from kagi_crawler.budget import apply_budget
-from kagi_crawler.safety import safe_sources
+from vresto.evidence import select_highlights
+from vresto.budget import apply_budget
+from vresto.safety import safe_sources
 
 DATA = Path(__file__).parent / 'data'
 
@@ -128,7 +128,7 @@ async def capture(output, cache_directory):
     # A capture may include uncommitted production changes. Do not attribute
     # its snapshots to the fixture preparation revision or invent an exact commit.
     provenance = dict(scope='current production working tree at capture; not the archived lexical baseline',
-        source_sha256={name: hashlib.sha256((ROOT / 'src/kagi_crawler' / name).read_bytes()).hexdigest()
+        source_sha256={name: hashlib.sha256((ROOT / 'src' / name).read_bytes()).hexdigest()
             for name in ('server.py', 'evidence.py', 'budget.py', 'safety.py')})
     corpus = dict(schema_version=1, baseline_revision='current-working-tree',
         baseline_provenance=provenance, fixture_manifest=manifest,

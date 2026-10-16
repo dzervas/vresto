@@ -119,9 +119,9 @@ def create_app(settings: Settings) -> ASGIApp:
     if bool(settings.oauth_introspection_client_id) != bool(settings.oauth_introspection_client_secret):
         raise ValueError('Introspection client ID and secret must be configured together')
     if settings.unauthenticated:
-        logging.getLogger('kagi_crawler').warning('auth=disabled reason=operator_unauthenticated')
+        logging.getLogger('vresto').warning('auth=disabled reason=operator_unauthenticated')
     if settings.oauth_opaque_userinfo:
-        logging.getLogger('kagi_crawler').warning('auth=userinfo reason=audience_not_verified')
+        logging.getLogger('vresto').warning('auth=userinfo reason=audience_not_verified')
     verifier = ResourceVerifier(oauth, settings.access_token, userinfo=settings.oauth_opaque_userinfo,
         introspection_client_id=settings.oauth_introspection_client_id,
         introspection_client_secret=settings.oauth_introspection_client_secret,
@@ -151,7 +151,7 @@ def create_app(settings: Settings) -> ASGIApp:
     retrieval = Retrieval(discovery, acquisition, cached_acquisition, cache,
                           secrets, settings.response_budget_bytes, memory)
     research = Research(discovery, retrieval)
-    mcp = Server("kagi-crawler")
+    mcp = Server("vresto")
 
     @mcp.list_tools()
     async def tools():
@@ -211,7 +211,7 @@ def create_app(settings: Settings) -> ASGIApp:
             log_secrets = secrets + ((user.access_token.token,) if isinstance(user, AuthenticatedUser) else ())
             if contains_secret(subject, log_secrets):
                 subject = 'redacted'
-            logging.getLogger('kagi_crawler').info(
+            logging.getLogger('vresto').info(
                 'tool=%s outcome=%s elapsed_ms=%.1f sub=%s',
                 name if name in ('search', 'fetch', 'expand', 'crawl', 'research') else 'unsupported', outcome,
                 (time.monotonic() - started) * 1000, json.dumps(subject[:256], ensure_ascii=True))
@@ -295,7 +295,7 @@ def create_app(settings: Settings) -> ASGIApp:
             browser = 'stopped'  # Not started yet, idle-retired or failed startup.
         return JSONResponse({
             'status': 'shutting_down' if acquisition.closed else 'ok',
-            'version': package_version('kagi-crawler'),
+            'version': package_version('vresto'),
             'uptime_seconds': round(time.monotonic() - started, 1),
             'browser': browser,
             'acquisition': {'active': acquisition.active, 'waiting': acquisition.waiting,
@@ -341,50 +341,50 @@ def create_app(settings: Settings) -> ASGIApp:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Private HTTP MCP discovery and HTML acquisition.")
-    parser.add_argument('--host', default=os.environ.get('KAGI_CRAWLER_HOST', '127.0.0.1'))
-    parser.add_argument('--port', type=int, default=int(os.environ.get('KAGI_CRAWLER_PORT', '8000')))
+    parser.add_argument('--host', default=os.environ.get('VRESTO_HOST', '127.0.0.1'))
+    parser.add_argument('--port', type=int, default=int(os.environ.get('VRESTO_PORT', '8000')))
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(name)s %(message)s')
     # uv sync --locked; uv run python -m patchright install chromium (no sudo).
     # Patchright 1.63.0 pins Chromium 153.0.8010.12, revision 1243.
     # Native system libraries must already exist; Dockerfile supplies them.
-    # Provision both variables separately, then uv run kagi-crawler.
+    # Provision both variables separately, then uv run vresto.
     # Never source a shell file, read CLI auth config, or use API fallback.
-    settings = Settings(access_token=os.environ.get("KAGI_CRAWLER_ACCESS_TOKEN", ""),
+    settings = Settings(access_token=os.environ.get("VRESTO_ACCESS_TOKEN", ""),
                         session_token=os.environ.get("KAGI_SESSION_TOKEN", ""),
-                        oauth_issuer=os.environ.get('KAGI_CRAWLER_OAUTH_ISSUER', ''),
-                        oauth_resource=os.environ.get('KAGI_CRAWLER_OAUTH_RESOURCE', ''),
-                        oauth_scopes=tuple(os.environ.get('KAGI_CRAWLER_OAUTH_SCOPES', '').split()),
-                        oauth_opaque_userinfo=os.environ.get('KAGI_CRAWLER_OAUTH_OPAQUE_USERINFO', '0') == '1',
-                        oauth_introspection_client_id=os.environ.get('KAGI_CRAWLER_OAUTH_INTROSPECTION_CLIENT_ID', ''),
-                        oauth_introspection_client_secret=os.environ.get('KAGI_CRAWLER_OAUTH_INTROSPECTION_CLIENT_SECRET', ''),
-                        unauthenticated=os.environ.get('KAGI_CRAWLER_UNAUTHENTICATED', '0') == '1',
-                        memory_enabled=os.environ.get('KAGI_CRAWLER_MEMORY', '1') != '0',
-                        memory_model_directory=Path(os.environ.get('KAGI_CRAWLER_MEMORY_MODEL_DIRECTORY', '/opt/embeddinggemma2')),
-                        memory_cap_bytes=int(os.environ.get('KAGI_CRAWLER_MEMORY_CAP_BYTES', '1073741824')),
-                        memory_retention_seconds=float(os.environ.get('KAGI_CRAWLER_MEMORY_RETENTION_SECONDS', '0')),
-                        memory_queue_capacity=int(os.environ.get('KAGI_CRAWLER_MEMORY_QUEUE_CAPACITY', '8')),
-                        memory_threads=int(os.environ.get('KAGI_CRAWLER_MEMORY_THREADS', '4')),
-                        memory_dimensions=int(os.environ.get('KAGI_CRAWLER_MEMORY_DIMENSIONS', '768')),
-                        memory_int8=os.environ.get('KAGI_CRAWLER_MEMORY_INT8', '0') == '1',
-                        memory_worker_bytes=int(os.environ.get('KAGI_CRAWLER_MEMORY_WORKER_BYTES', '6442450944')),
-                        research_model=os.environ.get('KAGI_CRAWLER_RESEARCH_MODEL'),
-                        research_timeout=float(os.environ.get('KAGI_CRAWLER_RESEARCH_TIMEOUT_SECONDS', '300')),
-                        research_daily_small=int(os.environ.get('KAGI_CRAWLER_RESEARCH_DAILY_SMALL', '0')),
-                        research_daily_big=int(os.environ.get('KAGI_CRAWLER_RESEARCH_DAILY_BIG', '0')),
-                        response_budget_bytes=int(os.environ.get("KAGI_CRAWLER_RESPONSE_BUDGET_BYTES",
+                        oauth_issuer=os.environ.get('VRESTO_OAUTH_ISSUER', ''),
+                        oauth_resource=os.environ.get('VRESTO_OAUTH_RESOURCE', ''),
+                        oauth_scopes=tuple(os.environ.get('VRESTO_OAUTH_SCOPES', '').split()),
+                        oauth_opaque_userinfo=os.environ.get('VRESTO_OAUTH_OPAQUE_USERINFO', '0') == '1',
+                        oauth_introspection_client_id=os.environ.get('VRESTO_OAUTH_INTROSPECTION_CLIENT_ID', ''),
+                        oauth_introspection_client_secret=os.environ.get('VRESTO_OAUTH_INTROSPECTION_CLIENT_SECRET', ''),
+                        unauthenticated=os.environ.get('VRESTO_UNAUTHENTICATED', '0') == '1',
+                        memory_enabled=os.environ.get('VRESTO_MEMORY', '1') != '0',
+                        memory_model_directory=Path(os.environ.get('VRESTO_MEMORY_MODEL_DIRECTORY', '/opt/embeddinggemma2')),
+                        memory_cap_bytes=int(os.environ.get('VRESTO_MEMORY_CAP_BYTES', '1073741824')),
+                        memory_retention_seconds=float(os.environ.get('VRESTO_MEMORY_RETENTION_SECONDS', '0')),
+                        memory_queue_capacity=int(os.environ.get('VRESTO_MEMORY_QUEUE_CAPACITY', '8')),
+                        memory_threads=int(os.environ.get('VRESTO_MEMORY_THREADS', '4')),
+                        memory_dimensions=int(os.environ.get('VRESTO_MEMORY_DIMENSIONS', '768')),
+                        memory_int8=os.environ.get('VRESTO_MEMORY_INT8', '0') == '1',
+                        memory_worker_bytes=int(os.environ.get('VRESTO_MEMORY_WORKER_BYTES', '6442450944')),
+                        research_model=os.environ.get('VRESTO_RESEARCH_MODEL'),
+                        research_timeout=float(os.environ.get('VRESTO_RESEARCH_TIMEOUT_SECONDS', '300')),
+                        research_daily_small=int(os.environ.get('VRESTO_RESEARCH_DAILY_SMALL', '0')),
+                        research_daily_big=int(os.environ.get('VRESTO_RESEARCH_DAILY_BIG', '0')),
+                        response_budget_bytes=int(os.environ.get("VRESTO_RESPONSE_BUDGET_BYTES",
                                                                  str(DEFAULT_RESPONSE_BYTES))),
-                        cache_directory=Path(os.environ.get('KAGI_CRAWLER_CACHE_DIRECTORY', '/data/cache')),
-                        cache_cap_bytes=int(os.environ.get('KAGI_CRAWLER_CACHE_CAP_BYTES', '268435456')),
-                        cache_retention_seconds=float(os.environ.get('KAGI_CRAWLER_CACHE_RETENTION_SECONDS', '604800')),
+                        cache_directory=Path(os.environ.get('VRESTO_CACHE_DIRECTORY', '/data/cache')),
+                        cache_cap_bytes=int(os.environ.get('VRESTO_CACHE_CAP_BYTES', '268435456')),
+                        cache_retention_seconds=float(os.environ.get('VRESTO_CACHE_RETENTION_SECONDS', '604800')),
                         acquisition_options=AcquisitionOptions(
-                            browser_concurrency=int(os.environ.get('KAGI_CRAWLER_BROWSER_CONCURRENCY', '4')),
-                            deadline=float(os.environ.get('KAGI_CRAWLER_DEADLINE_SECONDS', '120')),
-                            queue_wait=float(os.environ.get('KAGI_CRAWLER_QUEUE_WAIT_SECONDS', '10')),
-                            queue_capacity=int(os.environ.get('KAGI_CRAWLER_QUEUE_CAPACITY', '8')),
-                            expansion_actions=int(os.environ.get('KAGI_CRAWLER_EXPANSION_ACTIONS', '8')),
+                            browser_concurrency=int(os.environ.get('VRESTO_BROWSER_CONCURRENCY', '4')),
+                            deadline=float(os.environ.get('VRESTO_DEADLINE_SECONDS', '120')),
+                            queue_wait=float(os.environ.get('VRESTO_QUEUE_WAIT_SECONDS', '10')),
+                            queue_capacity=int(os.environ.get('VRESTO_QUEUE_CAPACITY', '8')),
+                            expansion_actions=int(os.environ.get('VRESTO_EXPANSION_ACTIONS', '8')),
                             # Ordinary launch shares the canonical acquisition default.
-                            expansion_timeout=float(os.environ.get('KAGI_CRAWLER_EXPANSION_SECONDS',
+                            expansion_timeout=float(os.environ.get('VRESTO_EXPANSION_SECONDS',
                                                                    str(AcquisitionOptions.expansion_timeout)))))
     # Bound graceful HTTP shutdown, including idle SDK SSE sessions; lifespan
     # then cancels MCP work and reaps remaining CLI process groups.

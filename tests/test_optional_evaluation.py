@@ -43,7 +43,7 @@ import runpy
 import sys
 original_import = builtins.__import__
 def isolated_import(name, *args, **kwargs):
-    if name == 'kagi_crawler' or name.startswith('kagi_crawler.'):
+    if name == 'vresto' or name.startswith('vresto.'):
         raise AssertionError('Historical replay imported production code: ' + name)
     return original_import(name, *args, **kwargs)
 builtins.__import__ = isolated_import
@@ -78,7 +78,7 @@ async def test_real_http_freeze_keeps_complete_canonical_and_historical_evidence
     assert len(corpus['documents']) == 14 and len(corpus['cases']) == 16
     assert corpus['baseline_revision'] == 'current-working-tree'
     for name, sha256 in corpus['baseline_provenance']['source_sha256'].items():
-        assert sha256 == hashlib.sha256((ROOT / 'src/kagi_crawler' / name).read_bytes()).hexdigest()
+        assert sha256 == hashlib.sha256((ROOT / 'src' / name).read_bytes()).hexdigest()
     assert all(corpus['contracts'].values())
     expanded = corpus['documents']['I']
     assert 'Native expanded cancellation caveat.' in expanded['content']

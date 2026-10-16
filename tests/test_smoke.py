@@ -24,7 +24,7 @@ async def test_smoke_reports_acquisition_separately_without_printing_page_bodies
         ]))
         env = {key: os.environ[key] for key in ('PATH', 'HOME', 'LD_LIBRARY_PATH',
                'PLAYWRIGHT_BROWSERS_PATH', 'PLAYWRIGHT_NODEJS_PATH') if key in os.environ}
-        env['KAGI_CRAWLER_ACCESS_TOKEN'] = 'client-secret'
+        env['VRESTO_ACCESS_TOKEN'] = 'client-secret'
         process = await asyncio.create_subprocess_exec(sys.executable,
             str(Path(__file__).resolve().parents[1] / 'scripts/live_smoke.py'),
             '--authorized-live', '--endpoint', url, '--cases', str(cases),

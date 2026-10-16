@@ -16,12 +16,12 @@ COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 
 ENV UV_PYTHON_DOWNLOADS=never \
- KAGI_CRAWLER_HEADFUL=1 \
- KAGI_CRAWLER_BROWSER_CHANNEL=chrome \
+ VRESTO_HEADFUL=1 \
+ VRESTO_BROWSER_CHANNEL=chrome \
  PATH=/app/.venv/bin:${PATH} \
  HOME=/home/crawler \
- KAGI_CRAWLER_HOST=0.0.0.0 \
- KAGI_CRAWLER_CACHE_DIRECTORY=/data/cache
+ VRESTO_HOST=0.0.0.0 \
+ VRESTO_CACHE_DIRECTORY=/data/cache
 
 RUN rm -rf /root/.cache /var/lib/apt/lists/* \
  && groupadd --gid 10001 crawler \
@@ -50,7 +50,7 @@ RUN test -n "$TARGETARCH" || { echo 'TARGETARCH build arg is required (amd64 or 
  && command -v Xvfb >/dev/null \
  && echo '{"DnsOverHttpsMode":"secure","DnsOverHttpsTemplates":"https://1.1.1.1/dns-query"}' > /etc/opt/chrome/policies/managed/native-doh.json
 
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml MANIFEST.in uv.lock ./
 RUN uv sync --locked --no-dev --python 3.12 --no-install-project \
  && .venv/bin/python -c 'import importlib.metadata as m; assert not {"torch","transformers","sentence-transformers"} & {d.metadata["Name"].lower() for d in m.distributions()}'
 
@@ -68,4 +68,4 @@ USER 10001:10001
 EXPOSE 8000
 VOLUME ["/data/cache"]
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["python", "-m", "kagi_crawler.headful"]
+ENTRYPOINT ["python", "-m", "vresto.headful"]

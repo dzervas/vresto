@@ -26,8 +26,8 @@ import platform
 import resource
 import time
 
-from kagi_crawler.evidence import resolve_evidence
-from kagi_crawler.memory import Memory, MemoryStore, WorkerEmbedder, bounded_passages
+from vresto.evidence import resolve_evidence
+from vresto.memory import Memory, MemoryStore, WorkerEmbedder, bounded_passages
 
 ROOT = Path(__file__).resolve().parents[2]
 

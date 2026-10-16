@@ -1,4 +1,4 @@
-"""Operator release gate: python scripts/container_check.py kagi-crawler:local.
+"""Operator release gate: python scripts/container_check.py vresto:local.
 
 Requires a reachable Docker daemon; never starts one or requests privileges.
 Uses two fresh unprivileged containers and one named volume, no real credentials.
@@ -46,7 +46,7 @@ def main():
         # Overriding the image entry point bypasses its display ownership. Own one
         # here too: the image defaults to headed Chrome, not bundled Chromium.
         # Keep run_path's script argv and let virtual_display clean up on errors.
-        wrapper = ('import runpy,sys; from kagi_crawler.headful import virtual_display; '
+        wrapper = ('import runpy,sys; from vresto.headful import virtual_display; '
                    'sys.argv=sys.argv[1:]; '
                    '\nwith virtual_display(): runpy.run_path(sys.argv[0],run_name="__main__")')
         docker(*common, '-c', wrapper, '/gate/release_check.py', '--cache', '/data/cache')
@@ -57,7 +57,7 @@ def main():
         name = 'kagi-entry-' + uuid.uuid4().hex
         docker('run', '--detach', '--name', name, '--init', '--network', 'none',
                '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
-               '--env', 'KAGI_CRAWLER_ACCESS_TOKEN=fixture-access',
+               '--env', 'VRESTO_ACCESS_TOKEN=fixture-access',
                '--env', 'KAGI_SESSION_TOKEN=fixture-session', args.image,
                stdout=subprocess.DEVNULL)
         try:

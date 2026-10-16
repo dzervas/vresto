@@ -13,12 +13,12 @@ async def test_browser_diagnostic_reports_real_owned_contexts_without_credential
     if headed and not shutil.which('Xvfb'):
         pytest.skip('real Xvfb is not installed in this test environment')
     arguments = ['--headful'] if headed else []
-    env = {**os.environ, 'KAGI_CRAWLER_HEADFUL': '0',
-        'KAGI_CRAWLER_BROWSER_CHANNEL': 'chromium',
-        'KAGI_CRAWLER_ACCESS_TOKEN': 'diagnostic-fixture-access',
+    env = {**os.environ, 'VRESTO_HEADFUL': '0',
+        'VRESTO_BROWSER_CHANNEL': 'chromium',
+        'VRESTO_ACCESS_TOKEN': 'diagnostic-fixture-access',
         'KAGI_SESSION_TOKEN': 'diagnostic-fixture-session'}
     process = await asyncio.create_subprocess_exec(sys.executable, '-m',
-        'kagi_crawler.browser_check', *arguments, env=env,
+        'vresto.browser_check', *arguments, env=env,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), 40)

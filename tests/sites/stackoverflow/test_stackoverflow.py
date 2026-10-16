@@ -10,10 +10,10 @@ import pytest
 from test_fetch import site
 from test_http import body, client, running
 
-from kagi_crawler import sites
-from kagi_crawler.extraction import extract
-from kagi_crawler.sites.stackoverflow import ADAPTER
-from kagi_crawler.types import Coverage
+from vresto import sites
+from vresto.extraction import extract
+from vresto.sites.stackoverflow import ADAPTER
+from vresto.types import Coverage
 
 DIRECTORY = Path(__file__).parent
 

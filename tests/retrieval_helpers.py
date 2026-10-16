@@ -2,8 +2,8 @@
 from contextlib import asynccontextmanager
 import json
 
-from kagi_crawler.budget import result
-from kagi_crawler.contract import FetchRequest, SearchRequest, CrawlInput
+from vresto.budget import result
+from vresto.contract import FetchRequest, SearchRequest, CrawlInput
 from test_http import cli_response
 from test_retrieval import retrieval
 

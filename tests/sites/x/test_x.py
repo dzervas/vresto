@@ -5,10 +5,10 @@ from urllib.parse import urlsplit
 from lxml import html
 import pytest
 
-from kagi_crawler import sites
-from kagi_crawler.extraction import extract
-from kagi_crawler.sites.x import ADAPTER
-from kagi_crawler.acquisition_policy import FetchError
+from vresto import sites
+from vresto.extraction import extract
+from vresto.sites.x import ADAPTER
+from vresto.acquisition_policy import FetchError
 
 FIXTURES = Path(__file__).parent
 SUPPORTED = ('jack-first-post', 'twitter-first-post', 'obama-post', 'musk-post',

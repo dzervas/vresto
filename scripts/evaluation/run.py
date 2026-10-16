@@ -1,7 +1,7 @@
 """Optional measured rescore-only experiment, never a production reranker.
 
-Model-free: PYTHONPATH=src python scripts/evaluation/run.py --output /tmp/lexical.json
-Real-page production selector: PYTHONPATH=src python scripts/evaluation/run.py highlights score
+Model-free: uv run --locked python scripts/evaluation/run.py --output /tmp/lexical.json
+Real-page production selector: uv run --locked python scripts/evaluation/run.py highlights score
   --save-baseline eval/corpus/baseline.json (or --compare that path).
 See highlights.py for literal labels, byte metrics and opt-in acquisition.
 CPU paired: add --worker-python /tmp/kagi-ncn-worker/bin/python

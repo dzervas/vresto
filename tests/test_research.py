@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from kagi_crawler.budget import wire_bytes
-from kagi_crawler.contract import ResearchInput
-from kagi_crawler.research import Research
+from vresto.budget import wire_bytes
+from vresto.contract import ResearchInput
+from vresto.research import Research
 from test_http import body, client, running
 from test_retrieval import retrieval
 from test_summaries import calls, document
@@ -118,7 +118,7 @@ async def test_secret_answer_still_deletes_known_thread(tmp_path, text):
 
 
 async def test_verify_citations_uses_fetch_query_and_expandable_evidence(tmp_path):
-    from kagi_crawler.cache import DocumentCache
+    from vresto.cache import DocumentCache
 
     canonical = document()
     DocumentCache(tmp_path / 'cache').store(canonical)
@@ -242,7 +242,7 @@ async def test_reference_echo_is_rejected_but_thread_is_deleted(tmp_path):
 
 
 async def test_research_queue_has_own_bounded_wait_and_capacity(tmp_path, monkeypatch):
-    from kagi_crawler.research import ResearchProcesses
+    from vresto.research import ResearchProcesses
 
     monkeypatch.setattr(ResearchProcesses, 'QUEUE_WAIT', 0.3)
     async with retrieval(tmp_path, source=cli(tmp_path, action='time.sleep(30)')) as service:
@@ -299,14 +299,14 @@ async def test_verification_deadline_preserves_generated_answer(tmp_path, monkey
     {'research_daily_small': -1}, {'research_daily_big': -1}, {'research_model': ' '},
 ])
 def test_research_operator_limit_validation(settings):
-    from kagi_crawler.server import Settings
+    from vresto.server import Settings
 
     with pytest.raises(ValueError):
         Settings(access_token='client-secret', session_token='subscriber-secret', **settings)
 
 
 async def test_verification_is_bounded_to_first_ten_references(tmp_path):
-    from kagi_crawler.cache import DocumentCache
+    from vresto.cache import DocumentCache
 
     cache = DocumentCache(tmp_path / 'cache')
     for i in range(11):

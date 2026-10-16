@@ -8,11 +8,11 @@ import re
 
 from lxml import html
 
-from kagi_crawler.budget import apply_budget, wire_bytes
-from kagi_crawler.cache import DocumentCache
-from kagi_crawler.evidence import evidence_id, expand_evidence, sections
-from kagi_crawler.extraction import extract
-from kagi_crawler.normalization import main_content_html
+from vresto.budget import apply_budget, wire_bytes
+from vresto.cache import DocumentCache
+from vresto.evidence import evidence_id, expand_evidence, sections
+from vresto.extraction import extract
+from vresto.normalization import main_content_html
 
 
 BASE = 'https://example.org/reference'

@@ -4,8 +4,8 @@ import hashlib
 
 import pytest
 
-from kagi_crawler import evidence
-from kagi_crawler.budget import apply_budget, wire_bytes
+from vresto import evidence
+from vresto.budget import apply_budget, wire_bytes
 
 
 def source(text, url='https://example.test/docs'):
@@ -139,7 +139,7 @@ def test_compact_relevance_beats_giant_ballast(monkeypatch):
 
 
 def test_oversized_top_candidate_is_skipped_for_fitting_alternative(monkeypatch):
-    from kagi_crawler import budget
+    from vresto import budget
     text = 'api config ' + 'ordinary ballast. ' * 500
     boundary = len(text)
     text += 'api supports retries. Warning: do not swallow CancelledError; call uncancel.\n'
@@ -342,7 +342,7 @@ async def test_public_fetch_and_composed_search_fit_equal_wire_budgets(tmp_path)
 
 
 def test_tight_budget_suppression_metadata_cannot_evict_admitted_quote(monkeypatch):
-    from kagi_crawler import budget
+    from vresto import budget
 
     text = 'alpha beta ' * 20 + 'ordinary.\n'
     slices(monkeypatch, [(0, len(text), 'Full'), (0, len(text) - 1, 'Overlap'),
@@ -545,7 +545,7 @@ def test_replacing_duplicate_owner_rebuilds_exact_range_references(monkeypatch):
 
 
 def test_nonfitting_union_keeps_admitted_qualification_and_recounts_bytes(monkeypatch):
-    from kagi_crawler import budget
+    from vresto import budget
 
     left = 'Warning: alpha must not retry.\n'
     middle = 'alpha works. ' * 20 + '\n'

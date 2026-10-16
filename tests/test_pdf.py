@@ -204,7 +204,7 @@ async def test_pdf_parser_subprocess_never_inherits_service_credentials(tmp_path
     wrapper.write_text(f'''#!{executable}
 import os, sys
 if '-I' in sys.argv and any(arg.endswith('pdf_worker.py') for arg in sys.argv):
-    assert not set(os.environ) & {{'KAGI_SESSION_TOKEN', 'KAGI_CRAWLER_ACCESS_TOKEN', 'KAGI_API_KEY', 'UNRELATED_SECRET'}}
+    assert not set(os.environ) & {{'KAGI_SESSION_TOKEN', 'VRESTO_ACCESS_TOKEN', 'KAGI_API_KEY', 'UNRELATED_SECRET'}}
     assert os.environ['HOME'] == os.getcwd()
     import resource, runpy
     def observe(event, args):
@@ -230,7 +230,7 @@ os.execv({executable!r}, [{executable!r}, *sys.argv[1:]])
     # Executable fixture at the OS subprocess boundary, like the CLI/driver
     # fixtures. No mocks of acquisition/cache/parser collaborators.
     monkeypatch.setattr(sys, 'executable', str(wrapper))
-    for key in ('KAGI_SESSION_TOKEN', 'KAGI_CRAWLER_ACCESS_TOKEN', 'KAGI_API_KEY', 'UNRELATED_SECRET'):
+    for key in ('KAGI_SESSION_TOKEN', 'VRESTO_ACCESS_TOKEN', 'KAGI_API_KEY', 'UNRELATED_SECRET'):
         monkeypatch.setenv(key, 'fixture-secret-never-inherit')
     async def handler(request):
         assert 'fixture-secret-never-inherit' not in str(request.headers)

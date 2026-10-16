@@ -25,7 +25,7 @@ def docker_cli(tmp_path):
     harness.write_text('''import json, os, sys
 from pathlib import Path
 assert os.environ['DISPLAY'] == ':42'
-assert os.environ['KAGI_CRAWLER_HEADFUL'] == '1'
+assert os.environ['VRESTO_HEADFUL'] == '1'
 assert sys.argv[1:] in (['--cache', '/data/cache'],
                        ['--cache', '/data/cache', '--verify-persisted'])
 assert __name__ == '__main__'
@@ -49,7 +49,7 @@ print('kagi 0.21.0' if os.environ['FIXTURE_MODE'] == 'cli' else 'kagi 0.22.0')
         'Xvfb': f'''import os, sys, time
 from pathlib import Path
 assert 'KAGI_SESSION_TOKEN' not in os.environ
-assert 'KAGI_CRAWLER_ACCESS_TOKEN' not in os.environ
+assert 'VRESTO_ACCESS_TOKEN' not in os.environ
 with Path({str(display_pids)!r}).open('a') as log:
     log.write(str(os.getpid()) + '\\n')
 fd = int(sys.argv[sys.argv.index('-displayfd') + 1])
@@ -93,10 +93,10 @@ if args[0] == 'run' and '--entrypoint' in args:
         executable.write_text(f'#!{sys.executable}\n' + code)
         executable.chmod(0o700)
     env = {**os.environ, 'PATH': str(tmp_path),
-           'PYTHONPATH': str(ROOT / 'src'), 'FIXTURE_COMMANDS': str(commands),
+           'FIXTURE_COMMANDS': str(commands),
            'FIXTURE_HARNESS': str(harness), 'FIXTURE_HARNESS_LOG': str(tmp_path / 'harness.jsonl'),
-           'KAGI_CRAWLER_HEADFUL': '1', 'KAGI_CRAWLER_BROWSER_CHANNEL': 'chrome',
-           'KAGI_SESSION_TOKEN': 'fixture-session', 'KAGI_CRAWLER_ACCESS_TOKEN': 'fixture-access'}
+           'VRESTO_HEADFUL': '1', 'VRESTO_BROWSER_CHANNEL': 'chrome',
+           'KAGI_SESSION_TOKEN': 'fixture-session', 'VRESTO_ACCESS_TOKEN': 'fixture-access'}
     return tmp_path, commands, display_pids, env
 
 
@@ -146,7 +146,7 @@ def test_container_gate_commands_outcomes_and_cleanup(docker_cli, mode):
         name = entry[entry.index('--name') + 1]
         assert entry == ['run', '--detach', '--name', name, '--init', '--network', 'none',
                          '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
-                         '--env', 'KAGI_CRAWLER_ACCESS_TOKEN=fixture-access',
+                         '--env', 'VRESTO_ACCESS_TOKEN=fixture-access',
                          '--env', 'KAGI_SESSION_TOKEN=fixture-session', 'fixture-image']
         assert calls[-2] == ['rm', '--force', '--volumes', name]
         if mode not in ('exec', 'stop'):

@@ -5,12 +5,12 @@ import sys
 
 import pytest
 
-from kagi_crawler.acquisition import Acquisition
-from kagi_crawler.cache import CachedAcquisition, DocumentCache
-from kagi_crawler.contract import SearchRequest
-from kagi_crawler.discovery import Discovery
-from kagi_crawler.retrieval import Retrieval
-from kagi_crawler.server import Settings
+from vresto.acquisition import Acquisition
+from vresto.cache import CachedAcquisition, DocumentCache
+from vresto.contract import SearchRequest
+from vresto.discovery import Discovery
+from vresto.retrieval import Retrieval
+from vresto.server import Settings
 from test_http import cli_response
 
 
@@ -45,7 +45,7 @@ else:
     assert sys.argv[1:] == ["--error-format", "json", "search", "--format", "json", "--limit", "3", "--", "--query ; $(oops)"]
     print(json.dumps({"data": [{"rank": 4, "url": "https://example.org/docs", "title": "Docs", "snippet": "Text"}]}))
 '''
-    from kagi_crawler.contract import SearchInput
+    from vresto.contract import SearchInput
 
     async with retrieval(tmp_path, source=source) as service:
         result = await service.search(SearchInput(query="--query ; $(oops)", num_results=3,
@@ -108,7 +108,7 @@ if "--version" in sys.argv:
     print("kagi 0.22.0")
 else:
     assert os.environ["KAGI_SESSION_TOKEN"] == "subscriber-secret"
-    assert not any(k in os.environ for k in ("KAGI_API_KEY", "KAGI_API_TOKEN", "KAGI_CRAWLER_ACCESS_TOKEN", "KAGI_BASE_URL"))
+    assert not any(k in os.environ for k in ("KAGI_API_KEY", "KAGI_API_TOKEN", "VRESTO_ACCESS_TOKEN", "KAGI_BASE_URL"))
     assert all("client-secret" not in value for value in os.environ.values())
     assert "subscriber-secret" not in str(sys.argv)
     assert not os.path.exists(os.environ["KAGI_CONFIG"])
@@ -128,8 +128,8 @@ async def test_acquired_workflow_screens_before_selection_without_mutating_canon
     import hashlib
     from unittest.mock import AsyncMock
 
-    from kagi_crawler.budget import wire_bytes
-    from kagi_crawler.contract import FetchRequest
+    from vresto.budget import wire_bytes
+    from vresto.contract import FetchRequest
 
     text = '# Retries\n\nRetries require version 2. Never retry version 1.\n'
     source = {'requested_url': 'https://example.org/docs', 'resolved_url': 'https://example.org/docs',
@@ -180,7 +180,7 @@ async def test_normalized_query_terms_are_screened_after_highlight_selection(tmp
 async def test_evidence_validation_returns_final_error_without_http(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
 
-    from kagi_crawler.contract import FetchRequest
+    from vresto.contract import FetchRequest
 
     async with retrieval(tmp_path, source=cli_response('{"data": []}')) as service:
         fetch = AsyncMock()
@@ -192,8 +192,8 @@ async def test_evidence_validation_returns_final_error_without_http(tmp_path, mo
 
 
 def test_failed_and_stale_sources_are_logged_with_their_urls(caplog):
-    from kagi_crawler.retrieval import _log_failures
-    caplog.set_level('WARNING', logger='kagi_crawler')
+    from vresto.retrieval import _log_failures
+    caplog.set_level('WARNING', logger='vresto')
     _log_failures({'results': [
         {'url': 'https://www.reddit.com/r/x/comments/1/', 'error': {'code': 'blocked', 'reason': 'login_required'}},
         {'requested_url': 'https://nixos.wiki/a', 'error': {'code': 'blocked', 'reason': 'challenge_timeout',

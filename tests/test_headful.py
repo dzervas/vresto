@@ -22,7 +22,7 @@ async def test_headful_entrypoint_owns_display_without_discovery_credentials(tmp
 import os, sys, time
 from pathlib import Path
 assert 'KAGI_SESSION_TOKEN' not in os.environ
-assert 'KAGI_CRAWLER_ACCESS_TOKEN' not in os.environ
+assert 'VRESTO_ACCESS_TOKEN' not in os.environ
 Path({str(pidfile)!r}).write_text(str(os.getpid()))
 if {mode!r} == 'display_failure':
     sys.exit(1)
@@ -38,9 +38,9 @@ time.sleep(60)
     sock.close()
     args = ['--host', '127.0.0.1', '--port', str(port)] if mode == 'terminate' else ['--help']
     env = {**os.environ, 'PATH': str(tmp_path) + os.pathsep + os.environ.get('PATH', ''),
-           'KAGI_CRAWLER_ACCESS_TOKEN': 'fixture-access', 'KAGI_SESSION_TOKEN': 'fixture-session',
-           'KAGI_CRAWLER_CACHE_DIRECTORY': str(tmp_path / 'cache')}
-    process = await asyncio.create_subprocess_exec(sys.executable, '-m', 'kagi_crawler.headful',
+           'VRESTO_ACCESS_TOKEN': 'fixture-access', 'KAGI_SESSION_TOKEN': 'fixture-session',
+           'VRESTO_CACHE_DIRECTORY': str(tmp_path / 'cache')}
+    process = await asyncio.create_subprocess_exec(sys.executable, '-m', 'vresto.headful',
         *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
         if mode == 'terminate':

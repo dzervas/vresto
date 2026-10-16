@@ -147,10 +147,10 @@ async def test_explicit_scope_rejects_before_pdf_parsing_and_caching(tmp_path, m
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
-    from kagi_crawler import acquisition as manager_module
-    from kagi_crawler.acquisition import Acquisition
-    from kagi_crawler.cache import CachedAcquisition, DocumentCache
-    from kagi_crawler.acquisition_policy import FetchError
+    from vresto import acquisition as manager_module
+    from vresto.acquisition import Acquisition
+    from vresto.cache import CachedAcquisition, DocumentCache
+    from vresto.acquisition_policy import FetchError
 
     requested = 'https://example.org/docs/seed'
     final = 'https://example.org/outside'

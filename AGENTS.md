@@ -1,8 +1,8 @@
-# Working on kagi-crawler
+# Working on vresto
 
 ## Module map
 
-Paths below are relative to `src/kagi_crawler/`.
+Paths below are relative to `src/`.
 
 - `retrieval.py`: search/fetch workflow, evidence selection, redaction and final budget; `Retrieval.search(SearchInput)` / `.fetch(FetchInput)` / `.expand(ExpandInput)` / `.crawl(CrawlInput)` return tool data; internal `SearchRequest`/`FetchRequest` retain operational controls.
 - `acquisition.py`: browser lifecycle, bounded origin-aware concurrent queue and shared deadline; `Acquisition.fetch_many(urls, scope=...)`, request/warmup/close lifecycle.
@@ -41,7 +41,7 @@ Paths below are relative to `src/kagi_crawler/`.
 
 ## Checks and fixtures
 
-Use Python 3.12 and `uv sync --locked`. Native browser tests need Patchright's browser/runtime libraries and a usable Chrome installation; see README's runtime setup.
+Use Python 3.12 and `uv sync --locked`. Native browser tests need Patchright's browser/runtime libraries and a usable Chrome installation (`uv run --locked python -m patchright install chromium` provisions the bundled browser, not OS libraries).
 
 ```sh
 uv run --locked basedpyright

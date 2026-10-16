@@ -8,7 +8,7 @@ Source module hashes, both harness hashes, uv.lock hash, exact argv/import roots
 and all fixture bodies are bound into the JSON provenance. Fixed baseline base
 revision plus source-tree hash identifies uncommitted optimized source too.
 Local reproduction uses the supplied native library/font/node/browser paths and
-PYTHONPATH=workspace/src with the main .venv Python; never shared uv auto-sync.
+the workspace's editable installation and .venv Python; never shared uv auto-sync.
 Operator-only deployment reproduction (requires an existing Docker daemon,
 candidate image digest built from ticket/hkq, actual deployment CPU/memory caps):
   name=hkq-profile-$(date +%s)
@@ -97,11 +97,11 @@ from aiohttp import web
 import psutil
 from patchright.async_api import Page, BrowserContext, Browser as NativeBrowser
 import release_check as gate
-import kagi_crawler.browser as browser_module
-import kagi_crawler.server as server_module
-from kagi_crawler.acquisition import Acquisition
-from kagi_crawler.cache import DocumentCache
-from kagi_crawler.discovery import Discovery
+import vresto.browser as browser_module
+import vresto.server as server_module
+from vresto.acquisition import Acquisition
+from vresto.cache import DocumentCache
+from vresto.discovery import Discovery
 IMPORT_MS = (time.perf_counter() - BOOT) * 1000
 
 spans = []
@@ -180,7 +180,7 @@ for owner, name, phase in [
 ]:
     instrument(owner, name, phase)
 # PDF parser is asynchronous and includes its isolated helper process.
-import kagi_crawler.acquisition as acquisition_module
+import vresto.acquisition as acquisition_module
 instrument(acquisition_module, 'parse_pdf', 'normalization_pdf')
 
 QUERY = 'Version 2 retry_limit cancellation warning legacy mode'

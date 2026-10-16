@@ -1,11 +1,11 @@
 """Real-page highlight evaluation, alongside the archived synthetic experiment.
 
 Freeze (network/browser, opt-in):
-  PYTHONPATH=src python scripts/evaluation/run.py highlights freeze
+  uv run --locked python scripts/evaluation/run.py highlights freeze
 Score (offline):
-  PYTHONPATH=src python scripts/evaluation/run.py highlights score --save-baseline eval/corpus/baseline.json
-  PYTHONPATH=src python scripts/evaluation/run.py highlights score --compare eval/corpus/baseline.json
-Browser setup is the application's normal KAGI_CRAWLER_HEADFUL/channel environment.
+  uv run --locked python scripts/evaluation/run.py highlights score --save-baseline eval/corpus/baseline.json
+  uv run --locked python scripts/evaluation/run.py highlights score --compare eval/corpus/baseline.json
+Browser setup is the application's normal VRESTO_HEADFUL/channel environment.
 Run headed capture under a private Xvfb; this script owns/closes Acquisition only.
 
 highlight_cases.json is {schema_version: 1, cases: [...]}. Each case has id,
@@ -37,8 +37,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from kagi_crawler.budget import apply_budget
-from kagi_crawler.evidence import select_highlights
+from vresto.budget import apply_budget
+from vresto.evidence import select_highlights
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -65,7 +65,7 @@ def recorded_result(record):
 
 async def freeze(args):
     # Lazy import keeps scoring independent of browser startup and test helpers.
-    from kagi_crawler.acquisition import Acquisition
+    from vresto.acquisition import Acquisition
 
     corpus = load(args.corpus) if args.corpus.exists() and not args.refresh else dict(
         schema_version=1, documents={}, cases=[], discovery={})
@@ -184,7 +184,7 @@ def score(corpus, labels):
                    absent_answer_exposure_bytes=sum(r['highlight_bytes'] for r in rows
                                                     if r['expectation_kind'] == 'absent'))
     return dict(schema_version=1, corpus_sha256=digest(corpus), labels_sha256=digest(labels),
-                selector_sha256={name: hashlib.sha256((ROOT / 'src/kagi_crawler' / name).read_bytes()).hexdigest()
+                selector_sha256={name: hashlib.sha256((ROOT / 'src' / name).read_bytes()).hexdigest()
                                  for name in ('evidence.py', 'budget.py')},
                 cases=rows, aggregates=summary)
 

@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock
 import pytest
 from aiohttp import web
 
-from kagi_crawler.acquisition import Acquisition
-from kagi_crawler.acquisition_policy import AcquisitionOptions, FetchError
-from kagi_crawler.cache import CachedAcquisition, DocumentCache
+from vresto.acquisition import Acquisition
+from vresto.acquisition_policy import AcquisitionOptions, FetchError
+from vresto.cache import CachedAcquisition, DocumentCache
 from test_acquisition_diagnostics import FakeBrowser
 from test_fetch import site
 
@@ -252,7 +252,7 @@ async def test_pdf_parsers_are_separately_serialized(monkeypatch):
         return 'title', 'text', {}
 
     parser = AsyncMock(side_effect=parse)
-    monkeypatch.setattr('kagi_crawler.acquisition.parse_pdf', parser)
+    monkeypatch.setattr('vresto.acquisition.parse_pdf', parser)
     manager = Acquisition(browser_factory=lambda: browser)
     try:
         result = await manager.fetch_many([f'https://{i}.example/' for i in range(4)])
@@ -294,7 +294,7 @@ async def test_cached_hit_bypasses_full_admission_and_misses_share_deadline(tmp_
 async def test_native_content_equal_for_concurrency_one_and_four(tmp_path, monkeypatch, headed):
     # Cover cold GPU startup and post-detail layout changes: inactive tabs can
     # lose animation frames needed by native click's 500ms stability check.
-    monkeypatch.setenv('KAGI_CRAWLER_HEADFUL', '1' if headed else '0')
+    monkeypatch.setenv('VRESTO_HEADFUL', '1' if headed else '0')
     html = '''<main style="min-height:2400px"><h1>Concurrent fixture</h1><p>Stable public content.</p>
     <details ontoggle="if(this.open && !this.dataset.loaded) {this.dataset.loaded='1';this.insertAdjacentHTML('beforeend','<p>Native detail event.</p>');}">
     <summary>More</summary><p>Expanded continuation.</p><pre>Public code example.</pre></details>
@@ -449,7 +449,7 @@ async def test_crash_also_drains_active_and_waiting_pdf_parsers(monkeypatch):
 
     browser.acquire.side_effect = acquire
     parser = AsyncMock(side_effect=parse)
-    monkeypatch.setattr('kagi_crawler.acquisition.parse_pdf', parser)
+    monkeypatch.setattr('vresto.acquisition.parse_pdf', parser)
     manager = Acquisition(browser_factory=lambda: browser)
     task = asyncio.create_task(manager.fetch_many([
         'https://a.example/', 'https://b.example/', 'https://crash.example/']))
@@ -471,7 +471,7 @@ async def test_crash_also_drains_active_and_waiting_pdf_parsers(monkeypatch):
 async def test_bootstrap_keeps_default_per_tab_viewport_and_headed_software_rendering(monkeypatch, headed):
     from types import SimpleNamespace
     from patchright import async_api
-    from kagi_crawler.chromium import Chromium
+    from vresto.chromium import Chromium
 
     launch = AsyncMock(side_effect=RuntimeError('stop before native launch'))
     driver = SimpleNamespace(start=AsyncMock(return_value=SimpleNamespace(

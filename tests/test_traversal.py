@@ -316,7 +316,7 @@ async def test_traversed_pdf_keeps_page_references_and_expands_same_version(tmp_
     {'origin': 'https://example.org', 'path_prefix': '/docs', 'max_depth': 4}])
 def test_internal_traversal_rejects_invalid_bounds_and_requires_explicit_scope(traversal):
     from pydantic import ValidationError
-    from kagi_crawler.contract import FetchRequest
+    from vresto.contract import FetchRequest
 
     with pytest.raises(ValidationError):
         FetchRequest(urls=['https://example.org/docs'], traversal=traversal)

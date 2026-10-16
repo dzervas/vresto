@@ -1,4 +1,4 @@
-# Kagi Crawler: Private, Evidence-First Web Retrieval over HTTP MCP
+# vresto: Private, Evidence-First Web Retrieval over HTTP MCP
 
 ## Problem Statement
 

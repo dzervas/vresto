@@ -107,8 +107,8 @@ def test_actual_embedding_worker_respects_overflow_identity_eviction_and_restart
 def test_actual_embedding_cli_returns_expandable_evidence_and_measured_sidecars(tmp_path):
     from copy import deepcopy
     from datetime import datetime, timezone
-    from kagi_crawler.cache import DocumentCache
-    from kagi_crawler.evidence import expand_evidence
+    from vresto.cache import DocumentCache
+    from vresto.evidence import expand_evidence
     output = tmp_path/'measured.json'
     subprocess.run([sys.executable, str(ROOT/'scripts/evaluation/embedding_run.py'),
         '--output', str(output), '--worker-python', os.environ['KAGI_EVALUATION_WORKER_PYTHON'],

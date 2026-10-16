@@ -5,8 +5,8 @@ from aiohttp import web
 from patchright.async_api import Page
 import pytest
 
-from kagi_crawler.acquisition_policy import AcquisitionOptions, FetchError
-from kagi_crawler.browser import Browser
+from vresto.acquisition_policy import AcquisitionOptions, FetchError
+from vresto.browser import Browser
 from test_fetch import site
 
 

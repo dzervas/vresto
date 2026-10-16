@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from kagi_crawler.budget import apply_budget, wire_bytes
-from kagi_crawler.contract import ExpandInput, FetchInput, SearchInput
-from kagi_crawler.evidence import evidence_id, resolve_evidence
-from kagi_crawler.memory import Memory
-from kagi_crawler.server import Settings
+from vresto.budget import apply_budget, wire_bytes
+from vresto.contract import ExpandInput, FetchInput, SearchInput
+from vresto.evidence import evidence_id, resolve_evidence
+from vresto.memory import Memory
+from vresto.server import Settings
 from test_http import cli_response, running
 from test_memory import FakeEmbedder, source, store
 from test_retrieval import retrieval
@@ -137,7 +137,7 @@ async def test_disabled_memory_health_does_not_start_worker(tmp_path, enabled, r
 
 
 async def test_enabled_memory_health_and_lifespan(tmp_path, monkeypatch):
-    import kagi_crawler.server as server
+    import vresto.server as server
     class FakeWorker(FakeEmbedder):
         available = True
         def __init__(self, *args, **kwargs):

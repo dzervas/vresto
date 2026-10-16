@@ -1,6 +1,6 @@
 """Opt-in browser/WebGL diagnostic; no service credentials or public navigation.
 
-python -m kagi_crawler.browser_check --headful [--channel chrome]
+python -m vresto.browser_check --headful [--channel chrome]
 Uses the service's native launch, secure DoH check and child environment filter.
 Both probe contexts belong to a fresh owned profile, never a desktop profile.
 No rendering flags are injected: null WebGL is an observation, not a reason to
@@ -72,8 +72,8 @@ def main() -> None:
     parser.add_argument('--headful', action='store_true')
     arguments = parser.parse_args()
     if arguments.channel:
-        os.environ['KAGI_CRAWLER_BROWSER_CHANNEL'] = arguments.channel
-    headed = arguments.headful or os.environ.get('KAGI_CRAWLER_HEADFUL') == '1'
+        os.environ['VRESTO_BROWSER_CHANNEL'] = arguments.channel
+    headed = arguments.headful or os.environ.get('VRESTO_HEADFUL') == '1'
     try:
         with virtual_display() if headed else nullcontext():
             report = asyncio.run(check())

@@ -27,8 +27,8 @@ _RUNTIME_ENV = ('PATH', 'HOME', 'TMPDIR', 'LD_LIBRARY_PATH', 'DISPLAY', 'LANG',
 
 class Chromium:
     def __init__(self) -> None:
-        self.headful = os.environ.get('KAGI_CRAWLER_HEADFUL') == '1'
-        self.channel = os.environ.get('KAGI_CRAWLER_BROWSER_CHANNEL', 'chromium')
+        self.headful = os.environ.get('VRESTO_HEADFUL') == '1'
+        self.channel = os.environ.get('VRESTO_BROWSER_CHANNEL', 'chromium')
         if self.channel not in ('chromium', 'chrome'):
             raise ValueError('browser channel must be chromium or chrome')
         self.browser = None

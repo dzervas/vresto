@@ -2,14 +2,14 @@
 **
 !Dockerfile
 !pyproject.toml
+!MANIFEST.in
 !uv.lock
 !scripts/
 !scripts/install_embedding_model.py
 !src/
-!src/kagi_crawler/
-!src/kagi_crawler/*.py
-!src/kagi_crawler/sites/
-!src/kagi_crawler/sites/*.py
+!src/*.py
+!src/sites/
+!src/sites/*.py
 # Defense in depth, including files nested in allowlisted directories.
 **/.env*
 **/.envrc

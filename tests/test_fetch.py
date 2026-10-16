@@ -4,7 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from aiohttp import web
-from kagi_crawler.acquisition_policy import AcquisitionOptions
+from vresto.acquisition_policy import AcquisitionOptions
 
 
 @asynccontextmanager
@@ -421,7 +421,7 @@ async def test_driver_receives_only_allowlisted_environment(tmp_path, monkeypatc
     wrapper.write_text(f'''#!{sys.executable}
 import os, sys
 assert os.environ.get('KAGI_SESSION_TOKEN') is None
-assert os.environ.get('KAGI_CRAWLER_ACCESS_TOKEN') is None
+assert os.environ.get('VRESTO_ACCESS_TOKEN') is None
 assert os.environ.get('KAGI_API_KEY') is None
 open({str(marker)!r}, 'w').close()
 os.execv({node!r}, [{node!r}, *sys.argv[1:]])
@@ -429,7 +429,7 @@ os.execv({node!r}, [{node!r}, *sys.argv[1:]])
     wrapper.chmod(0o700)
     monkeypatch.setenv('PLAYWRIGHT_NODEJS_PATH', str(wrapper))
     monkeypatch.setenv('KAGI_SESSION_TOKEN', 'subscriber-secret')
-    monkeypatch.setenv('KAGI_CRAWLER_ACCESS_TOKEN', 'client-secret')
+    monkeypatch.setenv('VRESTO_ACCESS_TOKEN', 'client-secret')
     monkeypatch.setenv('KAGI_API_KEY', 'unused-fake-api-key')
     async def handler(request):
         return web.Response(content_type='text/html', text='<h1>Isolated browser</h1><p>' + 'Public page evidence. ' * 30 + '</p>')
@@ -461,7 +461,7 @@ async def test_browser_mode_matches_runtime_setting(tmp_path):
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
         source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
         assert 'Chrome/' in source['content']
-        assert ('HeadlessChrome/' not in source['content']) == (os.environ.get('KAGI_CRAWLER_HEADFUL') == '1')
+        assert ('HeadlessChrome/' not in source['content']) == (os.environ.get('VRESTO_HEADFUL') == '1')
 
 
 async def test_default_dom_limit_allows_large_noncontent_scripts(tmp_path):

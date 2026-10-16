@@ -10,10 +10,10 @@ from aiohttp import web
 from test_fetch import site
 from test_http import running, client, body
 
-from kagi_crawler import sites
-from kagi_crawler.evidence import sections
-from kagi_crawler.extraction import extract
-from kagi_crawler.sites.github import ADAPTER
+from vresto import sites
+from vresto.evidence import sections
+from vresto.extraction import extract
+from vresto.sites.github import ADAPTER
 
 
 @pytest.fixture(autouse=True)

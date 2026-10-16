@@ -7,11 +7,11 @@ import time
 
 import pytest
 
-from kagi_crawler.acquisition_policy import AcquisitionOptions
-from kagi_crawler.budget import apply_budget, wire_bytes
-from kagi_crawler.cache import DocumentCache
-from kagi_crawler.contract import FetchInput, SearchInput
-from kagi_crawler.summaries import MAX_INPUT_BYTES, summary_input
+from vresto.acquisition_policy import AcquisitionOptions
+from vresto.budget import apply_budget, wire_bytes
+from vresto.cache import DocumentCache
+from vresto.contract import FetchInput, SearchInput
+from vresto.summaries import MAX_INPUT_BYTES, summary_input
 from test_http import body, client, running
 from test_retrieval import retrieval
 
@@ -245,7 +245,7 @@ async def test_dash_leading_canonical_markdown_is_a_literal_cli_value(tmp_path):
 
 
 def test_summarizer_html_becomes_markdown():
-    from kagi_crawler.extraction import fragment_markdown
+    from vresto.extraction import fragment_markdown
     assert fragment_markdown('<p>Tasks use <strong>TaskGroups</strong>.</p>\n<p>Key points</p>') == \
         'Tasks use __TaskGroups__.\n\nKey points'
     assert fragment_markdown('Already plain text.') == 'Already plain text.'

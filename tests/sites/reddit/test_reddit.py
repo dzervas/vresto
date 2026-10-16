@@ -4,11 +4,11 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from kagi_crawler import sites
-from kagi_crawler.extraction import extract
-from kagi_crawler.acquisition_policy import FetchError
-from kagi_crawler.sites.reddit import ADAPTER
-from kagi_crawler.types import Coverage
+from vresto import sites
+from vresto.extraction import extract
+from vresto.acquisition_policy import FetchError
+from vresto.sites.reddit import ADAPTER
+from vresto.types import Coverage
 
 FIXTURES = Path(__file__).parent
 

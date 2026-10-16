@@ -25,7 +25,7 @@ from mcp.client.streamable_http import streamable_http_client
 
 async def run(args):
     cases = json.loads(args.cases.read_text())
-    token = os.environ.get('KAGI_CRAWLER_ACCESS_TOKEN', '')
+    token = os.environ.get('VRESTO_ACCESS_TOKEN', '')
     if not token:
         raise SystemExit('Operator must provision service access independently; no credential is printed.')
     categories = {'technical', 'identifiers', 'qualifications', 'tables', 'javascript', 'pdf', 'absent'}

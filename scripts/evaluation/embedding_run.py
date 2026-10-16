@@ -1,6 +1,6 @@
 """Optional English HTML dense/hybrid pilot; never generates answers.
 
-Run: PYTHONPATH=src python scripts/evaluation/embedding_run.py --output /tmp/anl.json
+Run: uv run --locked python scripts/evaluation/embedding_run.py --output /tmp/anl.json
   --worker-python /tmp/kagi-ncn-worker/bin/python --model-dir /tmp/kagi-anl-model
   --library-path "$(cat /tmp/kn8-library-path)"
 Acquire explicitly: python scripts/evaluation/acquire_model.py /tmp/kagi-anl-model --embedding

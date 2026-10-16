@@ -85,9 +85,9 @@ class Acquisition:
                 self._lifecycle_diagnostic(browser, 'startup_failure', error, 'startup')
                 with anyio.CancelScope(shield=True):
                     await browser.close()
-                logging.getLogger('kagi_crawler').info('browser_start=failed')
+                logging.getLogger('vresto').info('browser_start=failed')
                 return False
-            logging.getLogger('kagi_crawler').info('browser_start=ready')
+            logging.getLogger('vresto').info('browser_start=ready')
             self.browser_failed = asyncio.Event()
             self.browser = browser
             self.last_work = self.clock()
@@ -122,7 +122,7 @@ class Acquisition:
     @staticmethod
     def _lifecycle_diagnostic(browser: BrowserAdapter, reason, error, stage):
         try:
-            logger = logging.getLogger('kagi_crawler')
+            logger = logging.getLogger('vresto')
             log = logger.info if reason == 'controlled' else logger.warning
             log('browser_retire reason=%s type=%s connected=%s stage=%s',
                 reason, type(error).__name__ if error is not None else 'none',
@@ -141,7 +141,7 @@ class Acquisition:
                 self._lifecycle_diagnostic(browser, reason, error, 'acquisition')
                 with anyio.CancelScope(shield=True):
                     await browser.close()
-                logging.getLogger('kagi_crawler').info('browser_stop=completed')
+                logging.getLogger('vresto').info('browser_stop=completed')
 
     async def fetch_many(self, urls: list[str], *, scope: Callable[[str], str] | None = None) -> AcquisitionResult:
         # TaskGroup drains every owned page on cancellation, including callers
@@ -167,7 +167,7 @@ class Acquisition:
                         and origin not in self.origins)
             if not available():
                 if self.waiting >= self.options.queue_capacity:
-                    logging.getLogger('kagi_crawler').info('acquisition_queue=full')
+                    logging.getLogger('vresto').info('acquisition_queue=full')
                     raise FetchError('queue_full')
                 self.waiting += 1
                 try:
@@ -176,7 +176,7 @@ class Acquisition:
                         await self.admission.wait_for(lambda: self.closed or available())
                 except TimeoutError:
                     code: ErrorCode = 'fetch_timeout' if asyncio.get_running_loop().time() >= deadline else 'queue_timeout'
-                    logging.getLogger('kagi_crawler').info('acquisition_queue=%s', code)
+                    logging.getLogger('vresto').info('acquisition_queue=%s', code)
                     raise FetchError(code) from None
                 finally:
                     self.waiting -= 1

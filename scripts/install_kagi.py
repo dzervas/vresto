@@ -1,8 +1,8 @@
 """Operator-only install: uv run python scripts/install_kagi.py (requires Cargo).
 
 Installs the verified subscriber CLI into this workspace, not a global profile.
-Then run PATH="$PWD/.tools/bin:$PATH" uv run kagi-crawler with separately
-provisioned KAGI_CRAWLER_ACCESS_TOKEN and KAGI_SESSION_TOKEN. No credentials
+Then run PATH="$PWD/.tools/bin:$PATH" uv run vresto with separately
+provisioned VRESTO_ACCESS_TOKEN and KAGI_SESSION_TOKEN. No credentials
 are needed for this installation.
 """
 from pathlib import Path

@@ -5,9 +5,9 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from kagi_crawler import sites
-from kagi_crawler.extraction import Extracted, extract
-from kagi_crawler.sites.github import ADAPTER
+from vresto import sites
+from vresto.extraction import Extracted, extract
+from vresto.sites.github import ADAPTER
 
 
 @pytest.fixture
@@ -93,8 +93,8 @@ def test_phase_fallback_is_not_overwritten(monkeypatch, coverage):
 @pytest.mark.parametrize('expansion_fallback', [False, True])
 def test_classified_failures_never_fall_back(monkeypatch, coverage, status, code, reason,
                                             expansion_fallback):
-    from kagi_crawler.acquisition_policy import FetchError
-    from kagi_crawler.sites.base import ExtractionOutcome
+    from vresto.acquisition_policy import FetchError
+    from vresto.sites.base import ExtractionOutcome
     adapter = sites.SiteAdapter('classified', lambda url: True,
         extract=lambda document, url: ExtractionOutcome(status))
     monkeypatch.setattr(sites, 'ADAPTERS', (adapter,))
@@ -108,7 +108,7 @@ def test_classified_failures_never_fall_back(monkeypatch, coverage, status, code
 
 
 def test_partial_outcome_preserves_content_and_discloses_reason(monkeypatch, coverage):
-    from kagi_crawler.sites.base import ExtractionOutcome
+    from vresto.sites.base import ExtractionOutcome
     content = Extracted('A qualified preview.', ['https://example.com/'], False)
     monkeypatch.setattr(sites, 'ADAPTERS', (sites.SiteAdapter('preview', lambda url: True,
         extract=lambda document, url: ExtractionOutcome('partial', content)),))
@@ -127,7 +127,7 @@ async def test_outcomes_through_browser_and_cache(tmp_path, monkeypatch, status,
     from test_fetch import site
     from test_http import body
     from retrieval_helpers import client, running
-    from kagi_crawler.sites.base import ExtractionOutcome
+    from vresto.sites.base import ExtractionOutcome
 
     wall = False
     def extract_page(document, url):

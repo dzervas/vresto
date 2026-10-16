@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock
 import pytest
 from patchright.async_api import Error, TimeoutError as BrowserTimeout
 
-from kagi_crawler import chromium as chromium_module
-from kagi_crawler import browser as browser_module
-from kagi_crawler.acquisition import Acquisition
-from kagi_crawler.browser import Browser
-from kagi_crawler.extraction import Extracted
-from kagi_crawler.acquisition_policy import AcquisitionOptions, FetchError
+from vresto import chromium as chromium_module
+from vresto import browser as browser_module
+from vresto.acquisition import Acquisition
+from vresto.browser import Browser
+from vresto.extraction import Extracted
+from vresto.acquisition_policy import AcquisitionOptions, FetchError
 
 
 URL = 'https://sentinel.invalid/private?token=sentinel-url-secret'
@@ -81,7 +81,7 @@ def native(monkeypatch):
 
 
 def safe_records(caplog):
-    records = [r for r in caplog.records if r.name == 'kagi_crawler']
+    records = [r for r in caplog.records if r.name == 'vresto']
     assert records
     for record in records:
         assert record.exc_info is None and record.stack_info is None
@@ -100,7 +100,7 @@ def fail(error):
 
 @pytest.mark.parametrize('connected', [True, False])
 async def test_adapter_failure_and_pre_retirement_state(fake_browser, caplog, connected):
-    caplog.set_level(logging.INFO, logger='kagi_crawler')
+    caplog.set_level(logging.INFO, logger='vresto')
     fake_browser.connected = connected
     fake_browser.acquire.side_effect = ConversionFailure(URL, SECRET)
     manager = Acquisition(browser_factory=lambda: fake_browser)
@@ -185,7 +185,7 @@ async def test_cancellation_still_propagates_and_closes_without_failure_log(nati
         await native.browser.acquire(URL, AcquisitionOptions())
     native.context.close.assert_not_awaited()
     assert native.page.close.await_count == 1
-    assert not [r for r in caplog.records if r.name == 'kagi_crawler']
+    assert not [r for r in caplog.records if r.name == 'vresto']
 
 
 async def test_success_has_no_failure_log(native, caplog):
@@ -193,7 +193,7 @@ async def test_success_has_no_failure_log(native, caplog):
     assert result['content'] == 'Public text'
     native.context.close.assert_not_awaited()
     assert native.page.close.await_count == 1
-    assert not [r for r in caplog.records if r.name == 'kagi_crawler']
+    assert not [r for r in caplog.records if r.name == 'vresto']
 
 
 async def test_startup_failure_logs_before_close_and_remains_unavailable(fake_browser, caplog):
@@ -253,7 +253,7 @@ async def test_native_tab_creation_keeps_original_unwrapped_exception(native, ca
 
 
 async def test_controlled_retire_logs_connection_before_close(fake_browser, caplog):
-    caplog.set_level(logging.INFO, logger='kagi_crawler')
+    caplog.set_level(logging.INFO, logger='vresto')
     manager = Acquisition(browser_factory=lambda: fake_browser)
     manager.browser = fake_browser
     observation = []
@@ -275,8 +275,8 @@ def broken_diagnostics(request, caplog):
             if record.msg.startswith(('acquisition_failure ', 'browser_retire ')):
                 raise RuntimeError('synthetic diagnostic handler failure')
 
-    caplog.set_level(logging.INFO, logger='kagi_crawler')
-    logger = logging.getLogger('kagi_crawler')
+    caplog.set_level(logging.INFO, logger='vresto')
+    logger = logging.getLogger('vresto')
     handler = RaisingDiagnosticHandler()
     if request.param == 'handler':
         logger.addHandler(handler)

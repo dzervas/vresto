@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from kagi_crawler.memory import (Memory, MemoryStore, WorkerEmbedder, bounded_passages,
+from vresto.memory import (Memory, MemoryStore, WorkerEmbedder, bounded_passages,
                                  document_input)
 
 

@@ -156,12 +156,12 @@ async def test_duration_and_no_progress_bounds_keep_initial_document(tmp_path):
 # occur in its expanded discussion (newline-separated literals are supported).
 # No fixture/private-destination exception,
 # credentials, Python downloads or caller JS are supplied to acquisition.
-# KAGI_CRAWLER_EXPANSION_SMOKE_URL=https://... \
-# KAGI_CRAWLER_EXPANSION_SMOKE_EXPECTED='qualified loaded text' pytest -q ...
-@pytest.mark.skipif(not os.environ.get('KAGI_CRAWLER_EXPANSION_SMOKE_URL'), reason='authorized public smoke is opt-in')
+# VRESTO_EXPANSION_SMOKE_URL=https://... \
+# VRESTO_EXPANSION_SMOKE_EXPECTED='qualified loaded text' pytest -q ...
+@pytest.mark.skipif(not os.environ.get('VRESTO_EXPANSION_SMOKE_URL'), reason='authorized public smoke is opt-in')
 async def test_opt_in_public_expansion_fetch_and_composed_search(tmp_path):
-    target = os.environ['KAGI_CRAWLER_EXPANSION_SMOKE_URL']
-    expected = os.environ['KAGI_CRAWLER_EXPANSION_SMOKE_EXPECTED'].splitlines()
+    target = os.environ['VRESTO_EXPANSION_SMOKE_URL']
+    expected = os.environ['VRESTO_EXPANSION_SMOKE_EXPECTED'].splitlines()
     source = cli_response(json.dumps({'data': [{'t': 0, 'rank': 1, 'url': target, 'title': 'Public discussion'}]}))
     async with running(tmp_path, source=source, response_budget_bytes=262144) as (url, _), client(url, timeout=60) as session:
         fetched = body(await session.call_tool('fetch', {'urls': [target], 'freshness': 'fresh_only'}))['sources'][0]
@@ -447,7 +447,7 @@ async def test_network_idle_timer_rendering_preserves_warning_and_exact_coverage
 
 
 async def test_adapter_authorization_cannot_bypass_generic_guards(tmp_path, monkeypatch):
-    from kagi_crawler import sites
+    from vresto import sites
     # Deliberately overbroad authorization: the shared loop, not the adapter,
     # must enforce every read-only restriction.
     monkeypatch.setattr(sites, 'ADAPTERS', (sites.SiteAdapter('broad', lambda url: True,

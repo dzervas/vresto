@@ -60,9 +60,9 @@ from mcp.client.streamable_http import streamable_http_client
 import psutil
 import uvicorn
 
-from kagi_crawler.budget import DEFAULT_RESPONSE_BYTES
-from kagi_crawler.server import Settings, create_app
-from kagi_crawler.acquisition_policy import AcquisitionOptions
+from vresto.budget import DEFAULT_RESPONSE_BYTES
+from vresto.server import Settings, create_app
+from vresto.acquisition_policy import AcquisitionOptions
 
 
 class Clock:

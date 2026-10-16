@@ -36,7 +36,7 @@ class Research:
                   progress: Callable[[str], Awaitable[None]]) -> ToolData:
         if request.tier == 'big' and not self.settings.research_model:
             return {'error': {'code': 'invalid_input', 'reason': 'research_model_not_configured',
-                    'message': 'Big research requires KAGI_CRAWLER_RESEARCH_MODEL.'}}
+                    'message': 'Big research requires VRESTO_RESEARCH_MODEL.'}}
         data: ToolData = {'tier': request.tier, 'thread_deleted': False}
         if request.tier == 'big':
             data['model'] = self.settings.research_model

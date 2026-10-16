@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from kagi_crawler import content_expansion
-from kagi_crawler.acquisition_policy import AcquisitionOptions
+from vresto import content_expansion
+from vresto.acquisition_policy import AcquisitionOptions
 
 
 class PhaseClock:

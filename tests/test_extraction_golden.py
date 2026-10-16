@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from kagi_crawler.extraction import extract
+from vresto.extraction import extract
 
 FIXTURES = Path(__file__).parent / 'fixtures' / 'extraction'
 NAMES = sorted(p.stem for p in FIXTURES.glob('*.html'))

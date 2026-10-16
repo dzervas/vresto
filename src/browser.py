@@ -51,7 +51,7 @@ class Browser:
     def _diagnostic(self, error, stage, reason):
         # Only fixed phases/reasons, exception classes and connection state.
         try:
-            logging.getLogger('kagi_crawler').warning(
+            logging.getLogger('vresto').warning(
                 'acquisition_failure stage=%s type=%s connected=%s reason=%s',
                 stage, type(error).__name__,
                 self.is_connected(), reason)

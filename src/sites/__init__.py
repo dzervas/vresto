@@ -60,7 +60,7 @@ ADAPTERS: tuple[SiteAdapter, ...] = (GITHUB, STACKOVERFLOW, REDDIT, X)
 def _diagnostic(error: Exception) -> None:
     # Same privacy contract as browser._diagnostic: no exception text or URL.
     try:
-        logging.getLogger('kagi_crawler').warning(
+        logging.getLogger('vresto').warning(
             'site_adapter_failure stage=site_adapter type=%s reason=adapter_exception',
             type(error).__name__)
     except Exception:

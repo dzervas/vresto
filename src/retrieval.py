@@ -20,7 +20,7 @@ def _log_failures(data: ToolData) -> None:
     # One line per failed or stale-fallback source, with its URL, so blocked
     # sites can be found in the logs. Runs after safe_sources, which already
     # replaced any credential-bearing source with a URL-less failure.
-    logger = logging.getLogger('kagi_crawler')
+    logger = logging.getLogger('vresto')
     for source in data.get('sources', data.get('results', [])):
         url = source.get('requested_url') or source.get('resolved_url') or source.get('url') or '-'
         error = source.get('error')

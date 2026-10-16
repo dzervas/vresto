@@ -18,9 +18,9 @@ def startup_environment(tmp_path):
         'PATH', 'HOME', 'TMPDIR', 'LD_LIBRARY_PATH', 'FONTCONFIG_FILE',
         'PLAYWRIGHT_NODEJS_PATH', 'PLAYWRIGHT_BROWSERS_PATH', 'PYTHONPATH',
     ) if key in os.environ}
-    return {**env, 'KAGI_CRAWLER_ACCESS_TOKEN': 'fixture-access',
+    return {**env, 'VRESTO_ACCESS_TOKEN': 'fixture-access',
             'KAGI_SESSION_TOKEN': 'fixture-session',
-            'KAGI_CRAWLER_CACHE_DIRECTORY': str(tmp_path)}
+            'VRESTO_CACHE_DIRECTORY': str(tmp_path)}
 
 
 async def test_operator_can_bind_container_interface_without_exposing_credentials(tmp_path):
@@ -30,7 +30,7 @@ async def test_operator_can_bind_container_interface_without_exposing_credential
     sock.close()
     env = startup_environment(tmp_path)
     process = await asyncio.create_subprocess_exec(sys.executable, '-c',
-        'from kagi_crawler.server import main; main()', '--host', '127.0.0.2', '--port', str(port),
+        'from vresto.server import main; main()', '--host', '127.0.0.2', '--port', str(port),
         env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
         async with httpx.AsyncClient(trust_env=False) as http:
@@ -83,12 +83,12 @@ async def test_main_launch_expansion_default_and_explicit_override_over_http(tmp
         sock.close()
         env = startup_environment(tmp_path)
         if override is not None:
-            env['KAGI_CRAWLER_EXPANSION_SECONDS'] = override
+            env['VRESTO_EXPANSION_SECONDS'] = override
         # main still parses all ordinary startup settings. The sole test adapter
         # allows the exact local fixture destination, as in other native tests;
         # it does not replace expansion settings, acquisition or HTTP transport.
         bootstrap = f'''from dataclasses import replace
-from kagi_crawler import server
+from vresto import server
 create_app = server.create_app
 def fixture_app(settings):
     options = replace(settings.acquisition_options, fixture_destinations={options.fixture_destinations!r})
@@ -132,16 +132,16 @@ server.main()
 
 @pytest.mark.parametrize('value', ['0', '11', 'nan', 'invalid'])
 def test_main_rejects_invalid_expansion_override(monkeypatch, tmp_path, value):
-    from kagi_crawler import server
+    from vresto import server
     monkeypatch.setattr(os, 'environ', startup_environment(tmp_path))
-    monkeypatch.setenv('KAGI_CRAWLER_EXPANSION_SECONDS', value)
-    monkeypatch.setattr(sys, 'argv', ['kagi-crawler'])
+    monkeypatch.setenv('VRESTO_EXPANSION_SECONDS', value)
+    monkeypatch.setattr(sys, 'argv', ['vresto'])
     with pytest.raises(ValueError):
         server.main()
 
 
 async def test_operational_diagnostics_exclude_query_and_credentials(tmp_path, caplog):
-    caplog.set_level('INFO', logger='kagi_crawler')
+    caplog.set_level('INFO', logger='vresto')
     query = 'private operator question not for logs'
     async with running(tmp_path) as (url, _), client(url) as session:
         result = await session.call_tool('search', {'query': query, 'content_mode': 'discovery'})
@@ -153,9 +153,9 @@ async def test_operational_diagnostics_exclude_query_and_credentials(tmp_path, c
 
 @pytest.mark.parametrize('value', ['0', '9', '1.5', 'invalid'])
 def test_main_rejects_invalid_browser_concurrency(monkeypatch, tmp_path, value):
-    from kagi_crawler import server
+    from vresto import server
     monkeypatch.setattr(os, 'environ', startup_environment(tmp_path))
-    monkeypatch.setenv('KAGI_CRAWLER_BROWSER_CONCURRENCY', value)
-    monkeypatch.setattr(sys, 'argv', ['kagi-crawler'])
+    monkeypatch.setenv('VRESTO_BROWSER_CONCURRENCY', value)
+    monkeypatch.setattr(sys, 'argv', ['vresto'])
     with pytest.raises(ValueError):
         server.main()

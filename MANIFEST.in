@@ -1,0 +1,9 @@
+# Explicit source archive allowlist: never ship workspace metadata or credentials.
+global-exclude *
+include pyproject.toml MANIFEST.in README.md Dockerfile .dockerignore uv.lock
+recursive-include src *.py
+include scripts/*.py tests/*.py
+global-exclude .env* *.key *.pem *credentials*
+prune .beads
+prune .jj
+prune .git

@@ -11,8 +11,8 @@ import uvicorn
 from mcp import ClientSession, types
 from mcp.client.streamable_http import streamable_http_client
 
-from kagi_crawler.server import Settings, create_app
-from kagi_crawler.acquisition_policy import AcquisitionOptions
+from vresto.server import Settings, create_app
+from vresto.acquisition_policy import AcquisitionOptions
 
 
 @asynccontextmanager
@@ -367,7 +367,7 @@ async def test_search_rejects_credentials_before_any_cli_or_upstream_work(tmp_pa
 
 @pytest.mark.parametrize('outcome', ['success', 'invalid_input', 'discovery_failed'])
 async def test_structured_only_result_is_unchanged_on_http_wire(tmp_path, outcome):
-    from kagi_crawler.budget import wire_bytes
+    from vresto.budget import wire_bytes
 
     snippet = '漢字 "quoted"\nqualification: do not enable legacy mode.'
     source = cli_response(json.dumps({'data': [{'url': 'https://example.org/',

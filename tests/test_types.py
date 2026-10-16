@@ -3,10 +3,10 @@ from typing import get_args, get_type_hints
 
 import pytest
 
-from kagi_crawler.budget import result
-from kagi_crawler.discovery import DiscoveryError
-from kagi_crawler.acquisition_policy import FetchError
-from kagi_crawler.types import ErrorCode
+from vresto.budget import result
+from vresto.discovery import DiscoveryError
+from vresto.acquisition_policy import FetchError
+from vresto.types import ErrorCode
 
 
 @pytest.mark.parametrize('error_type', [FetchError, DiscoveryError])

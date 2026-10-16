@@ -13,8 +13,8 @@ import httpx
 import jwt
 import pytest
 
-from kagi_crawler.auth import ResourceVerifier, oauth_settings
-from kagi_crawler.server import Settings, create_app
+from vresto.auth import ResourceVerifier, oauth_settings
+from vresto.server import Settings, create_app
 from test_http import running, client, body
 
 RESOURCE = 'https://crawler.example/mcp'
@@ -227,7 +227,7 @@ async def test_token_cache_is_bounded_and_lifetime_bound(authorization_server):
 
 @pytest.fixture
 def no_browser(monkeypatch):
-    monkeypatch.setattr('kagi_crawler.server.Acquisition.warmup', lambda _: None)
+    monkeypatch.setattr('vresto.server.Acquisition.warmup', lambda _: None)
 
 
 async def test_http_challenge_metadata_scope_and_health(tmp_path, authorization_server, no_browser):
