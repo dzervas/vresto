@@ -42,6 +42,9 @@ Keep the cache volume private: it retains fetched documents and version history.
 
 The CLI and Python import are both `vresto` (`vresto --help`, `import vresto`).
 Server settings use the `VRESTO_` prefix; `KAGI_SESSION_TOKEN` keeps its name.
+`VRESTO_RESEARCH_CONCURRENCY` sets the number of simultaneous research calls
+across both tiers (default `4`, range `1`–`16`, per server process). Two additional
+calls may queue for up to 10 seconds; the overall research deadline still applies.
 
 ## Connect your MCP client
 

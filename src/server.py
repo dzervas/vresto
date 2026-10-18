@@ -78,6 +78,7 @@ class Settings:
 
     research_model: str | None = None
     research_timeout: float = 300
+    research_concurrency: int = 4
     research_daily_small: int = 0
     research_daily_big: int = 0
 
@@ -98,6 +99,8 @@ class Settings:
             raise ValueError('unsupported memory dimensions')
         if not 2_147_483_648 <= self.memory_worker_bytes <= 17_179_869_184:
             raise ValueError('memory worker address space must be 2–16 GiB')
+        if not 1 <= self.research_concurrency <= 16:
+            raise ValueError('research concurrency must be 1–16')
         if not 1 <= self.research_timeout <= 1800:
             raise ValueError('research timeout must be 1–1800 seconds')
         if self.research_daily_small < 0 or self.research_daily_big < 0:
@@ -370,6 +373,7 @@ def main() -> None:
                         memory_worker_bytes=int(os.environ.get('VRESTO_MEMORY_WORKER_BYTES', '6442450944')),
                         research_model=os.environ.get('VRESTO_RESEARCH_MODEL'),
                         research_timeout=float(os.environ.get('VRESTO_RESEARCH_TIMEOUT_SECONDS', '300')),
+                        research_concurrency=int(os.environ.get('VRESTO_RESEARCH_CONCURRENCY', '4')),
                         research_daily_small=int(os.environ.get('VRESTO_RESEARCH_DAILY_SMALL', '0')),
                         research_daily_big=int(os.environ.get('VRESTO_RESEARCH_DAILY_BIG', '0')),
                         response_budget_bytes=int(os.environ.get("VRESTO_RESPONSE_BUDGET_BYTES",

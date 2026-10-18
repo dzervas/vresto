@@ -173,6 +173,44 @@ async def test_research_pool_is_independent_and_cancellation_reaps_process(tmp_p
             await research.cli.processes.close()
 
 
+@pytest.mark.parametrize('settings,limit', [({}, 4), ({'research_concurrency': 2}, 2),
+                                         ({'research_concurrency': 1}, 1),
+                                         ({'research_concurrency': 16}, 16)])
+async def test_research_concurrency_default_and_override(tmp_path, settings, limit):
+    async with retrieval(tmp_path, source=cli(tmp_path), **settings) as service:
+        research = Research(service.discovery, service)
+        started = asyncio.Queue()
+        release = asyncio.Event()
+
+        async def progress(_):
+            started.put_nowait(True)
+            await release.wait()
+
+        tasks = [asyncio.create_task(research.run(ResearchInput(query='retries'), progress))
+                 for _ in range(limit + 1)]
+        try:
+            async with asyncio.timeout(3):
+                for _ in range(limit):
+                    await started.get()
+                while not research.cli.processes.waiters:
+                    await asyncio.sleep(0)
+            assert started.empty()
+            assert research.cli.processes.admitted == limit
+            assert len(research.cli.processes.waiters) == 1
+            assert not service.discovery.processes.admitted
+            release.set()
+            async with asyncio.timeout(10):
+                results = await asyncio.gather(*tasks)
+            assert all('answer' in result for result in results)
+            assert not research.cli.processes.admitted
+            assert not research.cli.processes.waiters
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await research.cli.processes.close()
+
+
 async def test_answer_first_budget_bounds_multibyte_prose_references_and_quotes(tmp_path):
     async with retrieval(tmp_path, source=cli(tmp_path), response_budget_bytes=4096) as service:
         research = Research(service.discovery, service)
@@ -245,7 +283,8 @@ async def test_research_queue_has_own_bounded_wait_and_capacity(tmp_path, monkey
     from vresto.research import ResearchProcesses
 
     monkeypatch.setattr(ResearchProcesses, 'QUEUE_WAIT', 0.3)
-    async with retrieval(tmp_path, source=cli(tmp_path, action='time.sleep(30)')) as service:
+    async with retrieval(tmp_path, source=cli(tmp_path, action='time.sleep(30)'),
+                         research_concurrency=1) as service:
         research = Research(service.discovery, service)
 
         async def progress(_):
@@ -296,6 +335,7 @@ async def test_verification_deadline_preserves_generated_answer(tmp_path, monkey
 
 @pytest.mark.parametrize('settings', [
     {'research_timeout': 0}, {'research_timeout': 1801},
+    {'research_concurrency': 0}, {'research_concurrency': 17},
     {'research_daily_small': -1}, {'research_daily_big': -1}, {'research_model': ' '},
 ])
 def test_research_operator_limit_validation(settings):

@@ -151,6 +151,30 @@ async def test_operational_diagnostics_exclude_query_and_credentials(tmp_path, c
         assert sensitive not in caplog.text
 
 
+@pytest.mark.parametrize('value', [None, '2', '16'])
+def test_main_research_concurrency_environment(monkeypatch, tmp_path, value):
+    from vresto import server
+    monkeypatch.setattr(os, 'environ', startup_environment(tmp_path))
+    if value is not None:
+        monkeypatch.setenv('VRESTO_RESEARCH_CONCURRENCY', value)
+    monkeypatch.setattr(sys, 'argv', ['vresto'])
+    captured = []
+    monkeypatch.setattr(server, 'create_app', lambda settings: captured.append(settings))
+    monkeypatch.setattr(server.uvicorn, 'run', lambda *args, **kwargs: None)
+    server.main()
+    assert captured[0].research_concurrency == (int(value) if value is not None else 4)
+
+
+@pytest.mark.parametrize('value', ['0', '17', '1.5', 'invalid'])
+def test_main_rejects_invalid_research_concurrency(monkeypatch, tmp_path, value):
+    from vresto import server
+    monkeypatch.setattr(os, 'environ', startup_environment(tmp_path))
+    monkeypatch.setenv('VRESTO_RESEARCH_CONCURRENCY', value)
+    monkeypatch.setattr(sys, 'argv', ['vresto'])
+    with pytest.raises(ValueError):
+        server.main()
+
+
 @pytest.mark.parametrize('value', ['0', '9', '1.5', 'invalid'])
 def test_main_rejects_invalid_browser_concurrency(monkeypatch, tmp_path, value):
     from vresto import server

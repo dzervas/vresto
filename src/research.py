@@ -18,9 +18,12 @@ from .types import ToolData
 
 
 class ResearchProcesses(Processes):
-    CONCURRENCY = 1
     QUEUE_CAPACITY = 2
     QUEUE_WAIT = 10
+
+    def __init__(self, settings) -> None:
+        super().__init__(settings)
+        self.CONCURRENCY = settings.research_concurrency
 
 
 class Research:
