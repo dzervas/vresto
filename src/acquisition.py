@@ -3,7 +3,6 @@ from collections.abc import Awaitable, Callable, Iterator
 from typing import Any, cast
 import asyncio
 from contextlib import contextmanager
-from contextvars import ContextVar
 from datetime import datetime, timezone
 import hashlib
 import logging
@@ -12,11 +11,12 @@ from urllib.parse import urlsplit
 
 import anyio
 
-from .types import AcquisitionResult, Source, SourceSuccess, SourceFailure, ErrorCode
+from .types import AcquisitionResult, Source, SourceSuccess, SourceFailure
 
 from .acquisition_policy import AcquisitionOptions, DestinationPolicy, FetchError
 from .browser import Browser, BrowserAdapter
 from .pdf import parse_pdf
+from .deadline import request_deadline
 
 
 class Acquisition:
@@ -45,18 +45,13 @@ class Acquisition:
         self.startup = None
         self.idle_task = None
         self.last_work: float | None = None
-        self.request_deadline: ContextVar[float | None] = ContextVar('acquisition_deadline', default=None)
 
     @contextmanager
     def request(self) -> Iterator[None]:
         # Cache/composed requests may call fetch_many one URL at a time. Share
         # the acquisition deadline without making cache hits join its queue.
-        token = self.request_deadline.set(self.request_deadline.get() or
-                                          asyncio.get_running_loop().time() + self.options.deadline)
-        try:
+        with request_deadline(self.options.deadline):
             yield
-        finally:
-            self.request_deadline.reset(token)
 
     def warmup(self) -> asyncio.Task[bool] | None:
         # ASGI requests never wait for startup. Keep its result for acquisition;
@@ -75,6 +70,8 @@ class Acquisition:
                 return True
             browser = self.browser_factory()
             try:
+                # Shared startup has a service lifecycle bound, independent of
+                # the requesting caller's inherited (possibly shorter) deadline.
                 async with asyncio.timeout(self.options.deadline):
                     await browser.start()
             except asyncio.CancelledError:
@@ -146,9 +143,9 @@ class Acquisition:
     async def fetch_many(self, urls: list[str], *, scope: Callable[[str], str] | None = None) -> AcquisitionResult:
         # TaskGroup drains every owned page on cancellation, including callers
         # using AnyIO cancellation scopes. Results remain in input order.
-        deadline = self.request_deadline.get() or asyncio.get_running_loop().time() + self.options.deadline
-        async with asyncio.TaskGroup() as group:
-            tasks = [group.create_task(self._fetch(url, deadline, scope=scope)) for url in urls]
+        with request_deadline(self.options.deadline) as deadline:
+            async with asyncio.TaskGroup() as group:
+                tasks = [group.create_task(self._fetch(url, deadline, scope=scope)) for url in urls]
         return {'sources': [task.result() for task in tasks], 'content_mode': 'full_text'}
 
     @staticmethod
@@ -166,22 +163,18 @@ class Acquisition:
                 return (not self.retiring and self.active < self.options.browser_concurrency
                         and origin not in self.origins)
             if not available():
-                if self.waiting >= self.options.queue_capacity:
-                    logging.getLogger('vresto').info('acquisition_queue=full')
-                    raise FetchError('queue_full')
                 self.waiting += 1
                 try:
-                    remaining = deadline - asyncio.get_running_loop().time()
-                    async with asyncio.timeout(min(self.options.queue_wait, remaining)):
+                    async with asyncio.timeout_at(deadline):
                         await self.admission.wait_for(lambda: self.closed or available())
                 except TimeoutError:
-                    code: ErrorCode = 'fetch_timeout' if asyncio.get_running_loop().time() >= deadline else 'queue_timeout'
-                    logging.getLogger('vresto').info('acquisition_queue=%s', code)
-                    raise FetchError(code) from None
+                    raise FetchError('fetch_timeout') from None
                 finally:
                     self.waiting -= 1
             if self.closed:
                 raise FetchError('fetch_failed')
+            if asyncio.get_running_loop().time() >= deadline:
+                raise FetchError('fetch_timeout')
             self.active += 1
             self.origins.add(origin)
 

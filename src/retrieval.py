@@ -14,6 +14,7 @@ from .safety import safe_sources
 from .summaries import add_summaries
 from .traversal import Traversal
 from .types import ToolData
+from .deadline import request_deadline
 
 
 def _log_failures(data: ToolData) -> None:
@@ -53,9 +54,7 @@ class Retrieval:
                 'expansion_actions': options.expansion_actions,
                 'expansion_seconds': options.expansion_timeout,
                 'native_network_resource_bounds': 'operator_memory_disk_egress_limits',
-                'queue_capacity': options.queue_capacity,
-                'queue_wait_seconds': options.queue_wait, 'browser_navigation_seconds': min(10, options.request_timeout),
-                'browser_acquisition_seconds': options.request_timeout}
+                'browser_concurrency': options.browser_concurrency}
 
     def _finalize(self, data: ToolData, request: SearchRequest | FetchRequest,
                   retained: list[ToolData] | None = None) -> ToolData:
@@ -90,14 +89,20 @@ class Retrieval:
         return apply_budget(data, request.response_budget_bytes)
 
     async def fetch(self, request: FetchInput | FetchRequest) -> ToolData:
+        with request_deadline(self.acquisition.options.deadline) as deadline:
+            return await self._fetch(request, deadline)
+
+    async def _fetch(self, request: FetchInput | FetchRequest, deadline: float) -> ToolData:
         if isinstance(request, FetchInput):
             request = FetchRequest(**request.model_dump(), response_budget_bytes=self.response_budget_bytes)
-        deadline = asyncio.get_running_loop().time() + self.acquisition.options.deadline
         data: ToolData
         if request.evidence_ids is not None:
             try:
-                data = dict(await asyncio.to_thread(expand_evidence, self.cache, request.evidence_ids,
-                                                   self.memory.store if self.memory is not None else None))
+                async with asyncio.timeout_at(deadline):
+                    data = dict(await asyncio.to_thread(expand_evidence, self.cache, request.evidence_ids,
+                                                       self.memory.store if self.memory is not None else None))
+            except TimeoutError:
+                return {'error': {'code': 'fetch_timeout'}}
             except ValueError:
                 # Evidence validation also checks retained versions/offsets;
                 # never forward the offending ID or exception details.
@@ -118,9 +123,12 @@ class Retrieval:
         return self._finalize(data, request)
 
     async def search(self, request: SearchInput | SearchRequest) -> ToolData:
+        with request_deadline(self.acquisition.options.deadline) as deadline:
+            return await self._search(request, deadline)
+
+    async def _search(self, request: SearchInput | SearchRequest, deadline: float) -> ToolData:
         if isinstance(request, SearchInput):
             request = SearchRequest(**request.model_dump(), response_budget_bytes=self.response_budget_bytes)
-        deadline = asyncio.get_running_loop().time() + self.acquisition.options.deadline
         data: ToolData
         try:
             data = dict(await self.discovery.search(request))
@@ -152,8 +160,6 @@ class Retrieval:
                 "discovery_failed": "Kagi discovery failed; no paid API fallback was attempted.",
                 "discovery_timeout": "Kagi discovery exceeded the service deadline.",
                 "discovery_output_limit": "Kagi CLI output exceeded the service byte limit.",
-                "discovery_queue_full": "Discovery waiting capacity exceeded; retry later.",
-                "discovery_queue_timeout": "Discovery admission wait exceeded the service limit; retry later.",
                 "discovery_cli_version": "Install the pinned Microck Kagi CLI revision; release mismatch.",
             }
             return {"error": {"code": error.code, "message": messages[error.code]}}

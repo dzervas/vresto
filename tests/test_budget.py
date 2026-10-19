@@ -31,8 +31,6 @@ async def test_full_text_budget_preserves_ten_source_outcomes_and_reports_trunca
         return web.Response(content_type='text/html', text='<title>Technical guide</title><h1>Warning</h1><p>'
                             + 'Version 2: do not enable legacy mode. 漢字 \\"quoted\\". ' * 300 + '</p>')
     async with site(handler) as (base, options):
-        # Ten same-origin pages are intentional budget inputs, not a queue-load test.
-        options = replace(options, queue_capacity=10, queue_wait=30)
         async with running(tmp_path, acquisition_options=options, response_budget_bytes=limit) as (url, _), client(url, timeout=60) as session:
             result = await session.call_tool('fetch', {'urls': [base + f'/{i}' for i in range(9)] + [base + '/missing']})
             assert not result.isError

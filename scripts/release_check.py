@@ -19,6 +19,8 @@ Raw facts, 2026-10-13 sandbox x86_64 / 32 logical CPUs / Python 3.12.13,
 locked dependencies, system node + Chromium 153.0.8010.12/r1243. Three fresh
 cache runs, before the subsequent pytest run; host load is not controlled.
 No container/deployment measurement or real upstream discovery is implied.
+These queue-capacity/wait measurements also predate the shared request deadline;
+current admission waits for capacity until that deadline, without queue rejection.
 RSS columns are bytes; latency columns ms:
 run,cold_initialize_search,warm_cached_fetch,warm_browser_refresh,queue_timeout,rss_before,rss_warm_idle,rss_after_idle,rss_after_shutdown,active_peak
 1,1624.23,48.83,813.28,161.76,133132288,529784832,146784256,151945216,654401536
@@ -136,7 +138,7 @@ async def eventually(predicate):
 @asynccontextmanager
 async def client(url):
     async with httpx.AsyncClient(headers={'Authorization': 'Bearer fixture-access'},
-                                 trust_env=False, timeout=250) as http:
+                                 trust_env=False, timeout=Settings.timeout + 5) as http:
         async with streamable_http_client(url, http_client=http) as (read, write, _):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -144,9 +146,8 @@ async def client(url):
 
 
 @asynccontextmanager
-async def server(cache, cli, clock, *, default_queue=False, response_budget_bytes=DEFAULT_RESPONSE_BYTES):
-    queue = {} if default_queue else {'queue_capacity': 1, 'queue_wait': .15}
-    options = AcquisitionOptions(fixture_destinations=(('127.0.0.1', 18081, '127.0.0.1'),), **queue)
+async def server(cache, cli, clock, *, response_budget_bytes=DEFAULT_RESPONSE_BYTES):
+    options = AcquisitionOptions(fixture_destinations=(('127.0.0.1', 18081, '127.0.0.1'),))
     app = create_app(Settings(access_token='fixture-access', session_token='fixture-session',
         command=(sys.executable, str(cli)), cache_directory=cache,
         acquisition_options=options, browser_clock=clock, browser_sleep=clock.sleep,
@@ -289,20 +290,20 @@ async def run(cache, verify_persisted=False):
                         assert len(traversed['sources']) == 2, traversed
                         forbidden = data(await first.call_tool('fetch', {'urls': ['http://127.0.0.1:18082/']}))
                         assert forbidden['sources'][0]['error']['code'] == 'policy_rejected'
-                        # Deterministic multi-client pressure: one active, one queued,
-                        # an excess call rejected, then bounded queue timeout.
+                        # Multi-client pressure waits against the request deadline,
+                        # without separate queue capacity or wait rejection.
                         start = time.perf_counter()
                         active = asyncio.create_task(first.call_tool('fetch', {'urls': ['http://127.0.0.1:18081/hold']}))
                         await asyncio.wait_for(entered.wait(), 5)
-                        queued = asyncio.create_task(second.call_tool('fetch', {'urls': ['http://127.0.0.1:18081/hold']}))
-                        await asyncio.sleep(.04)
-                        excess = data(await second.call_tool('fetch', {'urls': ['http://127.0.0.1:18081/hold']}))
-                        assert excess['sources'][0]['error']['code'] == 'queue_full'
-                        assert data(await queued)['sources'][0]['error']['code'] == 'queue_timeout'
-                        facts['queue_timeout_observed_ms'] = round((time.perf_counter() - start) * 1000, 2)
-                        facts['queue'] = {'active': 1, 'capacity': 1, 'excess': 'queue_full', 'queued': 'queue_timeout'}
+                        queued = [asyncio.create_task(second.call_tool('fetch', {
+                            'urls': ['http://127.0.0.1:18081/hold']})) for _ in range(12)]
+                        await asyncio.sleep(.1)
+                        assert not any(task.done() for task in queued)
                         release.set()
-                        assert data(await active)['sources'][0]['error']['code'] == 'fetch_failed'
+                        results = await asyncio.gather(active, *queued)
+                        assert all(data(result)['sources'][0]['error']['code'] == 'fetch_failed' for result in results)
+                        facts['queue_completion_ms'] = round((time.perf_counter() - start) * 1000, 2)
+                        facts['queue'] = {'active': 1, 'contenders': 12, 'outcome': 'completed_after_release'}
                         clock.advance()
                         await eventually(lambda: not browsers())
                         await eventually(lambda: not ({p.pid for p in processes()} - before))
@@ -327,9 +328,9 @@ async def run(cache, verify_persisted=False):
                         assert 'error' not in recovered['sources'][0], recovered
             await eventually(lambda: not ({p.pid for p in processes()} - before))
             if not verify_persisted:
-                # Actual default queue: two independent clients, nine concurrent
-                # uncached acquisitions (one active + eight waiting), one browser.
-                async with server(cache, cli, Clock(), default_queue=True) as url:
+                # Two independent clients, nine concurrent uncached acquisitions
+                # sharing origin admission and their respective request deadlines.
+                async with server(cache, cli, Clock()) as url:
                     async with client(url) as first, client(url) as second:
                         await eventually(lambda: len(browsers()) == 1)
                         latencies = []

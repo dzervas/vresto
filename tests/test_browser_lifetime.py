@@ -131,7 +131,7 @@ async def test_one_request_deadline_bounds_all_urls_without_new_downloads_after_
         return web.Response(status=404)
     clock = Clock()
     async with site(handler) as (base, options):
-        options = replace(options, deadline=2.5, request_timeout=2)
+        options = replace(options, deadline=2.5)
         async with running(tmp_path, acquisition_options=options, browser_clock=clock,
                            browser_sleep=clock.sleep) as (url, _), client(url) as session:
             await asyncio.wait_for(clock.ready.wait(), 10)

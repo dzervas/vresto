@@ -59,7 +59,7 @@ else:
             await asyncio.gather(watcher, return_exceptions=True)
 
 
-# Observe bounded service responses rather than preempting the canonical 120s
+# Observe bounded service responses rather than preempting the canonical 300s
 # deadline with a 5s transport timeout. Native fixture latency reproduced that
 # mismatch on pre/post-optimization code. Timing/cancellation tests retain their
 # independent watchdogs and explicit observer overrides.
@@ -256,74 +256,76 @@ async def wait_for_searches(tmp_path, count):
             await asyncio.sleep(.01)
 
 
-async def test_discovery_admission_bounds_clients_and_rejects_excess_without_spawn(tmp_path):
+async def test_discovery_admission_queues_beyond_old_capacity_without_extra_spawn(tmp_path):
     source = held_cli(tmp_path)
-    async with running(tmp_path, source=source, timeout=3) as (url, _), client(url) as first, client(url) as second:
+    async with running(tmp_path, source=source, timeout=5) as (url, _), client(url) as first, client(url) as second:
         tasks = []
         try:
             for i in range(2):
                 tasks.append(asyncio.create_task(first.call_tool('search', {'query': str(i), 'content_mode': 'discovery'})))
-                async with asyncio.timeout(3):
-                    while not (tmp_path / f'pid-{i}').exists():
-                        await asyncio.sleep(.01)
-            for i in range(2, 10):
-                tasks.append(asyncio.create_task(second.call_tool('search', {'query': str(i), 'content_mode': 'discovery'})))
+            await wait_for_searches(tmp_path, 2)
+            tasks.extend(asyncio.create_task(second.call_tool('search', {
+                'query': str(i), 'content_mode': 'discovery'})) for i in range(2, 15))
             await asyncio.sleep(.2)
-            excess = await first.call_tool('search', {'query': 'excess', 'content_mode': 'discovery'})
-            assert body(excess)['error']['code'] == 'discovery_queue_full'
             assert len(list(tmp_path.glob('pid-*'))) == 2
-            assert 'stderr' not in excess.model_dump_json()
+            assert not any(task.done() for task in tasks)
             (tmp_path / 'release').touch()
             results = await asyncio.gather(*tasks)
             assert all(not r.isError for r in results)
-            assert len(list(tmp_path.glob('pid-*'))) == 10
+            assert len(list(tmp_path.glob('pid-*'))) == 15
         finally:
             (tmp_path / 'release').touch()
             await asyncio.gather(*tasks, return_exceptions=True)
 
 
-@pytest.mark.parametrize('timeout,code', [(0.8, 'discovery_timeout'), (20, 'discovery_queue_timeout')])
-async def test_discovery_wait_has_its_own_limit_and_shares_request_deadline(tmp_path, timeout, code):
+async def test_discovery_wait_shares_request_deadline(tmp_path):
     source = held_cli(tmp_path)
     calls = []
-    async with running(tmp_path, source=source, timeout=timeout) as (url, _), client(url, timeout=25, calls=calls) as session:
+    async with running(tmp_path, source=source, timeout=.8) as (url, _), client(url, calls=calls) as session:
         active = [asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(2)]
         await wait_for_searches(tmp_path, 2)
         started = asyncio.get_running_loop().time()
         queued = await session.call_tool('search', {'query': 'queued', 'content_mode': 'discovery'})
         elapsed = asyncio.get_running_loop().time() - started
-        assert body(queued)['error']['code'] == code
-        assert elapsed < (1.6 if timeout < 1 else 11)
-        for identifier in calls[:2]:
-            await session.send_notification(types.ClientNotification(types.CancelledNotification(
-                method='notifications/cancelled', params=types.CancelledNotificationParams(requestId=identifier))))
+        assert body(queued)['error']['code'] == 'discovery_timeout'
+        assert elapsed < 1.6
         await asyncio.gather(*active, return_exceptions=True)
 
 
-async def test_cancelled_discovery_waiter_releases_capacity_without_running_cli(tmp_path):
+async def test_cancelled_discovery_waiter_never_runs_cli(tmp_path):
     calls = []
     source = held_cli(tmp_path)
-    async with running(tmp_path, source=source, timeout=3) as (url, _), client(url, calls=calls) as session:
+    async with running(tmp_path, source=source, timeout=5) as (url, _), client(url, calls=calls) as session:
         tasks = [asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(2)]
         try:
             await wait_for_searches(tmp_path, 2)
-            tasks.extend(asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(2, 10))
-            await asyncio.sleep(.2)
+            tasks.extend(asyncio.create_task(session.call_tool('search', {
+                'query': str(i), 'content_mode': 'discovery'})) for i in range(2, 12))
+            # An outgoing HTTP hook precedes server admission. Wait until the
+            # responder exists before sending MCP cancellation for the last call.
+            async with httpx.AsyncClient(headers={'Authorization': 'Bearer client-secret'}) as http:
+                async with asyncio.timeout(3):
+                    while True:
+                        health = (await http.get(url.replace('/mcp', '/health'))).json()
+                        if health['discovery']['waiting'] == 10:
+                            break
+                        await asyncio.sleep(.01)
             await session.send_notification(types.ClientNotification(types.CancelledNotification(
                 method='notifications/cancelled', params=types.CancelledNotificationParams(requestId=calls[-1]))))
             await asyncio.gather(tasks[-1], return_exceptions=True)
-            replacement = asyncio.create_task(session.call_tool('search', {'query': 'replacement'}))
+            replacement = asyncio.create_task(session.call_tool('search', {
+                'query': 'replacement', 'content_mode': 'discovery'}))
+            tasks.append(replacement)
             await asyncio.sleep(.1)
-            excess = await session.call_tool('search', {'query': 'excess'})
-            assert body(excess)['error']['code'] == 'discovery_queue_full'
             assert not replacement.done()
             assert len(list(tmp_path.glob('pid-*'))) == 2
-            assert not (tmp_path / 'pid-9').exists()
-            tasks.append(replacement)
+            (tmp_path / 'release').touch()
+            results = await asyncio.gather(*tasks[:-2], replacement)
+            assert all(not result.isError for result in results)
+            assert not (tmp_path / 'pid-11').exists()
+            assert (tmp_path / 'pid-replacement').exists()
         finally:
-            for identifier in calls:
-                await session.send_notification(types.ClientNotification(types.CancelledNotification(
-                    method='notifications/cancelled', params=types.CancelledNotificationParams(requestId=identifier))))
+            (tmp_path / 'release').touch()
             await asyncio.gather(*tasks, return_exceptions=True)
 
 

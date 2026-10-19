@@ -207,7 +207,7 @@ async def test_traversal_queue_pressure_uses_existing_shared_permit(tmp_path):
         await release.wait()
         return web.Response(status=404)
     async with site(handler) as (base, options):
-        options = replace(options, queue_capacity=1, queue_wait=0.1)
+        options = replace(options, deadline=2)
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as first, client(url) as second:
             args = {'urls': [base + '/docs'], 'traversal': {'origin': base, 'path_prefix': '/docs'}}
             active = asyncio.create_task(first.call_tool('fetch', args))
@@ -215,10 +215,10 @@ async def test_traversal_queue_pressure_uses_existing_shared_permit(tmp_path):
             queued = asyncio.create_task(second.call_tool('fetch', args))
             await asyncio.sleep(0.03)
             excess = body(await second.call_tool('fetch', args))
-            assert excess['sources'][0]['error']['code'] == 'queue_full'
-            assert body(await queued)['sources'][0]['error']['code'] == 'queue_timeout'
+            assert excess['sources'][0]['error']['code'] == 'fetch_timeout'
+            assert body(await queued)['sources'][0]['error']['code'] == 'fetch_timeout'
             release.set()
-            assert body(await active)['sources'][0]['error']['code'] == 'fetch_failed'
+            assert body(await active)['sources'][0]['error']['code'] == 'fetch_timeout'
 
 
 async def test_cancelled_traversal_releases_tab_and_retains_cached_seed(tmp_path):

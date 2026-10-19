@@ -408,7 +408,7 @@ async def test_shared_warmup_and_success_reuse_adapter(fake_browser):
     assert manager.warmup() is None
 
 
-async def test_queue_capacity_and_wait_with_fake_adapter(fake_browser):
+async def test_queue_waits_until_request_deadline_with_fake_adapter(fake_browser):
     entered, release = asyncio.Event(), asyncio.Event()
     document = fake_browser.acquire.return_value
 
@@ -418,7 +418,7 @@ async def test_queue_capacity_and_wait_with_fake_adapter(fake_browser):
         return document
 
     fake_browser.acquire.side_effect = acquire
-    manager = Acquisition(AcquisitionOptions(browser_concurrency=1, queue_capacity=1, queue_wait=0.05),
+    manager = Acquisition(AcquisitionOptions(browser_concurrency=1, deadline=0.15),
                           browser_factory=lambda: fake_browser)
     active = asyncio.create_task(manager.fetch_many([URL]))
     queued = None
@@ -429,13 +429,12 @@ async def test_queue_capacity_and_wait_with_fake_adapter(fake_browser):
             while manager.waiting != 1:
                 await asyncio.sleep(0)
         excess = await manager.fetch_many([URL])
-        assert excess['sources'][0]['error']['code'] == 'queue_full'
-        assert (await queued)['sources'][0]['error']['code'] == 'queue_timeout'
+        assert excess['sources'][0]['error']['code'] == 'fetch_timeout'
+        assert (await queued)['sources'][0]['error']['code'] == 'fetch_timeout'
         assert manager.waiting == 0
         release.set()
-        assert (await active)['sources'][0]['content'] == 'Public text'
+        assert (await active)['sources'][0]['error']['code'] == 'fetch_timeout'
         assert manager.active == 0
-        fake_browser.acquire.assert_awaited_once()
     finally:
         release.set()
         await manager.close()

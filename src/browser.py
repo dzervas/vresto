@@ -20,6 +20,7 @@ from .acquisition_policy import FetchError
 from .content_expansion import DOM_WITHIN_LIMIT
 from .sites import expand_content, extract_document
 from .native_observation import NativeLoadObservation
+from .deadline import remaining
 
 # Inspect the live page, not occurrences in documentation, scripts or hidden
 # CAPTCHA widgets. The cf-mitigated response header is checked separately.
@@ -80,12 +81,12 @@ class Browser:
     async def acquire(self, url: str, options: AcquisitionOptions) -> BrowserResult:
         await self.start()
         state = {'challenge': False, 'http_status': None,
-                 'deadline': asyncio.get_running_loop().time() + options.request_timeout,
+                 'deadline': asyncio.get_running_loop().time() + remaining(options.deadline),
                  'stage': 'context', 'diagnosed': False}
         try:
             # One duration across navigation, native challenge continuation,
             # JS settling, downloads and conversion. Never extend the deadline.
-            async with asyncio.timeout(options.request_timeout):
+            async with asyncio.timeout_at(state['deadline']):
                 return await self._acquire(url, options, state)
         except TimeoutError as error:
             if not state['diagnosed']:
@@ -140,7 +141,7 @@ class Browser:
             mime = response.headers.get('content-type', '').split(';')[0].lower()
             challenged = response.headers.get('cf-mitigated') == 'challenge'
             if not challenged and mime in ('text/html', 'application/xhtml+xml'):
-                await page.wait_for_load_state('domcontentloaded')
+                await page.wait_for_load_state('domcontentloaded', timeout=0)
                 try:
                     challenged = await page.evaluate(_CHALLENGE_PAGE)
                 except Error as error:
@@ -168,7 +169,7 @@ class Browser:
         async def observe_idle():
             nonlocal idle
             try:
-                await page.wait_for_load_state('networkidle', timeout=min(1000, options.request_timeout * 1000))
+                await page.wait_for_load_state('networkidle', timeout=1000)
                 idle = True
             except Error:
                 # Informational only: a timeout or a replaced document must not
@@ -241,7 +242,7 @@ class Browser:
         page.on('response', responded)
         state['stage'] = 'navigation'
         try:
-            response = await page.goto(url, wait_until='domcontentloaded', timeout=min(10, options.request_timeout) * 1000)
+            response = await page.goto(url, wait_until='domcontentloaded', timeout=0)
         except Error as error:
             if navigation_response is not None and not state['challenge']:
                 self._check_status(navigation_response)

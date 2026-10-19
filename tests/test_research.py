@@ -279,12 +279,9 @@ async def test_reference_echo_is_rejected_but_thread_is_deleted(tmp_path):
         assert 'subscriber-secret' not in json.dumps(body(result))
 
 
-async def test_research_queue_has_own_bounded_wait_and_capacity(tmp_path, monkeypatch):
-    from vresto.research import ResearchProcesses
-
-    monkeypatch.setattr(ResearchProcesses, 'QUEUE_WAIT', 0.3)
+async def test_research_queue_shares_request_deadline(tmp_path):
     async with retrieval(tmp_path, source=cli(tmp_path, action='time.sleep(30)'),
-                         research_concurrency=1) as service:
+                         research_concurrency=1, research_timeout=1) as service:
         research = Research(service.discovery, service)
 
         async def progress(_):
@@ -299,9 +296,9 @@ async def test_research_queue_has_own_bounded_wait_and_capacity(tmp_path, monkey
                       for _ in range(2)]
             await asyncio.sleep(0.01)
             full = await research.run(ResearchInput(query='retries'), progress)
-            assert full['error']['code'] == 'research_queue_full'
+            assert full['error']['code'] == 'research_timeout'
             for task in tasks[1:]:
-                assert (await task)['error']['code'] == 'research_queue_timeout'
+                assert (await task)['error']['code'] == 'research_timeout'
             assert not service.discovery.processes.waiters
         finally:
             for task in tasks:

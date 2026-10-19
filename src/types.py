@@ -8,15 +8,15 @@ from typing import Any, Literal, NotRequired, TypedDict
 
 ErrorCode = Literal[
     'access_rejected', 'invalid_input', 'invalid_evidence_id', 'evidence_unavailable',
-    'response_budget_exceeded', 'fetch_failed', 'fetch_timeout', 'queue_full',
-    'queue_timeout', 'policy_rejected', 'scope_rejected', 'traversal_byte_limit',
+    'response_budget_exceeded', 'fetch_failed', 'fetch_timeout',
+    'policy_rejected', 'scope_rejected', 'traversal_byte_limit',
     'cache_miss', 'browser_unavailable', 'rate_limited', 'blocked', 'resource_limit',
     'unsupported_format', 'pdf_parse_failed', 'upstream_authentication',
     'discovery_failed', 'discovery_timeout', 'discovery_output_limit',
-    'discovery_queue_full', 'discovery_queue_timeout', 'discovery_cli_version',
+    'discovery_cli_version',
     'discovery_parse_error', 'summary_unavailable',
     'research_failed', 'research_timeout', 'research_output_limit',
-    'research_queue_full', 'research_queue_timeout', 'research_cli_version',
+    'research_cli_version',
     'research_parse_error', 'research_daily_cap',
 ]
 

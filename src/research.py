@@ -15,12 +15,10 @@ from .process import Processes
 from .retrieval import Retrieval
 from .safety import contains_secret
 from .types import ToolData
+from .deadline import request_deadline, remaining
 
 
 class ResearchProcesses(Processes):
-    QUEUE_CAPACITY = 2
-    QUEUE_WAIT = 10
-
     def __init__(self, settings) -> None:
         super().__init__(settings)
         self.CONCURRENCY = settings.research_concurrency
@@ -45,7 +43,7 @@ class Research:
             data['model'] = self.settings.research_model
         thread_id = None
         try:
-            with anyio.fail_after(self.settings.research_timeout):
+            with request_deadline(self.settings.research_timeout), anyio.fail_after(remaining(self.settings.research_timeout)):
                 async with self.cli.processes.admission():
                     day = datetime.now(timezone.utc).date().isoformat()
                     self.calls = {k: v for k, v in self.calls.items() if k[0] == day}
@@ -79,7 +77,10 @@ class Research:
                         if thread_id is not None:
                             with anyio.CancelScope(shield=True):
                                 try:
-                                    with anyio.fail_after(10):
+                                    # Cleanup has its own bounded grace even after
+                                    # the request budget expires; never skip deletion
+                                    # merely because nested CLI work inherits it.
+                                    with request_deadline(10, inherit=False), anyio.fail_after(10):
                                         deleted = json.loads(await self.cli._invoke(
                                             ['--error-format', 'json', 'assistant',
                                              'thread', 'delete', thread_id]))

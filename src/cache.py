@@ -156,8 +156,8 @@ class CachedAcquisition:
             return self._hit(cached, max_age_seconds) if cached else {'requested_url': url, 'error': {'code': 'cache_miss'}}
         if freshness == 'ordinary' and cached and self._age(cached) <= max_age_seconds:
             return self._hit(cached, max_age_seconds)
-        # Acquisition owns bounded queueing; never hide it behind an
-        # unbounded cache lock. Concurrent misses may acquire twice.
+        # Acquisition owns deadline-aware admission; never hide it behind a
+        # cache lock. Concurrent misses may acquire twice.
         source: Source = (await self.acquisition.fetch_many([url], scope=scope))['sources'][0]
         if contains_secret(source, self.secrets):
             source = {'error': {'code': 'fetch_failed'}}

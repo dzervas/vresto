@@ -49,7 +49,7 @@ async def add_summaries(data: ToolData, discovery: Discovery, cache: DocumentCac
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
                     raise TimeoutError
-                with anyio.fail_after(min(remaining, discovery.settings.timeout)):
+                with anyio.fail_after(remaining):
                     generated = await discovery.summarize(text, length)
                 if contains_secret(generated, secrets):
                     raise DiscoveryError('discovery_parse_error')

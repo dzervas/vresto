@@ -222,7 +222,7 @@ async def test_origin_queue_deadline_and_backoff_are_shared():
         await asyncio.Event().wait()
 
     browser.acquire.side_effect = acquire
-    manager = Acquisition(AcquisitionOptions(deadline=.1, queue_wait=1), browser_factory=lambda: browser)
+    manager = Acquisition(AcquisitionOptions(deadline=.1), browser_factory=lambda: browser)
     task = asyncio.create_task(manager.fetch_many(['https://a.example/1', 'https://a.example/2']))
     try:
         await entered.wait()
@@ -265,7 +265,7 @@ async def test_pdf_parsers_are_separately_serialized(monkeypatch):
 async def test_cached_hit_bypasses_full_admission_and_misses_share_deadline(tmp_path):
     browser = FakeBrowser()
     browser.acquire.side_effect = lambda url, options: document(url)
-    manager = Acquisition(AcquisitionOptions(browser_concurrency=1, deadline=.12, queue_wait=1),
+    manager = Acquisition(AcquisitionOptions(browser_concurrency=1, deadline=.12),
                           browser_factory=lambda: browser)
     cached = CachedAcquisition(manager, DocumentCache(tmp_path))
     try:
@@ -317,9 +317,7 @@ async def test_native_content_equal_for_concurrency_one_and_four(tmp_path, monke
         destinations = tuple(d for _, options in sites for d in options.fixture_destinations)
         results = []
         for n in (1, 4):
-            # Four action-rich pages must reach the browser even when admitted
-            # serially; this checks expansion, not the default queue-wait limit.
-            manager = Acquisition(replace(sites[0][1], browser_concurrency=n, queue_wait=30,
+            manager = Acquisition(replace(sites[0][1], browser_concurrency=n,
                                           fixture_destinations=destinations))
             cached = CachedAcquisition(manager, DocumentCache(tmp_path / str(n)))
             try:
@@ -398,7 +396,7 @@ async def test_new_request_racing_idle_teardown_uses_replacement():
 
     browser.close.side_effect = close
     replacement.acquire.side_effect = lambda url, options: document(url)
-    manager = Acquisition(AcquisitionOptions(queue_wait=.05), clock=lambda: now[0],
+    manager = Acquisition(AcquisitionOptions(deadline=.05), clock=lambda: now[0],
                           sleep=sleep, browser_factory=lambda: next(browsers))
     try:
         await manager.warmup()
@@ -408,7 +406,7 @@ async def test_new_request_racing_idle_teardown_uses_replacement():
         await closing.wait()
         timed = asyncio.create_task(manager.fetch_many(['https://timeout.example/']))
         await until(lambda: manager.waiting == 1)
-        assert (await timed)['sources'][0]['error']['code'] == 'queue_timeout'
+        assert (await timed)['sources'][0]['error']['code'] == 'fetch_timeout'
         request = asyncio.create_task(manager.fetch_many(['https://a.example/']))
         # ASGI's eager warmup may also race teardown, outside admission.
         startup = manager.warmup()

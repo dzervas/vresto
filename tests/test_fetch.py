@@ -132,7 +132,7 @@ async def test_hidden_challenge_widgets_in_documentation_are_not_blocked(tmp_pat
             <form id='challenge-form' style='{style}'><button>Example widget</button></form>''')
     async with site(handler) as (base, options):
         # Allow both native idle and the independently observed quiet-DOM window.
-        options = replace(options, request_timeout=2)
+        options = replace(options, deadline=5)
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
             assert 'error' not in source, source
@@ -168,10 +168,10 @@ async def test_unresolved_challenge_has_sanitized_status_and_deadline(tmp_path):
         return web.Response(status=403, content_type='text/html',
             headers={'cf-mitigated': 'challenge'}, text='<title>Just a moment...</title>')
     async with site(handler) as (base, options):
-        options = replace(options, request_timeout=0.7)
+        options = replace(options, deadline=2)
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
-            assert source['error'] == {'code': 'blocked', 'reason': 'challenge_timeout', 'http_status': 403}
+            assert source['error'] == {'code': 'fetch_timeout'}
             assert 'content' not in source and 'content_version' not in source
 
 
@@ -224,7 +224,7 @@ async def test_native_redirects_and_subrequests_are_not_network_isolated(tmp_pat
 
 
 @pytest.mark.parametrize('kind,code', [('gzip', 'resource_limit'), ('chunked', 'resource_limit'),
-    ('rate', 'rate_limited'), ('challenge', 'blocked'), ('pdf', 'pdf_parse_failed'),
+    ('rate', 'rate_limited'), ('challenge', 'fetch_timeout'), ('pdf', 'pdf_parse_failed'),
     ('missing', 'fetch_failed'), ('slow', 'fetch_timeout')])
 async def test_native_acquisition_errors_and_post_acquisition_limits(tmp_path, kind, code):
     import gzip
@@ -241,7 +241,7 @@ async def test_native_acquisition_errors_and_post_acquisition_limits(tmp_path, k
                 pass
             return r
         if kind == 'slow':
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(6)
         if kind == 'rate':
             return web.Response(status=429)
         if kind == 'challenge':
@@ -250,7 +250,8 @@ async def test_native_acquisition_errors_and_post_acquisition_limits(tmp_path, k
             return web.Response(content_type='application/pdf', body=b'%PDF-1.7')
         return web.Response(status=404)
     async with site(handler) as (base, options):
-        options = replace(options, response_bytes=4096, request_timeout=0.1 if kind == 'slow' else 2)
+        # The single budget includes cold startup as well as navigation.
+        options = replace(options, response_bytes=4096, deadline=5)
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
             result = body(await session.call_tool('fetch', {'urls': [base]}))
             assert result['sources'][0]['error']['code'] == code
@@ -365,7 +366,7 @@ async def test_service_worker_and_websocket_use_native_networking(tmp_path, kind
             assert ('/worker' if kind == 'service_worker' else '/socket') in forbidden
 
 
-async def test_queue_capacity_and_wait_are_bounded_across_clients(tmp_path):
+async def test_queue_wait_uses_request_deadline_across_clients(tmp_path):
     entered = asyncio.Event()
     release = asyncio.Event()
     async def handler(request):
@@ -373,22 +374,22 @@ async def test_queue_capacity_and_wait_are_bounded_across_clients(tmp_path):
         await release.wait()
         return web.Response(status=404)
     async with site(handler) as (base, options):
-        options = replace(options, browser_concurrency=1, queue_capacity=1, queue_wait=0.1)
+        options = replace(options, browser_concurrency=1, deadline=2)
         async with running(tmp_path, acquisition_options=options) as (url, _), client(url) as first, client(url) as second:
             active = asyncio.create_task(first.call_tool('fetch', {'urls': [base]}))
             await asyncio.wait_for(entered.wait(), 3)
             try:
-                # Submit together: a staggered sleep can outlive the 100ms queue
-                # window under load. Which HTTP request wins admission is immaterial.
+                # Both clients wait on the shared browser/origin capacity;
+                # neither is rejected by a separate queue capacity or wait limit.
                 contenders = await asyncio.gather(
                     first.call_tool('fetch', {'urls': [base]}),
                     second.call_tool('fetch', {'urls': [base]}))
                 codes = sorted(body(result)['sources'][0]['error']['code'] for result in contenders)
-                assert codes == ['queue_full', 'queue_timeout']
+                assert codes == ['fetch_timeout', 'fetch_timeout']
             finally:
                 release.set()
                 completed = body(await active)
-            assert completed['sources'][0]['error']['code'] == 'fetch_failed'
+            assert completed['sources'][0]['error']['code'] == 'fetch_timeout'
 
 
 @pytest.mark.parametrize('arguments', [{'urls': []}, {'urls': ['https://example.org'] * 11},

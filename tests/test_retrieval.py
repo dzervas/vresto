@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from vresto.acquisition import Acquisition
+from vresto.acquisition_policy import AcquisitionOptions
 from vresto.cache import CachedAcquisition, DocumentCache
 from vresto.contract import SearchRequest
 from vresto.discovery import Discovery
@@ -22,7 +23,7 @@ async def retrieval(tmp_path, *, source, acquisition_options=None, response_budg
     settings = Settings(access_token='client-secret', session_token='subscriber-secret',
                         command=(sys.executable, str(fixture)), cache_directory=tmp_path / 'cache', **cache_settings)
     discovery = Discovery(settings)
-    acquisition = Acquisition(acquisition_options)
+    acquisition = Acquisition(acquisition_options or AcquisitionOptions(deadline=settings.timeout))
     cache = DocumentCache(settings.cache_directory, settings.cache_cap_bytes,
                           settings.cache_retention_seconds)
     secrets = (settings.access_token, settings.session_token)

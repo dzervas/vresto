@@ -176,6 +176,6 @@ async def test_health_reports_coarse_state_without_warming_or_leaking(tmp_path):
             response = await http.get(health_url, headers={'Authorization': 'Bearer client-secret'})
         after = response.json()
         assert after['browser'] == 'running' and after['cache']['entries'] == 1
-        assert after['acquisition'] == {'active': 0, 'waiting': 0, 'queue_capacity': options.queue_capacity}
+        assert after['acquisition'] == {'active': 0, 'waiting': 0}
         assert type(after['acquisition']['active']) is int
         assert base not in response.text and 'secret' not in response.text

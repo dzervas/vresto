@@ -11,6 +11,7 @@ import anyio
 
 
 from .discovery import DiscoveryError
+from .deadline import remaining
 
 if TYPE_CHECKING:
     from .server import Settings
@@ -28,8 +29,6 @@ class Processes:
     # Bound CLI spawning separately from browsers; admission shares the request
     # deadline. Two 1 MiB output caps bound raw payloads, not subprocess RSS.
     CONCURRENCY = 2
-    QUEUE_CAPACITY = 8
-    QUEUE_WAIT = 10
 
     def release(self) -> None:
         self.admitted -= 1
@@ -42,6 +41,8 @@ class Processes:
     async def admission(self) -> AsyncIterator[None]:
         if self.closing:
             raise DiscoveryError('discovery_failed')
+        if remaining(self.settings.timeout) <= 0:
+            raise DiscoveryError('discovery_timeout')
         waiter = None
         acquired = False
         try:
@@ -49,15 +50,13 @@ class Processes:
                 self.admitted += 1
                 acquired = True
             else:
-                if len(self.waiters) >= self.QUEUE_CAPACITY:
-                    raise DiscoveryError('discovery_queue_full')
                 waiter = asyncio.get_running_loop().create_future()
                 self.waiters.append(waiter)
                 try:
-                    with anyio.fail_after(self.QUEUE_WAIT):
+                    with anyio.fail_after(remaining(self.settings.timeout)):
                         acquired = await asyncio.shield(waiter)
                 except TimeoutError:
-                    raise DiscoveryError('discovery_queue_timeout') from None
+                    raise DiscoveryError('discovery_timeout') from None
                 if not acquired:
                     raise DiscoveryError('discovery_failed')
             yield
@@ -74,10 +73,12 @@ class Processes:
     async def run(self, args: list[str], env: dict[str, str]) -> tuple[int, bytes, bytes]:
         if self.closing:
             raise DiscoveryError("discovery_failed")
+        if remaining(self.settings.timeout) <= 0:
+            raise DiscoveryError('discovery_timeout')
         process = None
         readers = []
         try:
-            with anyio.fail_after(self.settings.timeout):
+            with anyio.fail_after(remaining(self.settings.timeout)):
                 # Cancellation during spawn must not orphan a just-created child.
                 with anyio.CancelScope(shield=True):
                     process = await asyncio.create_subprocess_exec(

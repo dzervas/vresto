@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .contract import FetchRequest
 
 from .acquisition_policy import AcquisitionOptions, DestinationPolicy, FetchError
+from .deadline import remaining
 
 
 class TraversalInput(BaseModel):
@@ -31,7 +32,8 @@ class TraversalInput(BaseModel):
     path_prefix: str = Field(max_length=4096, description='Explicit path subtree; / opts into the whole exact origin.')
     max_pages: int = Field(default=5, ge=1, le=20, description='Attempted pages including seed, failures and cache hits.')
     max_depth: int = Field(default=1, ge=0, le=3)
-    max_seconds: float = Field(default=15, gt=0, le=30, description='Also bounded by service request deadline.')
+    max_seconds: float | None = Field(default=None, gt=0, le=30,
+        description='Optional internal cap; public crawls use the shared request deadline.')
     max_frontier: int = Field(default=32, ge=1, le=128)
     max_bytes: int = Field(default=8_388_608, ge=1024, le=33_554_432,
         description='Canonical document and link bytes (including cache reuse); post-acquisition, not native traffic or response budget.')
@@ -75,6 +77,7 @@ def path(url: str) -> str:
 class Traversal:
     def __init__(self, acquisition: "CachedAcquisition", request: "FetchRequest", options: AcquisitionOptions) -> None:
         self.acquisition = acquisition
+        self.options = options
         assert request.traversal is not None  # Only constructed for traversal requests.
         self.input = request.traversal
         self.request = request
@@ -182,7 +185,10 @@ class Traversal:
         try:
             self.scope_origin = origin(self.policy.url(self.input.origin))
             seed = self.check_document(seed)
-            async with asyncio.timeout(self.input.max_seconds):
+            duration = remaining(self.options.deadline)
+            if self.input.max_seconds is not None:
+                duration = min(duration, self.input.max_seconds)
+            async with asyncio.timeout(duration):
                 await self._crawl(seed)
         except FetchError as error:
             self.sources.append({'requested_url': seed, 'error': {'code': error.code}})

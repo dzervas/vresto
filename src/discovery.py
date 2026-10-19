@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from .contract import SearchRequest
 from .types import ErrorCode, ToolResult
+from .deadline import request_deadline, remaining
 
 if TYPE_CHECKING:
     from .server import Settings
@@ -59,7 +60,7 @@ class Discovery:
 
     async def search(self, request: SearchRequest) -> ToolResult:
         try:
-            with anyio.fail_after(self.settings.timeout):
+            with request_deadline(self.settings.timeout), anyio.fail_after(remaining(self.settings.timeout)):
                 async with self.processes.admission():
                     return await self._search(request)
         except TimeoutError:
@@ -96,8 +97,6 @@ class Discovery:
             warnings.append("provider_rank_unavailable")
         return {"content_mode": "discovery", "postfilters": ["result_limit"],
                 "discovery_limits": {"concurrency": self.processes.CONCURRENCY,
-                    "queue_capacity": self.processes.QUEUE_CAPACITY,
-                    "queue_wait_seconds": self.processes.QUEUE_WAIT,
                     "request_deadline_seconds": self.settings.timeout,
                     "invocation_output_bytes": self.settings.max_output_bytes},
                 "date_semantics": "provider_update_date_not_verified_publication",
@@ -133,10 +132,11 @@ class Discovery:
         return stdout
 
     async def summarize(self, text: str, length: str) -> str:
-        async with self.processes.admission():
-            # Equals form keeps dash-leading Markdown literal to Clap.
-            stdout = await self._invoke(["--error-format", "json", "summarize", "--subscriber",
-                "--text=" + text, "--length", length, "--summary-type", "summary"])
+        with request_deadline(self.settings.timeout):
+            async with self.processes.admission():
+                # Equals form keeps dash-leading Markdown literal to Clap.
+                stdout = await self._invoke(["--error-format", "json", "summarize", "--subscriber",
+                    "--text=" + text, "--length", length, "--summary-type", "summary"])
         try:
             # Pinned CLI main.rs prints SubscriberSummarizeResponse as JSON;
             # data.markdown is generated Markdown, not the HTML output field.

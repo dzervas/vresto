@@ -30,8 +30,10 @@ outputs, exception strings, URLs or page text enter diagnostics. Timings use
 perf_counter (monotonic wall time), not the release harness's fake idle clock.
 Inclusive spans overlap (startup/admission/render/expansion); never sum them or
 infer stage causality by end-to-end subtraction. Cold startup is distinct from
-warm Browser.start ensure-ready no-ops. Queue contention means nine paired
-capacity=1/wait=150ms episodes, not 18 simultaneous/default-capacity contenders.
+warm Browser.start ensure-ready no-ops. Queue episodes hold one active request
+and two contenders until explicit release; all share their request deadlines,
+without independent capacity/wait rejection. Historical profiles used the old
+capacity=1/wait=150ms policy and are not directly comparable for queue latency.
 Per-call fixture visit deltas overlap in queue episodes; paired outcomes, not
 those deltas, establish admission. Nine samples have weak tails (p95=max). Extraction covers semantic
 normalization and Markdown conversion together, not DOM serialization.
@@ -265,7 +267,7 @@ async def run():
         'clock': 'perf_counter monotonic wall; bootstrap excludes interpreter initialization',
         'serialization_scope': 'redaction, budget and CallToolResult only; SDK/HTTP transport not isolated',
         'idle_scope': 'Clock.advance simulates idle expiry; not a real one-hour wait',
-        'queue_scope': '9 paired episodes across 3 lifetimes; active=1 capacity=1 wait=150ms, not default-capacity stress',
+        'queue_scope': 'held episodes with one active and two contenders; all complete after release within the shared request deadline',
         'rss_scope': 'Python client/server/fixture and recursive descendants; shared pages double-counted; 20ms samples; coordinator excluded',
     }
     async def call(session, workload, tool, arguments):
@@ -364,11 +366,13 @@ async def run():
                         release.clear()
                         active = asyncio.create_task(call(first, 'queue_active', 'fetch', {'urls': [BASE + 'hold'], 'freshness': 'fresh_only'}))
                         await asyncio.wait_for(entered.wait(), 5)
-                        contenders = await asyncio.gather(*(call(second, 'queue_contender', 'fetch',
-                            {'urls': [BASE + 'hold'], 'freshness': 'fresh_only'}) for _ in range(2)))
-                        assert sorted(s[0]['error']['code'] for s in contenders) == ['queue_full', 'queue_timeout']
+                        contenders = [asyncio.create_task(call(second, 'queue_contender', 'fetch',
+                            {'urls': [BASE + 'hold'], 'freshness': 'fresh_only'})) for _ in range(2)]
+                        await asyncio.sleep(.1)
+                        assert not any(task.done() for task in contenders)
                         release.set()
-                        assert (await active)[0]['error']['code'] == 'fetch_failed'
+                        results = await asyncio.gather(active, *contenders)
+                        assert all(s[0]['error']['code'] == 'fetch_failed' for s in results)
                     clock.advance()
                     await gate.eventually(lambda: not gate.processes())
                     facts['rss_after_idle_teardown_bytes'] = gate.rss()

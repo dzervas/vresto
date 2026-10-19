@@ -43,8 +43,13 @@ Keep the cache volume private: it retains fetched documents and version history.
 The CLI and Python import are both `vresto` (`vresto --help`, `import vresto`).
 Server settings use the `VRESTO_` prefix; `KAGI_SESSION_TOKEN` keeps its name.
 `VRESTO_RESEARCH_CONCURRENCY` sets the number of simultaneous research calls
-across both tiers (default `4`, range `1`–`16`, per server process). Two additional
-calls may queue for up to 10 seconds; the overall research deadline still applies.
+across both tiers (default `4`, range `1`–`16`, per server process).
+Requests wait for capacity against a single deadline, without separate queue
+capacity or wait limits. `VRESTO_DEADLINE_SECONDS` defaults to `300` (5 minutes)
+for normal requests; `VRESTO_RESEARCH_TIMEOUT_SECONDS` defaults to `900`
+(15 minutes) for research, including optional citation verification. Discovery,
+queueing, page acquisition, and summaries consume the same request budget.
+Browser concurrency remains bounded (default `4`, one acquisition per origin).
 
 ## Connect your MCP client
 

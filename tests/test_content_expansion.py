@@ -216,7 +216,7 @@ async def test_expansion_does_not_spend_the_remaining_acquisition_deadline(tmp_p
     # Leave room for idle plus quiet-DOM observation, but less than the 10s expansion bound.
     # Post-click timer mutations force the original deadline, not no-progress, to stop expansion.
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options,
-            request_timeout=2)) as (url, _), client(url) as session:
+            deadline=5)) as (url, _), client(url) as session:
         source = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
         assert 'error' not in source, source
         assert 'Warning: continuation remains unavailable.' in source['content']
@@ -239,7 +239,7 @@ async def test_unsupported_form_and_link_pagination_are_disclosed_without_visiti
 
 
 
-@pytest.mark.parametrize('replacement, expected', [('challenge', 'blocked'), ('error', 'fetch_failed')])
+@pytest.mark.parametrize('replacement, expected', [('challenge', 'fetch_timeout'), ('error', 'fetch_failed')])
 async def test_expansion_replacement_is_revalidated_and_never_cached_as_evidence(tmp_path, replacement, expected):
     from dataclasses import replace
     async def handler(request):
@@ -251,7 +251,7 @@ async def test_expansion_replacement_is_revalidated_and_never_cached_as_evidence
         <section id="comments"><p>Initial discussion.</p></section>
         <button type="button" aria-controls="comments" onclick="location.href='/replacement'">Load more comments</button></main>''')
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options,
-            request_timeout=2)) as (url, _), client(url) as session:
+            deadline=5)) as (url, _), client(url) as session:
         source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
         assert source.get('error', {}).get('code') == expected
         assert 'content' not in source and not source.get('highlights')
@@ -357,7 +357,7 @@ async def test_continuation_label_does_not_authorize_without_safe_structure(tmp_
         assert source['coverage']['stop_reason'] == 'unsupported_controls'
 
 
-@pytest.mark.parametrize('replacement, expected', [('challenge', 'blocked'), ('error', 'fetch_failed')])
+@pytest.mark.parametrize('replacement, expected', [('challenge', 'fetch_timeout'), ('error', 'fetch_failed')])
 async def test_late_replacement_during_persistent_resource_settling_is_not_cached(tmp_path, replacement, expected):
     from retrieval_helpers import running, client
     import asyncio
@@ -376,7 +376,7 @@ async def test_late_replacement_during_persistent_resource_settling_is_not_cache
                 text='<h1>Replacement must not become evidence.</h1>')
         return web.Response(content_type='text/html', text='''<main><h1>Initial must not become evidence.</h1></main>
         <script>fetch('/events').then(r=>r.text());setTimeout(()=>location.href='/replacement',1200)</script>''')
-    async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options, request_timeout=3)) as (url, _), client(url, timeout=60) as session:
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=replace(options, deadline=5)) as (url, _), client(url, timeout=60) as session:
         try:
             source = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'fresh_only'}))['sources'][0]
             assert source['error']['code'] == expected, source

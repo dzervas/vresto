@@ -103,7 +103,7 @@ async def test_settle_drains_idle_task_on_every_exit(monkeypatch, outcome):
         return object() if outcome == 'redirect' else response
     monkeypatch.setattr(browser, '_settled_response', validate)
     task = asyncio.create_task(browser._settle_rendered(
-        PageFixture(), None, {}, replace(AcquisitionOptions(), request_timeout=5),
+        PageFixture(), None, {}, AcquisitionOptions(),
         response, {'tracked'} if outcome == 'pending' else set()))
     await started.wait()
     if outcome == 'cancel':

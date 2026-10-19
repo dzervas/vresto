@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import json
-from dataclasses import replace
 
 import pytest
 from aiohttp import web
@@ -23,8 +22,6 @@ async def test_default_search_acquires_ten_and_returns_verbatim_qualified_eviden
         <table><tr><th>Version</th><th>Retries</th></tr><tr><td>2.4</td><td>0</td></tr></table>
         <h2>Other topic</h2><p>Unrelated storage information.</p>''')
     async with site(handler) as (base, options):
-        # Source/evidence completeness is tested without queue-wait censoring.
-        options = replace(options, queue_capacity=12, queue_wait=30)
         payload = {'data': [{'t': 0, 'rank': i, 'url': f'{base}/{i}', 'title': f'Guide {i}',
                              'snippet': 'Not acquired evidence'} for i in range(1, 13)]}
         async with running(tmp_path, source=cli_response(json.dumps(payload)), acquisition_options=options) as (url, _), client(url, timeout=60) as session:
@@ -158,8 +155,6 @@ async def test_search_explicit_modes_and_twelve_pages_have_no_hidden_cap(tmp_pat
         return web.Response(content_type='text/html', text=f'<h1>Guide {request.path}</h1><p>option_safe version 2 only.</p>'
                             '<p>This technical reference describes supported client behavior and compatibility constraints.</p>')
     async with site(handler) as (base, options):
-        # Source/evidence completeness is tested without queue-wait censoring.
-        options = replace(options, queue_capacity=12, queue_wait=30)
         payload = {'data': [{'url': f'{base}/{i}', 'title': f'Guide {i}', 'rank': i + 1} for i in range(12)]}
         async with running(tmp_path, source=cli_response(json.dumps(payload)), acquisition_options=options) as (url, _), client(url, timeout=60) as session:
             discovery = body(await session.call_tool('search', {'query': 'option_safe', 'num_results': 12, 'content_mode': 'discovery'}))
@@ -167,7 +162,7 @@ async def test_search_explicit_modes_and_twelve_pages_have_no_hidden_cap(tmp_pat
             result = body(await session.call_tool('search', {'query': 'option_safe', 'num_results': 12, 'content_mode': 'full_text'}))
             assert len(result['results']) == 12 and len(visits) == 12
             assert all('option_safe' in s.get('content', '') for s in result['results']), [s.get('error') for s in result['results']]
-            assert result['acquisition_limits']['request_deadline_seconds'] == 120
+            assert result['acquisition_limits']['request_deadline_seconds'] == 300
             assert result['acquisition_limits']['post_acquisition_document_bytes'] == 2 * 1024 * 1024
             assert result['acquisition_limits']['returned_page_limit'] == 20
 

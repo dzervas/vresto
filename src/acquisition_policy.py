@@ -25,10 +25,7 @@ class FetchError(Exception):
 
 @dataclass(frozen=True)
 class AcquisitionOptions:
-    deadline: float = 120
-    request_timeout: float = 20
-    queue_wait: float = 10
-    queue_capacity: int = 8
+    deadline: float = 300
     browser_concurrency: int = 4
     # Conservative rendered-DOM estimate and serialized HTML input limit.
     # Separate from normalized Markdown/downloaded PDF parser input below.
@@ -57,10 +54,6 @@ class AcquisitionOptions:
             raise ValueError('expansion settle wait must be 0.01–1 second')
         if not 0.01 <= self.deadline <= 600:
             raise ValueError('acquisition deadline must be 0.01–600 seconds')
-        if not 0.01 <= self.queue_wait <= 30:
-            raise ValueError('queue wait must be 0.01–30 seconds')
-        if type(self.queue_capacity) is not int or not 1 <= self.queue_capacity <= 32:
-            raise ValueError('queue capacity must be 1–32')
 
 
 class DestinationPolicy:

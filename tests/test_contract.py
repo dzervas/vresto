@@ -62,9 +62,9 @@ def test_public_defaults_and_deadline_bounds():
     crawl = CrawlInput(url='https://example.org:8443/docs/seed?q=1', path_prefix='/docs')
     scope = crawl.traversal()
     assert scope.origin == 'https://example.org:8443'
-    assert (scope.max_pages, scope.max_depth, scope.max_seconds, scope.max_frontier) == (5, 1, 15, 32)
+    assert (scope.max_pages, scope.max_depth, scope.max_seconds, scope.max_frontier) == (5, 1, None, 32)
     assert scope.max_bytes == 8_388_608
-    assert AcquisitionOptions().deadline == Settings.timeout == 120
+    assert AcquisitionOptions().deadline == Settings.timeout == 300
     assert replace(AcquisitionOptions(), deadline=600).deadline == 600
     with pytest.raises(ValueError):
         replace(AcquisitionOptions(), deadline=600.01)
