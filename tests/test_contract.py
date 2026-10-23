@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from vresto.acquisition_policy import AcquisitionOptions
-from vresto.contract import CrawlInput, FetchInput, SearchInput
+from vresto.contract import CrawlInput, FetchInput, SearchInput, SearchRequest
 from vresto.server import Settings
 from test_fetch import site
 from test_http import body, client, running
@@ -57,7 +57,10 @@ def test_crawl_scope_validation(arguments):
 
 def test_public_defaults_and_deadline_bounds():
     assert SearchInput(query='docs').num_results == 10
-    assert SearchInput(query='docs').content_mode == 'highlights'
+    assert SearchInput(query='docs').content_mode == 'discovery'
+    assert SearchRequest(query='docs').content_mode == 'discovery'
+    assert SearchInput(query='docs').quick_answer is True
+    assert SearchRequest(query='docs').quick_answer is True
     assert FetchInput(urls=['https://example.org']).content_mode is None
     crawl = CrawlInput(url='https://example.org:8443/docs/seed?q=1', path_prefix='/docs')
     scope = crawl.traversal()

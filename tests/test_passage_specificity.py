@@ -39,7 +39,7 @@ async def test_documentation_fetch_returns_compact_qualified_canonical_passages_
         assert len(result.model_dump_json(exclude_none=True).encode()) <= 65536
         assert source['relevance'] == 'lexical_match'
         assert data['selection']['relevance_semantics'] == 'lexical_overlap_not_answer_verification'
-        searched = await session.call_tool('search', {'query': QUERY, 'num_results': 1,
+        searched = await session.call_tool('search', {'query': QUERY, 'num_results': 1, 'content_mode': 'highlights', 'quick_answer': False,
                                                       'response_budget_bytes': 65536})
         assert len(searched.model_dump_json(exclude_none=True).encode()) <= 65536
         assert body(searched)['results'][0]['highlights'] == source['highlights']
@@ -70,7 +70,7 @@ async def test_heading_poor_composed_search_is_specific_without_losing_source_di
         payload = {'data': [{'url': base + '/' + name, 'title': name, 'rank': i + 1}
                             for i, name in enumerate(['discussion-a', 'discussion-b'])]}
         async with running(tmp_path, source=cli_response(json.dumps(payload)), acquisition_options=options, response_budget_bytes=65536) as (url, _), client(url, timeout=60) as session:
-            result = await session.call_tool('search', {'query': QUERY, 'num_results': 2})
+            result = await session.call_tool('search', {'query': QUERY, 'num_results': 2, 'content_mode': 'highlights', 'quick_answer': False})
             data = body(result)
             assert len(result.model_dump_json(exclude_none=True).encode()) <= 65536
             assert len(data['results']) == 2
@@ -164,7 +164,7 @@ async def test_linked_documentation_headings_do_not_turn_url_versions_into_relea
             source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Asyncio', 'rank': 1}]}))) as (url, _), client(url, timeout=60) as session:
         full = body(await session.call_tool('fetch', {'urls': [base], 'response_budget_bytes': 262144}))['sources'][0]
         for tool, arguments, key in [('fetch', {'urls': [base], 'freshness': 'cache_only'}, 'sources'),
-                                     ('search', {'num_results': 1}, 'results')]:
+                                     ('search', {'num_results': 1, 'content_mode': 'highlights', 'quick_answer': False}, 'results')]:
             result = await session.call_tool(tool, {**arguments, 'query': QUERY, 'response_budget_bytes': 65536})
             source = body(result)[key][0]
             assert source['highlights'], source
@@ -188,7 +188,7 @@ async def test_every_citable_claim_keeps_its_attached_warning(tmp_path, heading)
             '<h2>Other APIs</h2><p>Unrelated reference.</p>'))
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
             source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Tasks', 'rank': 1}]}))) as (url, _), client(url, timeout=60) as session:
-        for tool, arguments, key in [('fetch', {'urls': [base]}, 'sources'), ('search', {'num_results': 1}, 'results')]:
+        for tool, arguments, key in [('fetch', {'urls': [base]}, 'sources'), ('search', {'num_results': 1, 'content_mode': 'highlights', 'quick_answer': False}, 'results')]:
             source = body(await session.call_tool(tool, {**arguments, 'query': QUERY}))[key][0]
             claims = [h for h in source['highlights'] if claim in h['text']]
             assert claims
@@ -228,7 +228,7 @@ async def test_scoped_reference_windows_do_not_crowd_out_compact_cancellation_ca
             '<p>TaskGroup uses these operations internally.</p>'))
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options,
             source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Tasks', 'rank': 1}]})), response_budget_bytes=65536) as (url, _), client(url, timeout=60) as session:
-        for tool, arguments, key in [('fetch', {'urls': [base]}, 'sources'), ('search', {'num_results': 1}, 'results')]:
+        for tool, arguments, key in [('fetch', {'urls': [base]}, 'sources'), ('search', {'num_results': 1, 'content_mode': 'highlights', 'quick_answer': False}, 'results')]:
             source = body(await session.call_tool(tool, {**arguments, 'query': QUERY}))[key][0]
             assert any(qualified_caveat in h['text'] for h in source['highlights'])
             full = body(await session.call_tool('fetch', {'urls': [base], 'freshness': 'ordinary'}))['sources'][0]
@@ -270,7 +270,7 @@ async def test_attached_warning_qualifies_claims_across_intervening_explanation(
             source=cli_response(json.dumps({'data': [{'url': base, 'title': 'Tasks', 'rank': 1}]}))) as (url, _), client(url, timeout=60) as session:
         full = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]
         for tool, arguments, key in [('fetch', {'urls': [base], 'freshness': 'ordinary'}, 'sources'),
-                                     ('search', {'num_results': 1}, 'results')]:
+                                     ('search', {'num_results': 1, 'content_mode': 'highlights', 'quick_answer': False}, 'results')]:
             source = body(await session.call_tool(tool, {**arguments, 'query': 'TaskGroup cancellation'}))[key][0]
             claims = [h for h in source['highlights'] if claim in h['text']]
             assert claims

@@ -8,17 +8,30 @@ or in Docker; no external browser service or GPU required.
 
 ## Tools
 
-- **search** — Find sources and return relevant passages, or discovery results only.
+- **search** — Return links, titles and provider snippets without visiting result
+  pages, plus Kagi Quick Answer by default. Set `quick_answer: false` for discovery
+  without generation; explicitly request highlights/full text/summaries to acquire pages.
 - **fetch** — Read URLs as highlights, full Markdown, or generated summaries.
 - **expand** — Expand quoted evidence from the exact retained document version.
 - **crawl** — Follow links within a specified site's path, with a page limit.
 - **research** — Generate an answer through Kagi Assistant, optionally fetching
   cited sources for supporting quotes. May consume your account's AI allowance.
 
-Search also supports generated summaries. Generated text is not evidence.
-Cached documents and optional local semantic memory reduce repeated fetching;
-`freshness: "fresh_only"` skips retained memory and requires fresh acquisition.
-Use MCP `tools/list` for exact inputs and limits.
+Search defaults to `content_mode: "discovery"` and `quick_answer: true`. Quick
+Answer runs concurrently with discovery under the same request deadline and CLI
+concurrency limit. It returns labeled generated text and unverified references;
+failures return `quick_answer_error` without discarding successful discovery links.
+Generated text, reference links and provider snippets are not acquired evidence.
+Quick Answer may consume your account's AI allowance and adds generation latency;
+set `quick_answer: false` to skip it entirely. It is distinct from Assistant research.
+
+Use `fetch` for selected URLs and `expand` for context around returned evidence IDs.
+Explicit search acquisition modes reuse cached documents and may add dated local
+memory; `freshness: "fresh_only"` requires fresh acquisition and excludes memory.
+Discovery mode skips both page acquisition and retained-memory lookup. Generated
+Quick Answer text/references may be shortened/omitted with disclosure to preserve
+source results within the shared response budget; they do not enter the document
+cache or produce evidence IDs. Use MCP `tools/list` for exact inputs and limits.
 
 ## Run with Docker
 

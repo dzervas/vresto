@@ -1,5 +1,13 @@
 # vresto: Private, Evidence-First Web Retrieval over HTTP MCP
 
+> Search-default amendment (2026-10-23): search now defaults to discovery links,
+> titles and provider snippets without page acquisition or retained-memory lookup.
+> The `quick_answer` boolean defaults to `true`, adding a labeled generated Kagi
+> Quick Answer and unverified references; `false` skips generation. Quick Answer
+> failure does not discard successful discovery links. Explicit acquisition modes
+> remain available; agents can fetch selected URLs and expand existing evidence.
+> This supersedes the initial highlighted-search default described below.
+
 ## Problem Statement
 
 Local and in-cluster agents need one shared web retrieval service that discovers sources through Kagi and returns useful page evidence without independent crawler installations or repeated search-then-fetch calls. Kagi CLI already exposes search over stdio MCP, but a transport bridge alone does not acquire documents, select evidence across pages, or manage browser lifetime and document reuse.

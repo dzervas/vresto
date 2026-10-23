@@ -106,7 +106,7 @@ async def test_search_fetch_share_canonical_offsets_and_old_ids_expand_original_
             assert 'Legacy navigation control' not in current['content']
             assert current['content_version'] != original['content_version']
             fetched = body(await session.call_tool('fetch', {'urls': [base], 'query': 'connect_safe'}))['sources'][0]
-            searched = body(await session.call_tool('search', {'query': 'connect_safe', 'num_results': 1}))['results'][0]
+            searched = body(await session.call_tool('search', {'query': 'connect_safe', 'num_results': 1, 'content_mode': 'highlights', 'quick_answer': False}))['results'][0]
             assert searched['content_version'] == fetched['content_version'] == current['content_version']
             assert searched['highlights'] == fetched['highlights']
             for quote in fetched['highlights']:

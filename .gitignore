@@ -8,3 +8,4 @@ __pycache__/
 /eval/exa/
 
 /eval/corpus/
+*.log

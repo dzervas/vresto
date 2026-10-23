@@ -349,9 +349,9 @@ async def run():
                             assert hits[0]['content_version'] == versions[kind] and hits[0]['highlights']
                             evidence.append(hits[0]['highlights'][0]['evidence_id'])
                             expected_quotes.append(hits[0]['highlights'][0])
-                        await call(first, 'discovery_only', 'search', {'query': QUERY, 'content_mode': 'discovery'})
+                        await call(first, 'discovery_only', 'search', {'query': QUERY, 'content_mode': 'discovery', 'quick_answer': False})
                         for freshness in ('fresh_only', 'ordinary'):
-                            composed = await call(first, 'composed_' + freshness, 'search', {'query': QUERY, 'freshness': freshness})
+                            composed = await call(first, 'composed_' + freshness, 'search', {'query': QUERY, 'freshness': freshness, 'content_mode': 'highlights', 'quick_answer': False})
                             assert len(composed) == 4 and all('error' not in s for s in composed)
                             assert all(s.get('highlights') or s.get('omitted_highlight_count') for s in composed), 'missing evidence without explicit budget omission'
                             assert all(s['content_version'] == versions[k] for k, s in zip(CORPUS, composed))

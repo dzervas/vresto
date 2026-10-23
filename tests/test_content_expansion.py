@@ -29,7 +29,7 @@ async def test_fetch_expands_collapsed_text_and_lazy_discussion_then_search_reus
             assert fetched['content'].count('Initial discussion.') == 1
             assert fetched['content'].index('Alice') < fetched['content'].index('Bob')
             assert fetched['coverage']['exhaustive'] is False
-            searched = body(await session.call_tool('search', {'query': 'cancel_called', 'num_results': 1}))['results'][0]
+            searched = body(await session.call_tool('search', {'query': 'cancel_called', 'num_results': 1, 'content_mode': 'highlights', 'quick_answer': False}))['results'][0]
             assert searched['content_version'] == fetched['content_version']
             assert any('cancel_called' in h['text'] for h in searched['highlights'])
 
@@ -167,7 +167,7 @@ async def test_opt_in_public_expansion_fetch_and_composed_search(tmp_path):
         fetched = body(await session.call_tool('fetch', {'urls': [target], 'freshness': 'fresh_only'}))['sources'][0]
         assert 'error' not in fetched
         assert all(text in fetched['content'] for text in expected), fetched
-        searched = body(await session.call_tool('search', {'query': expected[0], 'num_results': 1, 'freshness': 'fresh_only'}))['results'][0]
+        searched = body(await session.call_tool('search', {'query': expected[0], 'num_results': 1, 'freshness': 'fresh_only', 'content_mode': 'highlights', 'quick_answer': False}))['results'][0]
         assert expected[0] in ' '.join(h['text'] for h in searched['highlights']), searched
         # Independently inspect the acquired canonical search document; a
         # response/evidence budget must not masquerade as missing acquisition.
@@ -322,7 +322,7 @@ async def test_labelled_discussion_list_continuation_waits_for_loaded_items(tmp_
             assert 'error' not in fetched, fetched
             assert 'Warning: cancel_called cannot restore work.' in fetched['content']
             assert fetched['content'].index('Alice') < fetched['content'].index('Bob')
-            searched = body(await session.call_tool('search', {'query': 'cancel_called', 'num_results': 1, 'freshness': 'fresh_only'}))['results'][0]
+            searched = body(await session.call_tool('search', {'query': 'cancel_called', 'num_results': 1, 'freshness': 'fresh_only', 'content_mode': 'highlights', 'quick_answer': False}))['results'][0]
             assert any('Warning: cancel_called cannot restore work.' in h['text'] for h in searched['highlights'])
 
 

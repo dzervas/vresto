@@ -37,7 +37,7 @@ async def test_successful_acquisition_enqueues_without_waiting_and_screens_secre
         await memory.close()
 
 
-@pytest.mark.parametrize('mode', ['discovery', 'highlights', 'full_text', 'summary'])
+@pytest.mark.parametrize('mode', ['highlights', 'full_text', 'summary'])
 async def test_search_merges_retained_passages_and_fresh_only_excludes_them(tmp_path, mode):
     async with retrieval(tmp_path, source=cli_response('{"data": []}')) as service:
         memory = Memory(store(tmp_path), FakeEmbedder())
@@ -45,12 +45,12 @@ async def test_search_merges_retained_passages_and_fresh_only_excludes_them(tmp_
         s = source()
         memory.submit(s)
         await memory.queue.join()
-        data = await service.search(SearchInput(query='kitten', content_mode=mode))
+        data = await service.search(SearchInput(query='kitten', content_mode=mode, quick_answer=False))
         retained = data['results'][0]
         assert retained['origin'] == 'memory' and retained['fetched_at'] == s['fetched_at']
         assert retained['highlights'][0]['text'] == s['content']
         assert retained['content_mode'] == 'highlights' and 'summary' not in retained
-        fresh = await service.search(SearchInput(query='kitten', content_mode=mode, freshness='fresh_only'))
+        fresh = await service.search(SearchInput(query='kitten', content_mode=mode, freshness='fresh_only', quick_answer=False))
         assert fresh['results'] == []
         await memory.close()
 
@@ -67,7 +67,8 @@ async def test_live_urls_excluded_and_memory_ids_expand_after_cache_eviction(tmp
         await memory.queue.join()
         service.cache.store(old)
         service.cache._path(old['requested_url'], old['content_version']).unlink(missing_ok=True)
-        data = await service.search(SearchInput(query='kitten', content_mode='discovery'))
+        service.cache.store(live)
+        data = await service.search(SearchInput(query='kitten', content_mode='highlights', quick_answer=False))
         assert len(data['results']) == 2
         assert 'origin' not in data['results'][0]
         assert data['results'][1]['requested_url'] == old['requested_url']

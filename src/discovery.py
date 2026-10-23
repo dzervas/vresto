@@ -1,5 +1,6 @@
 """Subscriber-only Microck discovery, isolated from service access credentials."""
 from typing import TYPE_CHECKING
+import asyncio
 import json
 import os
 from tempfile import TemporaryDirectory
@@ -11,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from .contract import SearchRequest
 from .types import ErrorCode, ToolResult
+from .safety import contains_secret
 from .deadline import request_deadline, remaining
 
 if TYPE_CHECKING:
@@ -44,7 +46,7 @@ class SearchResponse(BaseModel):
     data: list[SearchRow]
 
 # Verified primary source: Microck/kagi-cli cb64cf514a99e527429468f92bc9f6b633a765e4
-# (0.22.0), src/{cli,search,types,auth,main,local}.rs. Install that revision with:
+# (0.22.0), src/{cli,search,quick,types,auth,main,local}.rs. Install that revision with:
 # cargo install --locked --git https://github.com/Microck/kagi-cli \
 #   --rev cb64cf514a99e527429468f92bc9f6b633a765e4 kagi
 # Subscriber automation is unofficial, may break or be restricted by Kagi.
@@ -59,12 +61,54 @@ class Discovery:
         self.processes = Processes(settings)
 
     async def search(self, request: SearchRequest) -> ToolResult:
+        with request_deadline(self.settings.timeout):
+            # Both commands share admission and the request deadline, but a failed
+            # or timed-out Quick Answer must not discard completed discovery links.
+            quick = asyncio.create_task(self._quick_answer(request)) if request.quick_answer else None
+            try:
+                with anyio.fail_after(remaining(self.settings.timeout)):
+                    async with self.processes.admission():
+                        data = await self._search(request)
+                if quick is not None:
+                    data.update(await quick)
+                return data
+            except TimeoutError:
+                raise DiscoveryError('discovery_timeout') from None
+            finally:
+                if quick is not None:
+                    quick.cancel()
+                    with anyio.CancelScope(shield=True):
+                        await asyncio.gather(quick, return_exceptions=True)
+
+    async def _quick_answer(self, request: SearchRequest) -> ToolResult:
         try:
-            with request_deadline(self.settings.timeout), anyio.fail_after(remaining(self.settings.timeout)):
+            with anyio.fail_after(remaining(self.settings.timeout)):
                 async with self.processes.admission():
-                    return await self._search(request)
+                    args = ['--error-format', 'json', 'quick', '--format', 'json']
+                    if request.lens is not None:
+                        args.extend(['--lens', str(request.lens)])
+                    raw = json.loads(await self._invoke(args + ['--', request.query]))
+            if not isinstance(raw, dict) or contains_secret(raw, (self.settings.session_token, self.settings.access_token)):
+                raise ValueError('unsafe quick answer')
+            text = raw['message']['markdown']
+            references = raw['references']['items']
+            if not isinstance(text, str) or not text.strip() or not isinstance(references, list):
+                raise ValueError('invalid quick answer')
+            items = []
+            for reference in references:
+                row = SearchRow.model_validate(reference)
+                index = reference['index']
+                if type(index) is not int or index < 0:
+                    raise ValueError('invalid reference index')
+                items.append({'index': index, 'title': row.title, 'url': row.url})
+            return {'quick_answer': {'text': text, 'generated': True, 'provider': 'kagi',
+                                     'references': items}}
+        except DiscoveryError as error:
+            return {'quick_answer_error': {'code': error.code}}
         except TimeoutError:
-            raise DiscoveryError('discovery_timeout') from None
+            return {'quick_answer_error': {'code': 'discovery_timeout'}}
+        except (ValueError, KeyError, TypeError, UnicodeDecodeError, RecursionError):
+            return {'quick_answer_error': {'code': 'discovery_parse_error'}}
 
     async def _search(self, request: SearchRequest) -> ToolResult:
         args = ["--error-format", "json", "search", "--format", "json",

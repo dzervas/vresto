@@ -126,7 +126,7 @@ async def test_discovery_and_acquisition_share_deadline(tmp_path, monkeypatch):
                          acquisition_options=AcquisitionOptions(deadline=.3)) as service:
         service.acquisition.browser_factory = lambda: browser
         monkeypatch.setattr(service.discovery, 'search', AsyncMock(side_effect=discover))
-        data = await service.search(SearchInput(query='guide'))
+        data = await service.search(SearchInput(query='guide', content_mode='highlights', quick_answer=False))
         assert data['results'][0]['error']['code'] == 'fetch_timeout'
         assert 0 < seen[1] < seen[0] - .08
         assert service.acquisition.active == service.acquisition.waiting == 0
@@ -163,7 +163,7 @@ else:
     print(json.dumps({"data": []}))
 '''
     async with retrieval(tmp_path, source=source, timeout=.25) as service:
-        data = await service.search(SearchInput(query='guide', content_mode='discovery'))
+        data = await service.search(SearchInput(query='guide', content_mode='discovery', quick_answer=False))
         assert data['error']['code'] == 'discovery_timeout'
         assert (tmp_path / 'cli.started').exists()
         assert not service.discovery.processes.active

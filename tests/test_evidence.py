@@ -8,7 +8,7 @@ from test_fetch import site
 from test_http import running, client, body, cli_response
 
 
-async def test_default_search_acquires_ten_and_returns_verbatim_qualified_evidence(tmp_path):
+async def test_explicit_highlights_search_acquires_ten_and_returns_verbatim_qualified_evidence(tmp_path):
     visited = []
     async def handler(request):
         visited.append(request.path)
@@ -25,7 +25,7 @@ async def test_default_search_acquires_ten_and_returns_verbatim_qualified_eviden
         payload = {'data': [{'t': 0, 'rank': i, 'url': f'{base}/{i}', 'title': f'Guide {i}',
                              'snippet': 'Not acquired evidence'} for i in range(1, 13)]}
         async with running(tmp_path, source=cli_response(json.dumps(payload)), acquisition_options=options) as (url, _), client(url, timeout=60) as session:
-            result = body(await session.call_tool('search', {'query': 'connect_safe 2.4 retries'}))
+            result = body(await session.call_tool('search', {'query': 'connect_safe 2.4 retries', 'content_mode': 'highlights', 'quick_answer': False}))
             assert result['content_mode'] == 'highlights'
             assert len(result['results']) == 10
             assert set(visited) == {f'/{i}' for i in range(1, 11)}

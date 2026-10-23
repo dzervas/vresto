@@ -93,17 +93,17 @@ async def test_discovery_preserves_provider_order_and_labels_snippets(tmp_path):
     async with running(tmp_path) as (url, _), client(url) as session:
         tools = (await session.list_tools()).tools
         assert [t.name for t in tools] == ["search", "fetch", "expand", "crawl", "research"]
-        assert tools[0].inputSchema["properties"]["content_mode"]["default"] == "highlights"
+        assert tools[0].inputSchema["properties"]["content_mode"]["default"] == "discovery"
         assert tools[0].inputSchema["additionalProperties"] is False
         assert all(300 <= len(t.description) <= 600 for t in tools)
         expected = [
-            {'query', 'num_results', 'content_mode', 'freshness'},
+            {'query', 'num_results', 'content_mode', 'freshness', 'quick_answer'},
             {'urls', 'query', 'content_mode', 'freshness'},
             {'evidence_ids'}, {'url', 'path_prefix', 'max_pages'},
             {'query', 'tier', 'verify_citations'},
         ]
         assert [set(t.inputSchema['properties']) for t in tools] == expected
-        result = await session.call_tool("search", {"query": "Python docs", "content_mode": "discovery"})
+        result = await session.call_tool("search", {"query": "Python docs", "quick_answer": False})
         assert not result.isError
         data = body(result)
         assert len(data["results"]) == 10
@@ -262,10 +262,10 @@ async def test_discovery_admission_queues_beyond_old_capacity_without_extra_spaw
         tasks = []
         try:
             for i in range(2):
-                tasks.append(asyncio.create_task(first.call_tool('search', {'query': str(i), 'content_mode': 'discovery'})))
+                tasks.append(asyncio.create_task(first.call_tool('search', {'query': str(i), 'content_mode': 'discovery', 'quick_answer': False})))
             await wait_for_searches(tmp_path, 2)
             tasks.extend(asyncio.create_task(second.call_tool('search', {
-                'query': str(i), 'content_mode': 'discovery'})) for i in range(2, 15))
+                'query': str(i), 'content_mode': 'discovery', 'quick_answer': False})) for i in range(2, 15))
             await asyncio.sleep(.2)
             assert len(list(tmp_path.glob('pid-*'))) == 2
             assert not any(task.done() for task in tasks)
@@ -282,10 +282,10 @@ async def test_discovery_wait_shares_request_deadline(tmp_path):
     source = held_cli(tmp_path)
     calls = []
     async with running(tmp_path, source=source, timeout=.8) as (url, _), client(url, calls=calls) as session:
-        active = [asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(2)]
+        active = [asyncio.create_task(session.call_tool('search', {'query': str(i), 'quick_answer': False})) for i in range(2)]
         await wait_for_searches(tmp_path, 2)
         started = asyncio.get_running_loop().time()
-        queued = await session.call_tool('search', {'query': 'queued', 'content_mode': 'discovery'})
+        queued = await session.call_tool('search', {'query': 'queued', 'content_mode': 'discovery', 'quick_answer': False})
         elapsed = asyncio.get_running_loop().time() - started
         assert body(queued)['error']['code'] == 'discovery_timeout'
         assert elapsed < 1.6
@@ -296,11 +296,11 @@ async def test_cancelled_discovery_waiter_never_runs_cli(tmp_path):
     calls = []
     source = held_cli(tmp_path)
     async with running(tmp_path, source=source, timeout=5) as (url, _), client(url, calls=calls) as session:
-        tasks = [asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(2)]
+        tasks = [asyncio.create_task(session.call_tool('search', {'query': str(i), 'quick_answer': False})) for i in range(2)]
         try:
             await wait_for_searches(tmp_path, 2)
             tasks.extend(asyncio.create_task(session.call_tool('search', {
-                'query': str(i), 'content_mode': 'discovery'})) for i in range(2, 12))
+                'query': str(i), 'content_mode': 'discovery', 'quick_answer': False})) for i in range(2, 12))
             # An outgoing HTTP hook precedes server admission. Wait until the
             # responder exists before sending MCP cancellation for the last call.
             async with httpx.AsyncClient(headers={'Authorization': 'Bearer client-secret'}) as http:
@@ -314,7 +314,7 @@ async def test_cancelled_discovery_waiter_never_runs_cli(tmp_path):
                 method='notifications/cancelled', params=types.CancelledNotificationParams(requestId=calls[-1]))))
             await asyncio.gather(tasks[-1], return_exceptions=True)
             replacement = asyncio.create_task(session.call_tool('search', {
-                'query': 'replacement', 'content_mode': 'discovery'}))
+                'query': 'replacement', 'content_mode': 'discovery', 'quick_answer': False}))
             tasks.append(replacement)
             await asyncio.sleep(.1)
             assert not replacement.done()
@@ -335,7 +335,7 @@ async def test_shutdown_reaps_admitted_discovery_and_never_spawns_waiters(tmp_pa
     async with running(tmp_path, source=held_cli(tmp_path), timeout=30, stop=stop) as (url, _):
         try:
             async with client(url) as session:
-                tasks = [asyncio.create_task(session.call_tool('search', {'query': str(i)})) for i in range(10)]
+                tasks = [asyncio.create_task(session.call_tool('search', {'query': str(i), 'quick_answer': False})) for i in range(10)]
                 await wait_for_searches(tmp_path, 2)
                 await asyncio.sleep(.2)
                 pids = [int(p.read_text()) for p in tmp_path.glob('pid-*')]

@@ -317,7 +317,7 @@ async def test_public_fetch_and_composed_search_fit_equal_wire_budgets(tmp_path)
             assert all('error' not in s and 'truncated_fields' not in s for s in canonical)
             for tool, arguments, key in [
                     ('fetch', {'urls': urls, 'freshness': 'cache_only'}, 'sources'),
-                    ('search', {'num_results': 2}, 'results')]:
+                    ('search', {'num_results': 2, 'content_mode': 'highlights', 'quick_answer': False}, 'results')]:
                 response = await session.call_tool(tool, {**arguments,
                     'query': 'cancel_called TaskGroup._abort', 'response_budget_bytes': 16384})
                 data = body(response)

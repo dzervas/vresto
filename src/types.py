@@ -131,6 +131,15 @@ BrowserResult = BrowserHTML | BrowserPDF
 ToolData = dict[str, Any]
 
 
+class QuickAnswer(TypedDict):
+    text: str
+    generated: Literal[True]
+    provider: Literal['kagi']
+    references: list[ToolData]
+    response_truncated: NotRequired[bool]
+    omitted_reference_count: NotRequired[int]
+
+
 class ToolResult(TypedDict, total=False):
     """Public envelope after discovery/evidence projection and byte budgeting."""
     sources: list[ToolData]
@@ -144,5 +153,7 @@ class ToolResult(TypedDict, total=False):
     acquisition_limits: ToolData
     postfilters: list[str]
     discovery_limits: ToolData
+    quick_answer: QuickAnswer
+    quick_answer_error: SourceError
     date_semantics: str
     warnings: list[str]

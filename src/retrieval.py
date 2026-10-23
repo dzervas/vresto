@@ -146,7 +146,7 @@ class Retrieval:
                 data = safe_sources(data, self.secrets)
                 await add_summaries(data, self.discovery, self.cache, self.secrets, 'overview', deadline)
             retained = []
-            if self.memory is not None and request.freshness != 'fresh_only':
+            if request.content_mode != 'discovery' and self.memory is not None and request.freshness != 'fresh_only':
                 exclude = {url for result in data['results'] for key in ('url', 'requested_url', 'resolved_url')
                            if (url := result.get(key))}
                 retained = await self.memory.query(request.query, request.num_results, exclude,

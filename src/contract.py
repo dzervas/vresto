@@ -55,7 +55,10 @@ class SearchRequest(BudgetInput):
     # Structured sources distinguish provider snippets from acquired evidence;
     # no generated highlights or inferred publication dates/provider parity.
     num_results: int = Field(default=10, ge=1, le=20)
-    content_mode: Literal["discovery", "highlights", "full_text", "summary"] = "highlights"
+    content_mode: Literal["discovery", "highlights", "full_text", "summary"] = "discovery"
+    quick_answer: bool = Field(default=True,
+        description="Include a generated Kagi Quick Answer with unverified references. "
+                    "Set false to skip generation; no generated answer is evidence.")
     freshness: Literal['ordinary', 'refresh', 'fresh_only', 'cache_only'] = 'ordinary'
     max_age_seconds: float = Field(default=3600, ge=0, le=2_592_000)
     region: str | None = Field(default=None, pattern=r"^(?:[a-z]{2}|no_region)$")
@@ -86,7 +89,10 @@ class SearchInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     query: str = Field(min_length=1, max_length=4096)
     num_results: int = Field(default=10, ge=1, le=20)
-    content_mode: Literal["discovery", "highlights", "full_text", "summary"] = "highlights"
+    content_mode: Literal["discovery", "highlights", "full_text", "summary"] = "discovery"
+    quick_answer: bool = Field(default=True,
+        description="Include a generated Kagi Quick Answer with unverified references. "
+                    "Set false to skip generation; no generated answer is evidence.")
     freshness: Literal["ordinary", "fresh_only"] = "ordinary"
 
     @model_validator(mode="after")

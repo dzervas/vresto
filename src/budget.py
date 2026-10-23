@@ -3,8 +3,8 @@
 Postprocessing contract: pass a JSON-compatible response with `sources` or
 `results` in priority order AFTER evidence selection, credential redaction and
 cache writes. This function copies it; canonical documents must never be trimmed.
-Only content/title/provider_snippet strings may be prefix-truncated. Other
-metadata (including URLs, versions, error codes and evidence references)
+Only content/title/provider_snippet and labeled generated text may be
+prefix-truncated. Other metadata (including URLs, versions, error codes and evidence references)
 remains intact or its entire source is omitted with its original zero-based index.
 Highlights are complete passage records: remove whole records, never shorten
 quotes or detach qualifications/references. Evidence selection fits coherent
@@ -65,10 +65,26 @@ def apply_budget(data: ToolData, limit: int) -> ToolData:
         'failed_source_count': sum('error' in s for s in sources),
         'omitted_source_indices': [], 'partial_coverage': any('error' in s or s.get('pdf', {}).get('partial') or s.get('coverage', {}).get('partial') for s in sources)
             or bool(output.get('selection', {}).get('partial_coverage'))
-            or bool(output.get('traversal', {}).get('omissions')),
+            or bool(output.get('traversal', {}).get('omissions'))
+            or 'quick_answer_error' in output,
     }
     if wire_bytes(output) <= limit:
         return output
+
+    # Quick Answer is generated orientation, not evidence. Shed its payload
+    # before changing discovery links or acquired sources; never trim the
+    # canonical cache or silently shorten a quotation to make generation fit.
+    quick = output.get('quick_answer', {})
+    while len(quick.get('text', '')) > 64 and wire_bytes(output) > limit:
+        quick['text'] = quick['text'][:max(64, len(quick['text']) // 2)]
+        quick['response_truncated'] = True
+        coverage['partial_coverage'] = True
+    references = quick.get('references', [])
+    while references and wire_bytes(output) > limit:
+        removed = max(1, len(references) // 2)
+        del references[-removed:]
+        quick['omitted_reference_count'] = quick.get('omitted_reference_count', 0) + removed
+        coverage['partial_coverage'] = True
 
     # Search memory is supplementary: omit its lowest-ranked results before
     # changing live data. Explicit expand requests still shed context first.

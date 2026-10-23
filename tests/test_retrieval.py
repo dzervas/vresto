@@ -35,7 +35,7 @@ async def retrieval(tmp_path, *, source, acquisition_options=None, response_budg
 
 
 async def search(service, arguments):
-    return await service.search(SearchRequest.model_validate(arguments))
+    return await service.search(SearchRequest.model_validate({'quick_answer': False, **arguments}))
 
 
 async def test_query_is_a_literal_argument_and_update_dates_disclosed(tmp_path):
@@ -173,7 +173,7 @@ async def test_acquired_workflow_screens_before_selection_without_mutating_canon
 
 async def test_normalized_query_terms_are_screened_after_highlight_selection(tmp_path):
     async with retrieval(tmp_path, source=cli_response('{"data": []}')) as service:
-        data = await search(service, {'query': 'SUBSCRIBER-SECRET'})
+        data = await search(service, {'query': 'SUBSCRIBER-SECRET', 'content_mode': 'highlights'})
         assert data['error']['code'] == 'fetch_failed'
         assert 'subscriber-secret' not in json.dumps(data)
 

@@ -259,7 +259,7 @@ async def run(cache, verify_persisted=False):
                         assert not requests, requests
                         facts['persisted_cache_and_evidence'] = True
                     else:
-                        result = data(await first.call_tool('search', {'query': 'retry_limit'}))
+                        result = data(await first.call_tool('search', {'query': 'retry_limit', 'content_mode': 'highlights', 'quick_answer': False}))
                         source = result['results'][0]
                         assert 'error' not in source, source
                         assert source['highlights'], source

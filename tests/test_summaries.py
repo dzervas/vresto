@@ -80,7 +80,7 @@ async def test_summary_modes_over_mcp_persist_cache_and_keep_exact_quotes(tmp_pa
                 assert 'highlights' not in source
         assert len(calls(tmp_path)) == 1
         assert calls(tmp_path)[0]['args'][4].removeprefix('--text=') == canonical['content']
-        result = body(await session.call_tool('search', {'query': 'retries', 'content_mode': 'summary'}))
+        result = body(await session.call_tool('search', {'query': 'retries', 'content_mode': 'summary', 'quick_answer': False}))
         assert result['results'][0]['summary']['length'] == 'overview'
         assert result['results'][0]['highlights'][0]['text'] == canonical['content']
         assert len(calls(tmp_path)) == 2
@@ -199,7 +199,7 @@ def test_budget_preserves_summary_before_atomic_highlights_and_discloses_shorten
 async def test_search_summary_uses_public_small_surface(tmp_path):
     async with retrieval(tmp_path, source=cli(tmp_path)) as service:
         service.cache.store(document())
-        result = await service.search(SearchInput(query='retries', content_mode='summary'))
+        result = await service.search(SearchInput(query='retries', content_mode='summary', quick_answer=False))
         assert result['results'][0]['summary']['length'] == 'overview'
         assert result['results'][0]['highlights']
 
