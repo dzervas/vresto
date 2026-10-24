@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 import asyncio
 import json
 import os
+import time
 from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 
@@ -14,13 +15,19 @@ from .contract import SearchRequest
 from .types import ErrorCode, ToolResult
 from .safety import contains_secret
 from .deadline import request_deadline, remaining
+from .diagnostics import logger
 
 if TYPE_CHECKING:
     from .server import Settings
 
 class DiscoveryError(Exception):
-    def __init__(self, code: ErrorCode) -> None:
+    def __init__(self, code: ErrorCode, *, reason: str | None = None, phase: str | None = None,
+                 exception_type: str | None = None) -> None:
         self.code: ErrorCode = code
+        self.reason = reason
+        self.phase = phase
+        self.exception_type = exception_type
+        self.diagnosed = False
         super().__init__(code)
 
 
@@ -60,7 +67,30 @@ class Discovery:
 
         self.processes = Processes(settings)
 
+    def _diagnostic(self, operation: str, phase: str, error: DiscoveryError, *, started: float,
+                    reason: str | None = None, upstream_code: str = '-',
+                    http_status: int | None = None, exit_code: int | None = None) -> None:
+        if error.diagnosed:
+            return
+        error.diagnosed = True
+        reason = reason or error.reason or {
+            'discovery_timeout': 'service_deadline', 'discovery_output_limit': 'output_limit',
+            'discovery_cli_version': 'version_mismatch', 'discovery_parse_error': 'invalid_or_unsafe_output',
+        }.get(error.code, 'process_failure')
+        try:
+            logger.warning(
+                'cli_failure operation=%s phase=%s code=%s upstream_code=%s reason=%s '
+                'http_status=%s exit_code=%s process_phase=%s type=%s admitted=%d waiting=%d elapsed_ms=%.1f',
+                operation, phase, error.code, upstream_code, reason,
+                http_status if http_status is not None else '-', exit_code if exit_code is not None else '-',
+                error.phase or '-', error.exception_type or '-', self.processes.admitted,
+                len(self.processes.waiters), (time.monotonic() - started) * 1000)
+        except Exception:
+            # A diagnostic handler must not replace the original failure.
+            pass
+
     async def search(self, request: SearchRequest) -> ToolResult:
+        started, phase = time.monotonic(), 'admission'
         with request_deadline(self.settings.timeout):
             # Both commands share admission and the request deadline, but a failed
             # or timed-out Quick Answer must not discard completed discovery links.
@@ -68,12 +98,18 @@ class Discovery:
             try:
                 with anyio.fail_after(remaining(self.settings.timeout)):
                     async with self.processes.admission():
+                        phase = 'response'
                         data = await self._search(request)
                 if quick is not None:
                     data.update(await quick)
                 return data
+            except DiscoveryError as error:
+                self._diagnostic('search', phase, error, started=started)
+                raise
             except TimeoutError:
-                raise DiscoveryError('discovery_timeout') from None
+                error = DiscoveryError('discovery_timeout')
+                self._diagnostic('search', phase, error, started=started)
+                raise error from None
             finally:
                 if quick is not None:
                     quick.cancel()
@@ -81,9 +117,11 @@ class Discovery:
                         await asyncio.gather(quick, return_exceptions=True)
 
     async def _quick_answer(self, request: SearchRequest) -> ToolResult:
+        started, phase = time.monotonic(), 'admission'
         try:
             with anyio.fail_after(remaining(self.settings.timeout)):
                 async with self.processes.admission():
+                    phase = 'response'
                     args = ['--error-format', 'json', 'quick', '--format', 'json']
                     if request.lens is not None:
                         args.extend(['--lens', str(request.lens)])
@@ -104,11 +142,16 @@ class Discovery:
             return {'quick_answer': {'text': text, 'generated': True, 'provider': 'kagi',
                                      'references': items}}
         except DiscoveryError as error:
+            self._diagnostic('quick', phase, error, started=started)
             return {'quick_answer_error': {'code': error.code}}
         except TimeoutError:
-            return {'quick_answer_error': {'code': 'discovery_timeout'}}
+            error = DiscoveryError('discovery_timeout')
+            self._diagnostic('quick', phase, error, started=started)
+            return {'quick_answer_error': {'code': error.code}}
         except (ValueError, KeyError, TypeError, UnicodeDecodeError, RecursionError):
-            return {'quick_answer_error': {'code': 'discovery_parse_error'}}
+            error = DiscoveryError('discovery_parse_error')
+            self._diagnostic('quick', 'response', error, started=started)
+            return {'quick_answer_error': {'code': error.code}}
 
     async def _search(self, request: SearchRequest) -> ToolResult:
         args = ["--error-format", "json", "search", "--format", "json",
@@ -147,46 +190,90 @@ class Discovery:
                 "warnings": warnings, "results": results}
 
     async def _invoke(self, args: list[str]) -> bytes:
-        with TemporaryDirectory(prefix="kagi-discovery-") as home:
-            env = {"PATH": os.defpath, "HOME": home, "KAGI_CONFIG": home + "/config.toml",
-                   "KAGI_SESSION_TOKEN": self.settings.session_token, "RUST_LOG": "off"}
-            # Exact source revision is installed by scripts/install_kagi.py;
-            # reject a different release rather than trusting changing flags.
-            version_env = {k: v for k, v in env.items() if k != "KAGI_SESSION_TOKEN"}
-            status, version, _ = await self.processes.run(["--version"], version_env)
-            if status or version.strip() != b"kagi 0.22.0":
-                raise DiscoveryError("discovery_cli_version")
-            returncode, stdout, stderr = await self.processes.run(args, env)
-        if returncode:
+        # Operation labels come only from service-owned command positions, not
+        # queries, Markdown, deletion targets or arbitrary executable arguments.
+        operation = args[2] if len(args) > 2 and args[2] in ('search', 'quick', 'summarize', 'assistant') else 'other'
+        if args[2:5] == ['assistant', 'thread', 'delete']:
+            operation = 'assistant_cleanup'
+        started, phase = time.monotonic(), 'version'
+        exit_code, http_status = None, None
+        upstream_code, reason = '-', None
+        try:
+            with TemporaryDirectory(prefix="kagi-discovery-") as home:
+                env = {"PATH": os.defpath, "HOME": home, "KAGI_CONFIG": home + "/config.toml",
+                       "KAGI_SESSION_TOKEN": self.settings.session_token, "RUST_LOG": "off"}
+                version_env = {k: v for k, v in env.items() if k != "KAGI_SESSION_TOKEN"}
+                exit_code, version, _ = await self.processes.run(["--version"], version_env)
+                if exit_code or version.strip() != b"kagi 0.22.0":
+                    raise DiscoveryError("discovery_cli_version")
+                phase, exit_code = 'execute', None
+                exit_code, stdout, stderr = await self.processes.run(args, env)
+            if exit_code:
+                malformed = False
+                try:
+                    envelope = json.loads(stderr)
+                    if not isinstance(envelope, dict):
+                        envelope, malformed = {}, True
+                except (ValueError, UnicodeDecodeError, RecursionError):
+                    envelope, malformed = {}, True
+                value = envelope.get('code')
+                upstream_code = value if isinstance(value, str) and value in (
+                    'network_error', 'authentication_error', 'missing_credentials', 'parse_error',
+                    'configuration_error', 'contract_error', 'batch_error') else 'unknown'
+                status = envelope.get('http_status')
+                http_status = status if type(status) is int and 100 <= status <= 599 else None
+                reason = 'signal' if exit_code < 0 else 'invalid_error_output' if malformed else 'cli_error'
+                if http_status is not None:
+                    reason = 'http_status'
+                elif upstream_code == 'network_error':
+                    reason = 'upstream_network'
+                    message = envelope.get('message')
+                    # Pinned http.rs emits these fixed markers. Classify them,
+                    # never retain/log its URL-bearing message or response body.
+                    if isinstance(message, str):
+                        if message.startswith('network error: request to ') and ' timed out before Kagi responded.' in message:
+                            reason = 'upstream_timeout'
+                        elif message.startswith('network error: could not connect to '):
+                            reason = 'upstream_connection'
+                code: ErrorCode = "discovery_failed"
+                if envelope.get('http_status') == 429:
+                    code = 'rate_limited'
+                elif envelope.get('code') in ('authentication_error', 'missing_credentials'):
+                    code = 'upstream_authentication'
+                elif envelope.get('code') == 'parse_error':
+                    code = 'discovery_parse_error'
+                raise DiscoveryError(code)
+            return stdout
+        except DiscoveryError as error:
+            self._diagnostic(operation, phase, error, started=started, reason=reason,
+                             upstream_code=upstream_code, http_status=http_status, exit_code=exit_code)
+            raise
+        except asyncio.CancelledError:
             try:
-                error = json.loads(stderr)
-                if not isinstance(error, dict):
-                    error = {}
-            except (ValueError, UnicodeDecodeError):
-                error = {}
-            code: ErrorCode = "discovery_failed"
-            if error.get("http_status") == 429:
-                code = "rate_limited"
-            elif error.get("code") in ("authentication_error", "missing_credentials"):
-                code = "upstream_authentication"
-            elif error.get("code") == "parse_error":
-                code = "discovery_parse_error"
-            # Never forward message, suggestions, stderr or exception details.
-            raise DiscoveryError(code)
-        return stdout
+                logger.info('cli_cancelled operation=%s phase=%s elapsed_ms=%.1f',
+                            operation, phase, (time.monotonic() - started) * 1000)
+            except Exception:
+                pass
+            raise
 
     async def summarize(self, text: str, length: str) -> str:
-        with request_deadline(self.settings.timeout):
-            async with self.processes.admission():
-                # Equals form keeps dash-leading Markdown literal to Clap.
-                stdout = await self._invoke(["--error-format", "json", "summarize", "--subscriber",
-                    "--text=" + text, "--length", length, "--summary-type", "summary"])
+        started, phase = time.monotonic(), 'admission'
         try:
-            # Pinned CLI main.rs prints SubscriberSummarizeResponse as JSON;
-            # data.markdown is generated Markdown, not the HTML output field.
+            with request_deadline(self.settings.timeout):
+                async with self.processes.admission():
+                    phase = 'response'
+                    # Equals form keeps dash-leading Markdown literal to Clap.
+                    stdout = await self._invoke(["--error-format", "json", "summarize", "--subscriber",
+                        "--text=" + text, "--length", length, "--summary-type", "summary"])
+            # Pinned main.rs emits generated data.markdown, not its HTML field.
             value = json.loads(stdout)["data"]["markdown"]
             if not isinstance(value, str) or not value.strip():
                 raise ValueError("empty summary")
             return value
+        except DiscoveryError as error:
+            self._diagnostic('summarize', phase, error, started=started)
+            raise
         except (ValueError, KeyError, TypeError, UnicodeDecodeError):
-            raise DiscoveryError("discovery_parse_error") from None
+            error = DiscoveryError('discovery_parse_error')
+            self._diagnostic('summarize', 'response', error, started=started)
+            raise error from None

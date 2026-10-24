@@ -85,6 +85,28 @@ The placeholder represents your server access token, **not** your Kagi session.
 For remote clients, use HTTPS through a trusted private reverse proxy and preserve
 MCP streaming. Do not expose the server publicly without access controls.
 
+## Failure diagnostics
+
+CLI logs include a service-generated `request_id` for each tool call. Use it to
+join interleaved CLI, browser, source-failure and tool-summary records; `-` means
+there is no active tool request. Background work does not retain an expired ID.
+
+- `cli_failure` identifies the operation, phase, fixed public/upstream error codes,
+  HTTP status and subprocess exit code when available, process phase, queue counts
+  and elapsed time. Fixed reasons distinguish upstream timeout/connection errors,
+  HTTP errors, malformed output, version mismatch, process errors and the service
+  deadline. Unknown upstream details remain unknown rather than being guessed.
+- `source_failed` and `source_stale` retain the HTTP status and producing stage
+  for HTTP failures, including 404/5xx. Their URLs are logged only after credential
+  screening. Private diagnostic metadata is not returned in MCP or stored in cache.
+- Tool summaries distinguish `completed`, `partial`, `error`, `failed` and
+  `cancelled`. A non-error MCP response with failed/stale sources or failed
+  Quick Answer/summary/citation verification is logged as `partial`, with counts.
+
+Apart from the screened failed/stale source URLs above, logs omit tool/command
+arguments, page/CLI bodies, credentials and raw exception messages. These
+diagnostics do not change the MCP response format.
+
 ## Safety and limitations
 
 This is an **unofficial subscriber integration**, not the Kagi API or an official

@@ -40,9 +40,9 @@ class Processes:
     @asynccontextmanager
     async def admission(self) -> AsyncIterator[None]:
         if self.closing:
-            raise DiscoveryError('discovery_failed')
+            raise DiscoveryError('discovery_failed', reason='closing', phase='admission')
         if remaining(self.settings.timeout) <= 0:
-            raise DiscoveryError('discovery_timeout')
+            raise DiscoveryError('discovery_timeout', reason='service_deadline', phase='admission')
         waiter = None
         acquired = False
         try:
@@ -56,9 +56,9 @@ class Processes:
                     with anyio.fail_after(remaining(self.settings.timeout)):
                         acquired = await asyncio.shield(waiter)
                 except TimeoutError:
-                    raise DiscoveryError('discovery_timeout') from None
+                    raise DiscoveryError('discovery_timeout', reason='service_deadline', phase='admission') from None
                 if not acquired:
-                    raise DiscoveryError('discovery_failed')
+                    raise DiscoveryError('discovery_failed', reason='closing', phase='admission')
             yield
         finally:
             if waiter is not None:
@@ -72,11 +72,12 @@ class Processes:
 
     async def run(self, args: list[str], env: dict[str, str]) -> tuple[int, bytes, bytes]:
         if self.closing:
-            raise DiscoveryError("discovery_failed")
+            raise DiscoveryError('discovery_failed', reason='closing', phase='spawn')
         if remaining(self.settings.timeout) <= 0:
-            raise DiscoveryError('discovery_timeout')
+            raise DiscoveryError('discovery_timeout', reason='service_deadline', phase='spawn')
         process = None
         readers = []
+        phase = 'spawn'
         try:
             with anyio.fail_after(remaining(self.settings.timeout)):
                 # Cancellation during spawn must not orphan a just-created child.
@@ -86,8 +87,9 @@ class Processes:
                         stdin=asyncio.subprocess.DEVNULL,
                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
                     self.active.add(process)
+                phase = 'execution'
                 if self.closing:
-                    raise DiscoveryError('discovery_failed')
+                    raise DiscoveryError('discovery_failed', reason='closing', phase=phase)
                 assert process is not None  # Shielded spawn completed.
                 consumed = 0
 
@@ -97,7 +99,7 @@ class Processes:
                     while chunk := await stream.read(8192):
                         consumed += len(chunk)
                         if consumed > self.settings.max_output_bytes:
-                            raise DiscoveryError("discovery_output_limit")
+                            raise DiscoveryError('discovery_output_limit', reason='output_limit', phase='execution')
                         chunks.append(chunk)
                     return b"".join(chunks)
 
@@ -108,9 +110,11 @@ class Processes:
                 assert process.returncode is not None  # wait() reaped the child.
                 return process.returncode, stdout, stderr
         except TimeoutError:
-            raise DiscoveryError("discovery_timeout") from None
-        except OSError:
-            raise DiscoveryError("discovery_failed") from None
+            raise DiscoveryError('discovery_timeout', reason='service_deadline', phase=phase,
+                                 exception_type='TimeoutError') from None
+        except OSError as error:
+            raise DiscoveryError('discovery_failed', reason='os_error', phase=phase,
+                                 exception_type=type(error).__name__) from None
         finally:
             # MCP cancellation and SDK shutdown use AnyIO cancel scopes. Shield
             # cleanup so TERM/KILL escalation and reaping complete under both.

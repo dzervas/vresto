@@ -144,7 +144,7 @@ async def test_operational_diagnostics_exclude_query_and_credentials(tmp_path, c
     caplog.set_level('INFO', logger='vresto')
     query = 'private operator question not for logs'
     async with running(tmp_path) as (url, _), client(url) as session:
-        result = await session.call_tool('search', {'query': query, 'content_mode': 'discovery'})
+        result = await session.call_tool('search', {'query': query, 'content_mode': 'discovery', 'quick_answer': False})
         assert len(body(result)['results']) == 10
     assert 'tool=search outcome=completed elapsed_ms=' in caplog.text
     for sensitive in [query, 'client-secret', 'subscriber-secret', 'Provider summary']:

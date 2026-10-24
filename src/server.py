@@ -36,6 +36,7 @@ from .acquisition import Acquisition
 from .cache import DocumentCache, CachedAcquisition
 from .acquisition_policy import AcquisitionOptions
 from .discovery import Discovery
+from .diagnostics import request_logging
 from .retrieval import Retrieval
 from .memory import Memory, MemoryStore, WorkerEmbedder
 from .research import Research
@@ -198,26 +199,42 @@ def create_app(settings: Settings) -> ASGIApp:
 
     @mcp.call_tool(validate_input=False)
     async def call(name, arguments):
-        started = time.monotonic()
-        outcome = 'cancelled_or_failed'
-        try:
-            result = await retrieve(name, arguments)
-            outcome = 'error' if result.isError else 'completed'
-            return result
-        finally:
-            # Deliberately no arguments, URLs, queries, credentials, bodies or
-            # exception strings. Per-source error/cache details stay in MCP.
-            request = mcp.request_context.request
-            user = request.scope.get('user') if isinstance(request, Request) else None
-            # JSON escaping keeps an untrusted subject in one bounded log field.
-            subject = user.access_token.client_id if isinstance(user, AuthenticatedUser) else 'anonymous'
-            log_secrets = secrets + ((user.access_token.token,) if isinstance(user, AuthenticatedUser) else ())
-            if contains_secret(subject, log_secrets):
-                subject = 'redacted'
-            logging.getLogger('vresto').info(
-                'tool=%s outcome=%s elapsed_ms=%.1f sub=%s',
-                name if name in ('search', 'fetch', 'expand', 'crawl', 'research') else 'unsupported', outcome,
-                (time.monotonic() - started) * 1000, json.dumps(subject[:256], ensure_ascii=True))
+        with request_logging():
+            started = time.monotonic()
+            outcome, code, exception_type = 'cancelled_or_failed', '-', '-'
+            failed_sources = stale_sources = supplementary_errors = 0
+            try:
+                result = await retrieve(name, arguments)
+                data = result.structuredContent or {}
+                sources = data.get('sources', data.get('results', data.get('verified_citations', [])))
+                # Budgeting may omit failed outcomes; retain its pre-budget count.
+                failed_sources = max(sum('error' in source for source in sources),
+                                     data.get('budget', {}).get('failed_source_count', 0))
+                stale_sources = sum(bool(source.get('stale')) for source in sources)
+                supplementary_errors = (sum('summary_error' in source for source in sources)
+                                        + int('quick_answer_error' in data) + int('verification_error' in data))
+                code = data.get('error', {}).get('code', '-')
+                outcome = ('error' if result.isError else 'partial'
+                           if failed_sources or stale_sources or supplementary_errors else 'completed')
+                return result
+            except BaseException as error:
+                outcome = 'cancelled' if isinstance(error, asyncio.CancelledError) else 'failed'
+                exception_type = type(error).__name__
+                raise
+            finally:
+                # No arguments, queries, credentials, bodies or exception strings.
+                request = mcp.request_context.request
+                user = request.scope.get('user') if isinstance(request, Request) else None
+                subject = user.access_token.client_id if isinstance(user, AuthenticatedUser) else 'anonymous'
+                log_secrets = secrets + ((user.access_token.token,) if isinstance(user, AuthenticatedUser) else ())
+                if contains_secret(subject, log_secrets):
+                    subject = 'redacted'
+                logging.getLogger('vresto').info(
+                    'tool=%s outcome=%s elapsed_ms=%.1f sub=%s code=%s type=%s '
+                    'failed_sources=%d stale_sources=%d supplementary_errors=%d',
+                    name if name in ('search', 'fetch', 'expand', 'crawl', 'research') else 'unsupported', outcome,
+                    (time.monotonic() - started) * 1000, json.dumps(subject[:256], ensure_ascii=True),
+                    code, exception_type, failed_sources, stale_sources, supplementary_errors)
 
     async def retrieve(name, arguments):
         # SDK JSON-schema validation echoes inputs in errors. Validate here instead
@@ -345,7 +362,10 @@ def main() -> None:
     parser.add_argument('--host', default=os.environ.get('VRESTO_HOST', '127.0.0.1'))
     parser.add_argument('--port', type=int, default=int(os.environ.get('VRESTO_PORT', '8000')))
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format='%(name)s %(message)s')
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(name)s %(message)s request_id=%(request_id)s',
+                                           defaults={'request_id': '-'}))
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
     # uv sync --locked; uv run python -m patchright install chromium (no sudo).
     # Patchright 1.63.0 pins Chromium 153.0.8010.12, revision 1243.
     # Native system libraries must already exist; Dockerfile supplies them.

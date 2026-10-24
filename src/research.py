@@ -5,6 +5,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 import re
 import json
+import time
 
 import anyio
 
@@ -35,6 +36,7 @@ class Research:
 
     async def run(self, request: ResearchInput,
                   progress: Callable[[str], Awaitable[None]]) -> ToolData:
+        started = time.monotonic()
         if request.tier == 'big' and not self.settings.research_model:
             return {'error': {'code': 'invalid_input', 'reason': 'research_model_not_configured',
                     'message': 'Big research requires VRESTO_RESEARCH_MODEL.'}}
@@ -106,6 +108,8 @@ class Research:
                     data['citation_verification_omitted'] = max(0, len(references) - 10)
         except (DiscoveryError, TimeoutError) as error:
             code = error.code if isinstance(error, DiscoveryError) else 'discovery_timeout'
+            self.cli._diagnostic('assistant', 'request',
+                                 error if isinstance(error, DiscoveryError) else DiscoveryError(code), started=started)
             code = code.replace('discovery_', 'research_')
             if 'answer' in data:
                 data['verification_error'] = {'code': code}

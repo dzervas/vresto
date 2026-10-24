@@ -90,7 +90,7 @@ class DocumentCache:
         return None
 
     def store(self, source: SourceSuccess) -> None:
-        record = {k: v for k, v in source.items() if k not in ('cache_state', 'stale', 'refresh_error')}
+        record = {k: v for k, v in source.items() if k not in ('cache_state', 'stale', 'refresh_error', '_diagnostic')}
         path = self._path(source['requested_url'], source['content_version'])
         self._write(path, record, source['fetched_at'])
 
@@ -167,7 +167,10 @@ class CachedAcquisition:
                 self.on_success(source)
             source = cast(SourceSuccess, dict(source, cache_state='refresh' if cached else 'miss', stale=False))
         elif cached and freshness != 'fresh_only' and source['error']['code'] not in ('policy_rejected', 'scope_rejected', 'traversal_byte_limit'):
+            diagnostic = source.get('_diagnostic')
             source = cast(SourceSuccess, dict(cached, cache_state='stale', stale=True, refresh_error=source['error']))
+            if diagnostic:
+                source['_diagnostic'] = diagnostic
         return source
 
     @staticmethod

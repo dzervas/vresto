@@ -65,6 +65,11 @@ class PDFMetadata(TypedDict):
     layout: str
 
 
+class SourceDiagnostic(ErrorDetails):
+    """Private failure context, stripped at the output and cache boundaries."""
+    stage: NotRequired[str]
+
+
 class SourceSuccess(TypedDict):
     requested_url: str
     resolved_url: str
@@ -82,10 +87,12 @@ class SourceSuccess(TypedDict):
     # Private acquisition/cache metadata, removed before MCP serialization.
     link_targets: NotRequired[list[str]]
     links_truncated: NotRequired[bool]
+    _diagnostic: NotRequired[SourceDiagnostic]
 
 
 class SourceFailure(TypedDict):
     error: SourceError
+    _diagnostic: NotRequired[SourceDiagnostic]
     requested_url: NotRequired[str | None]
     evidence_id: NotRequired[str]
 

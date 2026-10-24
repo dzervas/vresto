@@ -201,6 +201,8 @@ class Acquisition:
                         self.admission.notify_all()
         except FetchError as error:
             failure: SourceFailure = {'error': {'code': error.code, **error.details}}
+            if error.diagnostics:
+                failure['_diagnostic'] = error.diagnostics
             if normalized is not None:
                 failure['requested_url'] = normalized
             return failure

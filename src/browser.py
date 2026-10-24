@@ -13,7 +13,7 @@ from patchright.async_api import Error, TimeoutError as BrowserTimeout
 
 from patchright.async_api import Browser as NativeBrowser
 from .chromium import Chromium
-from .types import BrowserResult
+from .types import BrowserResult, SourceDiagnostic
 from .acquisition_policy import AcquisitionOptions
 
 from .acquisition_policy import FetchError
@@ -93,9 +93,13 @@ class Browser:
                 self._diagnostic(error, state['stage'], 'deadline')
             if state['challenge']:
                 raise FetchError('blocked', reason='challenge_timeout',
-                                 http_status=state['http_status']) from None
-            raise FetchError('fetch_timeout') from None
-        except FetchError:
+                                 http_status=state['http_status'],
+                                 diagnostics={'stage': state['stage'], 'reason': 'deadline'}) from None
+            raise FetchError('fetch_timeout', diagnostics={'stage': state['stage'], 'reason': 'deadline'}) from None
+        except FetchError as error:
+            error.diagnostics.setdefault('stage', state['stage'])
+            if state['http_status'] is not None:
+                error.diagnostics.setdefault('http_status', state['http_status'])
             raise
         except Error as error:
             # Tab creation is outside _acquire's conversion handler; preserve
@@ -111,12 +115,14 @@ class Browser:
 
     @staticmethod
     def _check_status(response):
+        if response.status < 400:
+            return
+        diagnostic: SourceDiagnostic = {'reason': 'http_status', 'http_status': response.status, 'stage': 'http_response'}
         if response.status == 429:
-            raise FetchError('rate_limited')
+            raise FetchError('rate_limited', diagnostics=diagnostic)
         if response.status in (401, 403):
-            raise FetchError('blocked', reason='http_status', http_status=response.status)
-        if response.status >= 400:
-            raise FetchError('fetch_failed')
+            raise FetchError('blocked', reason='http_status', http_status=response.status, diagnostics=diagnostic)
+        raise FetchError('fetch_failed', diagnostics=diagnostic)
 
     @staticmethod
     def _replaced(error: Exception) -> bool:
@@ -137,7 +143,7 @@ class Browser:
                 continue
             state['http_status'] = response.status
             if response.status == 429:
-                raise FetchError('rate_limited')
+                self._check_status(response)
             mime = response.headers.get('content-type', '').split(';')[0].lower()
             challenged = response.headers.get('cf-mitigated') == 'challenge'
             if not challenged and mime in ('text/html', 'application/xhtml+xml'):
@@ -345,13 +351,13 @@ class Browser:
             state['diagnosed'] = True
             if state['challenge']:
                 raise FetchError('blocked', reason='challenge_timeout',
-                                 http_status=state['http_status']) from None
-            raise FetchError('fetch_timeout') from None
+                                 http_status=state['http_status'], diagnostics={'reason': 'native_timeout'}) from None
+            raise FetchError('fetch_timeout', diagnostics={'reason': 'native_timeout'}) from None
         except Error as error:
             self._diagnostic(error, state['stage'], 'native_error')
             state['diagnosed'] = True
             code = 'fetch_failed' if browser.is_connected() else 'browser_unavailable'
-            raise FetchError(code) from None
+            raise FetchError(code, diagnostics={'reason': 'native_error'}) from None
         finally:
             previous_stage = state['stage']
             state['stage'] = 'cleanup'

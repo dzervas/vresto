@@ -205,8 +205,8 @@ def test_failed_and_stale_sources_are_logged_with_their_urls(caplog):
     ]})
     lines = [r.getMessage() for r in caplog.records]
     assert lines == [
-        'source_failed url=https://www.reddit.com/r/x/comments/1/ code=blocked reason=login_required http_status=-',
-        'source_failed url=https://nixos.wiki/a code=blocked reason=challenge_timeout http_status=403',
-        'source_stale url=https://stale.example/ code=fetch_timeout reason=- http_status=-',
-        'source_failed url=- code=fetch_failed reason=- http_status=-',
+        'source_failed url=https://www.reddit.com/r/x/comments/1/ code=blocked reason=login_required http_status=- stage=-',
+        'source_failed url=https://nixos.wiki/a code=blocked reason=challenge_timeout http_status=403 stage=-',
+        'source_stale url=https://stale.example/ code=fetch_timeout reason=- http_status=- stage=-',
+        'source_failed url=- code=fetch_failed reason=- http_status=- stage=-',
     ]

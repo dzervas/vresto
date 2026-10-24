@@ -24,13 +24,16 @@ def _log_failures(data: ToolData) -> None:
     logger = logging.getLogger('vresto')
     for source in data.get('sources', data.get('results', [])):
         url = source.get('requested_url') or source.get('resolved_url') or source.get('url') or '-'
+        diagnostic = source.pop('_diagnostic', {})
         error = source.get('error')
         if error is not None:
-            logger.warning('source_failed url=%s code=%s reason=%s http_status=%s', url,
-                           error.get('code'), error.get('reason', '-'), error.get('http_status', '-'))
+            logger.warning('source_failed url=%s code=%s reason=%s http_status=%s stage=%s', url,
+                           error.get('code'), error.get('reason', diagnostic.get('reason', '-')),
+                           error.get('http_status', diagnostic.get('http_status', '-')), diagnostic.get('stage', '-'))
         elif (refresh := source.get('refresh_error')) is not None:
-            logger.warning('source_stale url=%s code=%s reason=%s http_status=%s', url,
-                           refresh.get('code'), refresh.get('reason', '-'), refresh.get('http_status', '-'))
+            logger.warning('source_stale url=%s code=%s reason=%s http_status=%s stage=%s', url,
+                           refresh.get('code'), refresh.get('reason', diagnostic.get('reason', '-')),
+                           refresh.get('http_status', diagnostic.get('http_status', '-')), diagnostic.get('stage', '-'))
 
 
 class Retrieval:

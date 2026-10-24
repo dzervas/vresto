@@ -3,7 +3,7 @@
 Chromium owns all networking. Literal URL checks neither resolve DNS nor constrain native redirects,
 subresources, workers or sockets. Operators must enforce egress externally.
 """
-from .types import ErrorCode, ErrorDetails
+from .types import ErrorCode, ErrorDetails, SourceDiagnostic
 from dataclasses import dataclass
 import ipaddress
 import socket
@@ -11,8 +11,10 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 class FetchError(Exception):
-    def __init__(self, code: ErrorCode, *, reason: str | None = None, http_status: int | None = None) -> None:
+    def __init__(self, code: ErrorCode, *, reason: str | None = None, http_status: int | None = None,
+                 diagnostics: SourceDiagnostic | None = None) -> None:
         self.code: ErrorCode = code
+        self.diagnostics: SourceDiagnostic = diagnostics or {}
         # Only fixed classifications and the main HTTP status, never raw
         # headers, challenge tokens, page bodies or exception strings.
         self.details: ErrorDetails = {}
