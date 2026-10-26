@@ -3,7 +3,7 @@
 FROM rust:1.90.0-bookworm AS kagi
 RUN git clone https://github.com/Microck/kagi-cli /source \
  && cd /source \
- && git checkout cb64cf514a99e527429468f92bc9f6b633a765e4 \
+ && git checkout fe20aa2cde1155e226dbaa313680193652efca7b \
  && cargo install --locked --path . --root /cli
 
 FROM ghcr.io/astral-sh/uv:0.12.17 AS uv

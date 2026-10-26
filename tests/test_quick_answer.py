@@ -33,7 +33,7 @@ def cli(tmp_path, *, quick=None, search_action='', quick_action=''):
 from pathlib import Path
 if '--version' in sys.argv:
     assert 'KAGI_SESSION_TOKEN' not in os.environ
-    print('kagi 0.22.0')
+    print('kagi 0.23.0')
 else:
     args = sys.argv[1:]
     assert args[:2] == ['--error-format', 'json']

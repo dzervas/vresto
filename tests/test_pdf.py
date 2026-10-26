@@ -92,7 +92,7 @@ async def test_search_discovers_pdf_and_preserves_verbatim_page_evidence(tmp_pat
     async with site(handler) as (base, options):
         payload = json.dumps({'data': [{'t': 0, 'rank': 1, 'url': base + '/paper.pdf',
             'title': 'Report', 'snippet': 'Provider snippet, not PDF evidence.'}]})
-        cli = f"import sys\nprint('kagi 0.22.0' if '--version' in sys.argv else {payload!r})\n"
+        cli = f"import sys\nprint('kagi 0.23.0' if '--version' in sys.argv else {payload!r})\n"
         async with running(tmp_path, acquisition_options=options, source=cli) as (url, _), client(url) as session:
             data = body(await session.call_tool('search', {'query': 'connect_safe', 'content_mode': 'highlights', 'quick_answer': False}))
             source = data['results'][0]

@@ -52,10 +52,10 @@ class SearchResponse(BaseModel):
     model_config = ConfigDict(strict=True)
     data: list[SearchRow]
 
-# Verified primary source: Microck/kagi-cli cb64cf514a99e527429468f92bc9f6b633a765e4
-# (0.22.0), src/{cli,search,quick,types,auth,main,local}.rs. Install that revision with:
+# Verified primary source: Microck/kagi-cli fe20aa2cde1155e226dbaa313680193652efca7b
+# (0.23.0), src/{cli,search,quick,types,auth,main,local}.rs. Install that revision with:
 # cargo install --locked --git https://github.com/Microck/kagi-cli \
-#   --rev cb64cf514a99e527429468f92bc9f6b633a765e4 kagi
+#   --rev fe20aa2cde1155e226dbaa313680193652efca7b kagi
 # Subscriber automation is unofficial, may break or be restricted by Kagi.
 # Subscriber --limit truncates parsed results locally, not a provider count guarantee.
 
@@ -204,7 +204,7 @@ class Discovery:
                        "KAGI_SESSION_TOKEN": self.settings.session_token, "RUST_LOG": "off"}
                 version_env = {k: v for k, v in env.items() if k != "KAGI_SESSION_TOKEN"}
                 exit_code, version, _ = await self.processes.run(["--version"], version_env)
-                if exit_code or version.strip() != b"kagi 0.22.0":
+                if exit_code or version.strip() != b"kagi 0.23.0":
                     raise DiscoveryError("discovery_cli_version")
                 phase, exit_code = 'execute', None
                 exit_code, stdout, stderr = await self.processes.run(args, env)

@@ -44,7 +44,7 @@ print('Chromium 153.0.8010.12' if os.environ['FIXTURE_MODE'] == 'browser' else '
 ''',
         'kagi': '''import os, sys
 assert sys.argv[1:] == ['--version']
-print('kagi 0.21.0' if os.environ['FIXTURE_MODE'] == 'cli' else 'kagi 0.22.0')
+print('kagi 0.21.0' if os.environ['FIXTURE_MODE'] == 'cli' else 'kagi 0.23.0')
 ''',
         'Xvfb': f'''import os, sys, time
 from pathlib import Path

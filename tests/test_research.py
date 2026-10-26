@@ -23,7 +23,7 @@ assert 'subscriber-secret' not in str(args)
 assert 'client-secret' not in str(args) + str(os.environ)
 if '--version' in args:
     assert 'KAGI_SESSION_TOKEN' not in os.environ
-    print('kagi 0.22.0')
+    print('kagi 0.23.0')
 else:
     assert os.environ['KAGI_SESSION_TOKEN'] == 'subscriber-secret'
     assert set(os.environ) <= {{'PATH', 'HOME', 'KAGI_CONFIG', 'KAGI_SESSION_TOKEN', 'RUST_LOG', 'LC_CTYPE'}}

@@ -23,7 +23,7 @@ async def running(tmp_path, *, timeout=2, max_bytes=65536, source=None, stop=Non
     fixture = tmp_path / "cli.py"
     fixture.write_text(source or '''import json, sys
 if "--version" in sys.argv:
-    print("kagi 0.22.0")
+    print("kagi 0.23.0")
 else:
     print(json.dumps({"data": [{"t": 0, "rank": i, "url": f"https://example.org/{i}", "title": f"Source {i}", "snippet": "Provider summary"} for i in range(1, 13)]}))
 ''')
@@ -131,13 +131,13 @@ async def test_invalid_and_unsupported_controls_are_rejected(tmp_path, arguments
 
 
 def cli_response(payload, *, failed=False):
-    return "import sys\nif '--version' in sys.argv:\n    print('kagi 0.22.0')\nelse:\n    print(" + repr(payload) + ", file=sys.stderr if " + repr(failed) + " else sys.stdout)\n    sys.exit(" + ("1" if failed else "0") + ")\n"
+    return "import sys\nif '--version' in sys.argv:\n    print('kagi 0.23.0')\nelse:\n    print(" + repr(payload) + ", file=sys.stderr if " + repr(failed) + " else sys.stdout)\n    sys.exit(" + ("1" if failed else "0") + ")\n"
 
 
 def hanging_cli(tmp_path):
     return f'''import os, sys, time, signal
 if "--version" in sys.argv:
-    print("kagi 0.22.0")
+    print("kagi 0.23.0")
 else:
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     with open({str(tmp_path / 'pid')!r}, 'w') as f:
@@ -174,7 +174,7 @@ async def test_discovery_timeout_reaps_uncooperative_subprocess(tmp_path):
 async def test_cli_output_is_bounded_on_both_streams(tmp_path, stream):
     source = f'''import sys
 if "--version" in sys.argv:
-    print("kagi 0.22.0")
+    print("kagi 0.23.0")
 else:
     print("x" * 10000000, file=sys.{stream})
 '''
@@ -240,7 +240,7 @@ async def test_server_shutdown_reaps_active_discovery(tmp_path):
 def held_cli(tmp_path):
     return f'''import json, os, sys, time
 if "--version" in sys.argv:
-    print("kagi 0.22.0")
+    print("kagi 0.23.0")
 else:
     from pathlib import Path
     Path({str(tmp_path)!r}, 'pid-' + sys.argv[-1]).write_text(str(os.getpid()))
@@ -358,7 +358,7 @@ async def test_shutdown_reaps_admitted_discovery_and_never_spawns_waiters(tmp_pa
 @pytest.mark.parametrize("token", ["client-secret", "subscriber-secret", "subscriber%2Dsecret"])
 async def test_search_rejects_credentials_before_any_cli_or_upstream_work(tmp_path, caplog, token):
     marker = tmp_path / 'invoked'
-    source = f"from pathlib import Path\nPath({str(marker)!r}).touch()\nprint('kagi 0.22.0')\n"
+    source = f"from pathlib import Path\nPath({str(marker)!r}).touch()\nprint('kagi 0.23.0')\n"
     async with running(tmp_path, source=source) as (url, _), client(url) as session:
         result = await session.call_tool('search', {'query': 'lookup ' + token, 'content_mode': 'discovery'})
         assert result.isError

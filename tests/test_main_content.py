@@ -94,7 +94,7 @@ async def test_search_fetch_share_canonical_offsets_and_old_ids_expand_original_
             <main><h1>connect_safe</h1><p>connect_safe requires version 2.4 only.
             Do not use retries in 2.3.</p></main>''')
     async with site(handler) as (base, options):
-        cli = 'import json, sys\nif "--version" in sys.argv:\n print("kagi 0.22.0")\nelse:\n print(' + repr(json.dumps({'data': [
+        cli = 'import json, sys\nif "--version" in sys.argv:\n print("kagi 0.23.0")\nelse:\n print(' + repr(json.dumps({'data': [
             {'t': 0, 'rank': 1, 'url': base, 'title': 'Reference', 'snippet': 'Provider summary'}]})) + ')\n'
         async with running(tmp_path, acquisition_options=options, source=cli) as (url, _), client(url) as session:
             original = body(await session.call_tool('fetch', {'urls': [base]}))['sources'][0]

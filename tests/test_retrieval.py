@@ -41,7 +41,7 @@ async def search(service, arguments):
 async def test_query_is_a_literal_argument_and_update_dates_disclosed(tmp_path):
     source = '''import json, sys
 if "--version" in sys.argv:
-    print("kagi 0.22.0")
+    print("kagi 0.23.0")
 else:
     assert sys.argv[1:] == ["--error-format", "json", "search", "--format", "json", "--limit", "3", "--", "--query ; $(oops)"]
     print(json.dumps({"data": [{"rank": 4, "url": "https://example.org/docs", "title": "Docs", "snippet": "Text"}]}))
@@ -90,12 +90,13 @@ async def test_missing_ranks_and_empty_results_are_not_invented(tmp_path):
         assert "empty_results_may_indicate_upstream_markup_change" in data["warnings"]
 
 
-async def test_unpinned_cli_is_rejected(tmp_path):
-    source = '''import sys
+@pytest.mark.parametrize('version', ['0.21.0', '0.22.0'])
+async def test_unpinned_cli_is_rejected(tmp_path, version):
+    source = f'''import sys
 if "--version" in sys.argv:
-    print("kagi 0.21.0")
+    print("kagi {version}")
 else:
-    print('{"data": []}')
+    print('{{"data": []}}')
 '''
     async with retrieval(tmp_path, source=source) as service:
         result = await search(service, {"query": "x"})
@@ -106,7 +107,7 @@ else:
 async def test_cli_receives_only_upstream_session_without_host_auth_or_preferences(tmp_path):
     source = '''import json, os, sys
 if "--version" in sys.argv:
-    print("kagi 0.22.0")
+    print("kagi 0.23.0")
 else:
     assert os.environ["KAGI_SESSION_TOKEN"] == "subscriber-secret"
     assert not any(k in os.environ for k in ("KAGI_API_KEY", "KAGI_API_TOKEN", "VRESTO_ACCESS_TOKEN", "KAGI_BASE_URL"))

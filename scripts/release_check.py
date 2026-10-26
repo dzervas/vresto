@@ -238,7 +238,7 @@ async def run(cache, verify_persisted=False):
     try:
         with tempfile.TemporaryDirectory() as work:
             cli = Path(work) / 'cli.py'
-            cli.write_text('import json,sys\nif "--version" in sys.argv: print("kagi 0.22.0")\n'
+            cli.write_text('import json,sys\nif "--version" in sys.argv: print("kagi 0.23.0")\n'
                 'else: print(json.dumps({"data":[{"t":0,"rank":1,"title":"Fixture",'
                 '"url":"http://127.0.0.1:18081/docs","snippet":"Provider summary"}]}))\n')
             clock = Clock()

@@ -156,7 +156,7 @@ async def test_version_check_and_command_do_not_reset_deadline(tmp_path):
 from pathlib import Path
 if "--version" in sys.argv:
     time.sleep(.15)
-    print("kagi 0.22.0")
+    print("kagi 0.23.0")
 else:
     Path(__file__).with_suffix('.started').touch()
     time.sleep(.15)

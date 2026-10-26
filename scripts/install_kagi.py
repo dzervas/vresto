@@ -11,5 +11,5 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 subprocess.run([
     "cargo", "install", "--locked", "--git", "https://github.com/Microck/kagi-cli",
-    "--rev", "cb64cf514a99e527429468f92bc9f6b633a765e4", "--root", str(ROOT / ".tools"), "kagi",
+    "--rev", "fe20aa2cde1155e226dbaa313680193652efca7b", "--root", str(ROOT / ".tools"), "kagi",
 ], check=True)

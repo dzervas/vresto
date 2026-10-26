@@ -251,7 +251,7 @@ async def run():
                               ('markdownify', 'lxml', 'patchright', 'mcp', 'pypdf')},
              'corpus_sha256': {kind: hashlib.sha256(gate.pdf_fixture() if kind == 'document.pdf'
                                 else fixture_html(kind).encode()).hexdigest() for kind in CORPUS},
-             'fixture_cli_release': 'kagi 0.22.0 (synthetic, not upstream discovery)'}
+             'fixture_cli_release': 'kagi 0.23.0 (synthetic, not upstream discovery)'}
     facts['corpus_sha256'].update(lazy=hashlib.sha256(LAZY_BODY.encode()).hexdigest(),
                                  pending=hashlib.sha256(PENDING_BODY.encode()).hexdigest())
     source_root = Path(acquisition_module.__file__).resolve().parent
@@ -308,7 +308,7 @@ async def run():
             cli = work / 'cli.py'
             rows = [{'t': 0, 'rank': i + 1, 'title': kind, 'url': BASE + kind, 'snippet': 'Provider summary'}
                     for i, kind in enumerate(CORPUS)]
-            cli.write_text('import json,sys\nif "--version" in sys.argv: print("kagi 0.22.0")\nelse: print(' + repr(json.dumps({'data': rows})) + ')\n')
+            cli.write_text('import json,sys\nif "--version" in sys.argv: print("kagi 0.23.0")\nelse: print(' + repr(json.dumps({'data': rows})) + ')\n')
             start = time.perf_counter()
             clock = gate.Clock()
             # Keep the historical 64 KiB performance workload via operator settings,

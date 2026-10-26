@@ -238,7 +238,7 @@ async def test_version_failure_does_not_log_version_output(tmp_path, caplog):
 
 async def test_signal_exit_is_not_reported_as_an_http_or_service_timeout(tmp_path, caplog):
     caplog.set_level(logging.INFO, logger='vresto')
-    source = "import os,signal,sys\nif '--version' in sys.argv: print('kagi 0.22.0')\nelse: os.kill(os.getpid(),signal.SIGKILL)\n"
+    source = "import os,signal,sys\nif '--version' in sys.argv: print('kagi 0.23.0')\nelse: os.kill(os.getpid(),signal.SIGKILL)\n"
     async with retrieval(tmp_path, source=source) as service:
         data = await service.search(SearchInput(query=QUERY, quick_answer=False))
     assert data['error']['code'] == 'discovery_failed'

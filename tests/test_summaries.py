@@ -30,7 +30,7 @@ def cli(tmp_path, action=None):
 from pathlib import Path
 if '--version' in sys.argv:
     assert 'KAGI_SESSION_TOKEN' not in os.environ
-    print('kagi 0.22.0')
+    print('kagi 0.23.0')
 elif 'search' in sys.argv:
     print(json.dumps({{"data": [{{"url": "https://example.org/1", "title": "Retries"}}]}}))
 else:
