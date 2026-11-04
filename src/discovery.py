@@ -27,6 +27,7 @@ class DiscoveryError(Exception):
         self.reason = reason
         self.phase = phase
         self.exception_type = exception_type
+        self.http_status: int | None = None
         self.diagnosed = False
         super().__init__(code)
 
@@ -61,6 +62,11 @@ class SearchResponse(BaseModel):
 
 
 class Discovery:
+    # kagi.com/html/search intermittently answers HTTP 504 after ~10 s during
+    # upstream slow periods (observed in clusters of minutes). Retry search only,
+    # releasing admission while waiting; the request deadline still bounds it.
+    SEARCH_RETRY_DELAYS: tuple[float, ...] = (5, 15, 30)
+
     def __init__(self, settings: "Settings") -> None:
         self.settings = settings
         from .process import Processes
@@ -97,9 +103,20 @@ class Discovery:
             quick = asyncio.create_task(self._quick_answer(request)) if request.quick_answer else None
             try:
                 with anyio.fail_after(remaining(self.settings.timeout)):
-                    async with self.processes.admission():
-                        phase = 'response'
-                        data = await self._search(request)
+                    for attempt, delay in enumerate((*self.SEARCH_RETRY_DELAYS, None), 1):
+                        try:
+                            phase = 'admission'
+                            async with self.processes.admission():
+                                phase = 'response'
+                                data = await self._search(request)
+                            break
+                        except DiscoveryError as error:
+                            if delay is None or error.http_status != 504:
+                                raise
+                        logger.info('cli_retry operation=search attempt=%d http_status=504 delay_s=%g',
+                                    attempt, delay)
+                        phase = 'retry'
+                        await asyncio.sleep(delay)
                 if quick is not None:
                     data.update(await quick)
                 return data
@@ -242,7 +259,9 @@ class Discovery:
                     code = 'upstream_authentication'
                 elif envelope.get('code') == 'parse_error':
                     code = 'discovery_parse_error'
-                raise DiscoveryError(code)
+                error = DiscoveryError(code)
+                error.http_status = http_status
+                raise error
             return stdout
         except DiscoveryError as error:
             self._diagnostic(operation, phase, error, started=started, reason=reason,

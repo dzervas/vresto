@@ -86,6 +86,58 @@ async def test_cli_exit_diagnostics_are_fixed_and_sanitized(tmp_path, caplog, er
     assert_safe(caplog)
 
 
+def flaky_cli(tmp_path, failures, status=504):
+    # Fails the first `failures` searches with the pinned CLI's HTTP error envelope.
+    counter = tmp_path / 'attempts'
+    return f'''import json, pathlib, sys
+if '--version' in sys.argv:
+    print('kagi 0.23.0')
+    sys.exit(0)
+counter = pathlib.Path({str(counter)!r})
+attempt = int(counter.read_text()) + 1 if counter.exists() else 1
+counter.write_text(str(attempt))
+if attempt <= {failures}:
+    print(json.dumps({{'code': 'network_error', 'http_status': {status}, 'message': 'private-cli-body'}}), file=sys.stderr)
+    sys.exit(1)
+print(json.dumps({{'data': [{{'url': 'https://example.org/', 'title': 'Example'}}]}}))
+'''
+
+
+def test_search_retry_schedule_is_five_fifteen_thirty_seconds():
+    from vresto.discovery import Discovery
+
+    assert Discovery.SEARCH_RETRY_DELAYS == (5, 15, 30)
+
+
+@pytest.mark.parametrize('failures,status,attempts,ok', [
+    (3, 504, 4, True),
+    (4, 504, 4, False),
+    (1, 503, 1, False),
+])
+async def test_search_retries_only_gateway_timeouts(tmp_path, caplog, monkeypatch, failures, status, attempts, ok):
+    caplog.set_level(logging.INFO, logger='vresto')
+    delays = []
+    real_sleep = asyncio.sleep
+
+    async def sleep(delay):
+        delays.append(delay)
+        await real_sleep(0)
+
+    monkeypatch.setattr('vresto.discovery.asyncio.sleep', sleep)
+    async with retrieval(tmp_path, source=flaky_cli(tmp_path, failures, status)) as service:
+        data = await service.search(SearchInput(query=QUERY, quick_answer=False))
+        assert service.discovery.processes.admitted == 0
+    assert int((tmp_path / 'attempts').read_text()) == attempts
+    assert delays == [5, 15, 30][:attempts - 1]
+    if ok:
+        assert [r['url'] for r in data['results']] == ['https://example.org/']
+    else:
+        assert data['error']['code'] == 'discovery_failed'
+    assert len(messages(caplog, 'cli_failure ')) == min(failures, attempts)
+    assert len(messages(caplog, 'cli_retry ')) == attempts - 1
+    assert_safe(caplog)
+
+
 @pytest.mark.parametrize('payload', ['not JSON private-cli-body', '[]', 'null', '[' * 12000])
 async def test_malformed_cli_stderr_is_identified_without_echoing_it(tmp_path, caplog, payload):
     caplog.set_level(logging.INFO, logger='vresto')
