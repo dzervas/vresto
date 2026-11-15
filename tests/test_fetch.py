@@ -1,6 +1,7 @@
 from test_http import running, client, body
 import pytest
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from aiohttp import web
@@ -307,6 +308,57 @@ async def test_mixed_success_failure_preserves_document(tmp_path):
         assert 'Evidence' in sources[0]['content']
         assert sources[1]['error']['code'] == 'fetch_failed'
         assert sources[1]['requested_url'] == base + '/missing'
+
+
+MARKDOWN = '# Release notes\n\nSet `retry_limit = 0` before deployment.\n'
+
+
+@pytest.mark.parametrize('path,headers,payload,expected', [
+    ('/README.md', {'Content-Type': 'text/plain; charset=utf-8'}, MARKDOWN.encode(), MARKDOWN),
+    ('/notes.md', {'Content-Type': 'text/markdown'}, MARKDOWN.encode(), MARKDOWN),
+    ('/main.py', {'Content-Type': 'text/x-python'}, b'def main():\n    return 0\n', 'def main():\n    return 0\n'),
+    ('/data.json', {'Content-Type': 'application/json'}, b'{"retry_limit": 0}', '{"retry_limit": 0}'),
+    ('/latin.txt', {'Content-Type': 'text/plain; charset=iso-8859-1'}, 'caf\u00e9'.encode('latin-1'), 'caf\u00e9'),
+    ('/raw.md', {'Content-Type': 'application/octet-stream'}, MARKDOWN.encode(), MARKDOWN),
+    ('/latin.csv', {'Content-Type': 'text/csv; charset=iso-8859-1', 'Content-Disposition': 'attachment'},
+     'caf\u00e9'.encode('latin-1'), 'caf\u00e9'),
+    ('/attached.md', {'Content-Type': 'text/markdown', 'Content-Disposition': 'attachment; filename="attached.md"'},
+     MARKDOWN.encode(), MARKDOWN),
+])
+async def test_textual_responses_are_returned_verbatim(tmp_path, path, headers, payload, expected):
+    async def handler(request):
+        return web.Response(body=payload, headers=headers)
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base + path]}))['sources'][0]
+        assert 'error' not in source, source
+        assert source['document_type'] == 'text'
+        assert source['content'] == expected
+        assert source['title'] == path[1:]
+
+
+async def test_textual_sources_yield_expandable_evidence(tmp_path):
+    async def handler(request):
+        return web.Response(body=MARKDOWN.encode(), headers={'Content-Type': 'text/plain'})
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base + '/README.md'], 'query': 'retry_limit'}))['sources'][0]
+        highlight = source['highlights'][0]
+        assert 'retry_limit' in highlight['text']
+        expanded = body(await session.call_tool('expand', {'evidence_ids': [highlight['evidence_id']]}))
+        assert 'retry_limit' in json.dumps(expanded)
+
+
+@pytest.mark.parametrize('headers,payload', [
+    ({'Content-Type': 'image/png'}, b'\x89PNG\r\n\x1a\n\x00\x00'),
+    ({'Content-Type': 'application/octet-stream'}, b'\x00\x01\x02binary'),
+    ({'Content-Type': 'application/octet-stream'}, b'\x80\x81 not utf-8'),
+    ({'Content-Type': 'text/plain'}, b'  \n'),
+])
+async def test_binary_or_empty_responses_stay_unsupported(tmp_path, headers, payload):
+    async def handler(request):
+        return web.Response(body=payload, headers=headers)
+    async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _), client(url) as session:
+        source = body(await session.call_tool('fetch', {'urls': [base + '/file']}))['sources'][0]
+        assert source['error']['code'] == 'unsupported_format'
 
 
 async def test_cancelled_render_closes_only_tab_downloads_and_keeps_mcp_usable(tmp_path):

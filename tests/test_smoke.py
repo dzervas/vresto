@@ -13,7 +13,7 @@ from test_http import running
 async def test_smoke_reports_acquisition_separately_without_printing_page_bodies(tmp_path):
     async def handler(request):
         if request.path == '/unsupported':
-            return web.Response(content_type='text/plain', text='never print this body')
+            return web.Response(content_type='image/png', body=b'\x89PNG\x00never print this body')
         return web.Response(content_type='text/html', text='<h1>Version 2</h1><p>' +
             'retry_limit is zero. Never enable legacy mode. Read all warnings before deployment. ' * 10 + '</p>')
     async with site(handler) as (base, options), running(tmp_path, acquisition_options=options) as (url, _):

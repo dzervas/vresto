@@ -5,8 +5,10 @@ not an SSRF boundary; deployment egress, memory and disk limits are required.
 """
 from typing import Protocol, cast
 import asyncio
+import codecs
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import unquote, urlsplit
 
 import anyio
 from patchright.async_api import Error, TimeoutError as BrowserTimeout
@@ -34,6 +36,40 @@ _CHALLENGE_PAGE = r'''() => {
         (visibleForm || (document.body?.innerText.length || 0) < 2000)) ||
         (visibleForm && heading && prompt.test(heading.textContent.trim())));
 }'''
+
+# Non-HTML types served as readable text (raw Markdown, source code, data).
+_TEXT_TYPES = frozenset({'application/json', 'application/xml', 'application/javascript',
+    'application/x-javascript', 'application/ecmascript', 'application/yaml', 'application/x-yaml',
+    'application/toml', 'application/x-sh', 'application/sql'})
+
+
+def _textual(mime: str) -> bool:
+    return (mime.startswith('text/') or mime in _TEXT_TYPES
+            or (mime.startswith('application/') and mime.endswith(('+json', '+xml'))))
+
+
+def _charset(content_type: str) -> str:
+    for parameter in content_type.split(';')[1:]:
+        key, _, value = parameter.strip().partition('=')
+        if key.lower() == 'charset':
+            return value.strip().strip('"')
+    return 'utf-8'
+
+
+def _plain_text(url: str, data: bytes, charset: str) -> BrowserResult:
+    """Verbatim decoded text; binary or undecodable bodies stay unsupported."""
+    try:
+        codec = codecs.lookup(charset).name
+    except LookupError:
+        codec = 'utf-8'
+    try:
+        text = data.decode('utf-8-sig' if codec == 'utf-8' else codec)
+    except UnicodeDecodeError:
+        raise FetchError('unsupported_format') from None
+    if '\x00' in text or not text.strip():
+        raise FetchError('unsupported_format')
+    return {'url': url, 'title': unquote(PurePosixPath(urlsplit(url).path).name) or url, 'text': text}
+
 
 class BrowserAdapter(Protocol):
     """Acquisition's entire browser seam; native objects stay inside the adapter."""
@@ -82,7 +118,7 @@ class Browser:
         await self.start()
         state = {'challenge': False, 'http_status': None,
                  'deadline': asyncio.get_running_loop().time() + remaining(options.deadline),
-                 'stage': 'context', 'diagnosed': False}
+                 'stage': 'context', 'diagnosed': False, 'content_type': ''}
         try:
             # One duration across navigation, native challenge continuation,
             # JS settling, downloads and conversion. Never extend the deadline.
@@ -219,7 +255,7 @@ class Browser:
                 idle_task.result()
 
     @staticmethod
-    async def _download(download, options) -> BrowserResult:
+    async def _download(download, options, content_type='') -> BrowserResult:
         filename = await download.path()
         if filename is None or await download.failure():
             raise FetchError('fetch_failed')
@@ -227,9 +263,14 @@ class Browser:
         if path.stat().st_size > options.response_bytes:
             raise FetchError('resource_limit')
         data = path.read_bytes()
-        if not data.startswith(b'%PDF-'):
-            raise FetchError('unsupported_format')
-        return {'url': download.url, 'pdf': data}
+        if data.startswith(b'%PDF-'):
+            return {'url': download.url, 'pdf': data}
+        mime = content_type.split(';')[0].lower()
+        # Servers often send raw text files as generic downloads.
+        if _textual(mime) or mime in ('', 'application/octet-stream'):
+            # Downloads are raw bytes in the server's declared charset.
+            return _plain_text(download.url, data, _charset(content_type))
+        raise FetchError('unsupported_format')
 
     async def _navigate(self, page, url, options, state):
         download_ready = asyncio.get_running_loop().create_future()
@@ -245,6 +286,7 @@ class Browser:
                 navigation_response = response
                 state['http_status'] = response.status
                 state['challenge'] = response.headers.get('cf-mitigated') == 'challenge'
+                state['content_type'] = response.headers.get('content-type', '')
         page.on('response', responded)
         state['stage'] = 'navigation'
         try:
@@ -273,15 +315,20 @@ class Browser:
         while True:
             state['stage'] = 'response_validation'
             response = await self._settled_response(page, latest, state)
-            mime = response.headers.get('content-type', '').split(';')[0].lower()
+            content_type = response.headers.get('content-type', '')
+            mime = content_type.split(';')[0].lower()
             if mime not in ('text/html', 'application/xhtml+xml'):
                 if mime in ('application/pdf', 'application/octet-stream') or download_ready.done():
-                    return await self._download(await download_ready, options)
+                    return await self._download(await download_ready, options, content_type)
                 data = await response.body()
                 if len(data) > options.response_bytes:
                     raise FetchError('resource_limit')
                 if data.startswith(b'%PDF-'):
                     return {'url': response.url, 'pdf': data}
+                if _textual(mime):
+                    # Chromium returns displayed text bodies already decoded
+                    # (declared charset or sniffing) and re-encoded as UTF-8.
+                    return _plain_text(response.url, data, 'utf-8')
                 raise FetchError('unsupported_format')
             state['stage'] = 'render'
             settled, idle, quiet, pending_load = await self._settle_rendered(page, latest, state, options, response, native_loads.pending)
@@ -344,7 +391,7 @@ class Browser:
             native_loads = NativeLoadObservation(page)
             latest, download_ready = await self._navigate(page, url, options, state)
             if latest is None:
-                return await self._download(await download_ready, options)
+                return await self._download(await download_ready, options, state['content_type'])
             return await self._render_document(page, latest, download_ready, native_loads, options, state)
         except BrowserTimeout as error:
             self._diagnostic(error, state['stage'], 'native_timeout')

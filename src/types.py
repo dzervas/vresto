@@ -74,7 +74,7 @@ class SourceSuccess(TypedDict):
     requested_url: str
     resolved_url: str
     title: str
-    document_type: Literal['html', 'pdf']
+    document_type: Literal['html', 'pdf', 'text']
     fetched_at: str
     cache_state: NotRequired[str]
     content_version: str
@@ -130,7 +130,13 @@ class BrowserPDF(TypedDict):
     pdf: bytes
 
 
-BrowserResult = BrowserHTML | BrowserPDF
+class BrowserText(TypedDict):
+    url: str
+    title: str
+    text: str
+
+
+BrowserResult = BrowserHTML | BrowserPDF | BrowserText
 
 # Evidence selection, discovery enrichment and budgeting project heterogeneous
 # source records (removing content and adding references/counters). Their JSON

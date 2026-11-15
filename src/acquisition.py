@@ -280,6 +280,10 @@ class Acquisition:
                 title, content, pdf = await parse_pdf(result['pdf'], self.options)
             extras = {'pdf': pdf}
             document_type = 'pdf'
+        elif 'text' in result:
+            title, content = result['title'], result['text']
+            extras = {}
+            document_type = 'text'
         else:
             title, content = result['title'], result['content']
             extras = {'link_targets': result['links'], 'links_truncated': result['links_truncated'],
